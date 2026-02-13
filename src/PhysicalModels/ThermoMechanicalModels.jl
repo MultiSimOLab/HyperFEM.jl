@@ -100,7 +100,7 @@ struct VolumetricLaw <: ThermalLaw
 end
 
 function derivatives(law::VolumetricLaw)
-  θr, γ = law.θr, law.γ
+  @unpack θr, γ = law
   g(θ) = 1/(γ+1) * ((θ/θr)^(γ+1) -1)
   ∂g(θ) = θ^γ / θr^(γ+1)
   ∂∂g(θ) = γ*θ^(γ-1) / θr^(γ+1)
@@ -113,7 +113,7 @@ struct DeviatoricLaw <: ThermalLaw
 end
 
 function derivatives(law::DeviatoricLaw)
-  θr, γ = law.θr, law.γ
+  @unpack θr, γ = law
   g(θ) = (θ/θr)^(-γ)
   ∂g(θ) = -γ*θ^(-γ-1) * θr^γ
   ∂∂g(θ) = γ*(γ+1)*θ^(-γ-2) * θr^γ
@@ -127,11 +127,27 @@ struct InterceptLaw <: ThermalLaw
 end
 
 function derivatives(law::InterceptLaw)
-  θr, γ, δ = law.θr, law.γ, law.δ
+  @unpack θr, γ, δ = law
   g(θ) = (θ/θr)^(-γ) * (1-δ) + δ
   ∂g(θ) = -γ*θ^(-γ-1) * θr^γ * (1-δ)
   ∂∂g(θ) = γ*(γ+1)*θ^(-γ-2) * θr^γ * (1-δ)
   return (g, ∂g, ∂∂g)
+end
+
+struct TrigonometricLaw <: ThermalLaw
+  θr::Float64
+  θM::Float64
+end
+
+function derivatives(law::TrigonometricLaw)
+  @unpack θr, θM = law  
+  g(θ) = θ/θr * sin(2π*θ/θM)
+  G(θ) = 1/2/π * θM/θr * (1 - cos(2π*θ/θM))
+  H(θ) = 1/2/π * θM/θr * (θ - θM/2/π * sin(2π*θ/θM))
+  f(θ) = (H(θr) - H(θ)) / (H(θM) - H(θr)) + 1.0
+  ∂f(θ) = -G(θ) / (H(θM) - H(θr))
+  ∂∂f(θ) = g(θ) / θ / (H(θM) - H(θr))
+  return (f, ∂f, ∂∂f)
 end
 
 struct ThermoMech_Bonet{T<:Thermo,M<:Mechano} <: ThermoMechano

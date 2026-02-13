@@ -93,6 +93,7 @@ end
 @publish PhysicalModels VolumetricLaw
 @publish PhysicalModels DeviatoricLaw
 @publish PhysicalModels InterceptLaw
+@publish PhysicalModels TrigonometricLaw
 
 @publish PhysicalModels SecondPiola
 @publish PhysicalModels Dissipation
