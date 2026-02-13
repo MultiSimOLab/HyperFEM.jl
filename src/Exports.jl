@@ -94,6 +94,7 @@ end
 @publish PhysicalModels DeviatoricLaw
 @publish PhysicalModels InterceptLaw
 @publish PhysicalModels TrigonometricLaw
+@publish PhysicalModels PolynomialLaw
 
 @publish PhysicalModels SecondPiola
 @publish PhysicalModels Dissipation

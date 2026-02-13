@@ -150,6 +150,23 @@ function derivatives(law::TrigonometricLaw)
   return (f, ∂f, ∂∂f)
 end
 
+struct PolynomialLaw{N} <: ThermalLaw
+  a0::Float64
+  ai::NTuple{N, Float64}
+end
+
+PolynomialLaw(a0::Real, ai::Real...) = PolynomialLaw(Float64(a0), Float64.(ai))
+
+function derivatives(law::PolynomialLaw)
+  c0 = (law.a0, law.ai...)
+  c1 = ntuple(i -> i * c0[i+1], length(c0) - 1)
+  c2 = length(c1) < 1 ? (0.0) : ntuple(i -> i * c1[i+1], length(c1) - 1)
+  f(θ)   = evalpoly(θ, c0)
+  ∂f(θ)  = evalpoly(θ, c1)
+  ∂∂f(θ) = evalpoly(θ, c2)
+  return (f, ∂f, ∂∂f)
+end
+
 struct ThermoMech_Bonet{T<:Thermo,M<:Mechano} <: ThermoMechano
   thermo::T
   mechano::M
