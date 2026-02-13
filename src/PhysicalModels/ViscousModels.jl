@@ -65,9 +65,9 @@ end
 
 function (obj::NVisco)()
   DΨv   = map(b -> b(),  obj)
-  Ψα    = map(x -> x[1], DΨv)
-  ∂ΨαF  = map(x -> x[2], DΨv)
-  ∂ΨαFF = map(x -> x[3], DΨv)
+  Ψα    = getindex.(DΨv, 1)
+  ∂ΨαF  = getindex.(DΨv, 2)
+  ∂ΨαFF = getindex.(DΨv, 3)
   Ψ(F, Fn, A...)     = mapreduce((Ψi, Ai) -> Ψi(F, Fn, Ai), +, Ψα, A; init=0)
   ∂Ψ∂F(F, Fn, A...)  = mapreduce((∂ΨiF, Ai) -> ∂ΨiF(F, Fn, Ai), +, ∂ΨαF, A; init=zerotensor3)
   ∂Ψ∂FF(F, Fn, A...) = mapreduce((∂ΨiFF, Ai) -> ∂ΨiFF(F, Fn, Ai), +, ∂ΨαFF, A; init=zerotensor9)
