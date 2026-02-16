@@ -1,6 +1,6 @@
 name = "HyperFEM"
 uuid = "ddbf423a-3df4-409e-9685-3dc416cae46c"
-version = "0.0.1"
+version = "0.0.2"
 authors = ["MultiSimo_Group"]
 
 [deps]
