@@ -114,9 +114,9 @@ end
 
 function derivatives(law::DeviatoricLaw)
   @unpack θr, γ = law
-  g(θ) = (θ/θr)^(-γ)
-  ∂g(θ) = -γ*θ^(-γ-1) * θr^γ
-  ∂∂g(θ) = γ*(γ+1)*θ^(-γ-2) * θr^γ
+  g(θ) = (θ/θr)^γ
+  ∂g(θ) = γ*θ^(γ-1) / θr^γ
+  ∂∂g(θ) = γ*(γ-1)*θ^(γ-2) / θr^γ
   return (g, ∂g, ∂∂g)
 end
 
@@ -146,24 +146,22 @@ function derivatives(law::TrigonometricLaw)
   H(θ) = 1/2/π * θM/θr * (θ - θM/2/π * sin(2π*θ/θM))
   f(θ) = (H(θr) - H(θ)) / (H(θM) - H(θr)) + 1.0
   ∂f(θ) = -G(θ) / (H(θM) - H(θr))
-  ∂∂f(θ) = g(θ) / θ / (H(θM) - H(θr))
+  ∂∂f(θ) = -g(θ) / θ / (H(θM) - H(θr))
   return (f, ∂f, ∂∂f)
 end
 
-struct PolynomialLaw{N} <: ThermalLaw
-  a0::Float64
-  ai::NTuple{N, Float64}
+struct PolynomialLaw <: ThermalLaw
+  θr::Float64
+  a::Float64
+  b::Float64
+  c::Float64
 end
 
-PolynomialLaw(a0::Real, ai::Real...) = PolynomialLaw(Float64(a0), Float64.(ai))
-
 function derivatives(law::PolynomialLaw)
-  c0 = (law.a0, law.ai...)
-  c1 = ntuple(i -> i * c0[i+1], length(c0) - 1)
-  c2 = length(c1) < 1 ? (0.0) : ntuple(i -> i * c1[i+1], length(c1) - 1)
-  f(θ)   = evalpoly(θ, c0)
-  ∂f(θ)  = evalpoly(θ, c1)
-  ∂∂f(θ) = evalpoly(θ, c2)
+  @unpack θr, a, b, c = law
+  f(θ)   = a*(θ-θr)^3  + b*(θ-θr)^2 + c*(θ-θr) + 1
+  ∂f(θ)  = 3a*(θ-θr)^2 + 2b*(θ-θr) + c
+  ∂∂f(θ) = 6a*(θ-θr) + 2b
   return (f, ∂f, ∂∂f)
 end
 
