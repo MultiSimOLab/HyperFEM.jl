@@ -146,7 +146,7 @@ end
 function derivatives(law::LogisticLaw)
   @unpack θr, μ, σ = law
   z(x) = (log(x) - μ) / σ
-  std_pdf(x) = 1/σ/sqrt(2 * π) * exp(-z(x)^2 / 2)
+  std_pdf(x) = 1/(σ*sqrt(2 * π)) * exp(-z(x)^2 / 2)
   std_cdf(x) = 0.5 * (1 + erf(z(x) / sqrt(2)))
   ξR = 1 / (1-std_cdf(θr))
   f(θ) = ξR * (1-std_cdf(θ))

@@ -25,7 +25,7 @@ end
 """
 Fast and dependency-free implementation of erf function, up to 1e-6 precision.
 """
-@inline function erf(x::Float64)
+@inline function erf(x::Real)
   p  = 0.3275911
   a1 = 0.254829592
   a2 = -0.284496736

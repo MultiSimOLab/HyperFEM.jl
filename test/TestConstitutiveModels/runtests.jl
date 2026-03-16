@@ -15,4 +15,8 @@ using Test
     include("ElectroMechanicalTests.jl")
   end
 
+  @time begin
+    include("ThermalLawsTests.jl")
+  end
+
 end
