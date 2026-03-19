@@ -148,6 +148,8 @@ include("PINNs.jl")
 # Physical models interface
 # ============================================
 
+Base.broadcastable(m::PhysicalModel) = Ref(m) # Allows to use the @. syntax for passing a single constitutive model into a vectorized function
+
 """
 Initialize the state variables for the given constitutive model and discretization.
 """
