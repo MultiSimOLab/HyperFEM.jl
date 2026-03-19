@@ -945,9 +945,6 @@ end
 end
 
 
-
-
-
 @testset "Hessian∇JRegularization" begin
   #  4.09 μs      Histogram: log(frequency) by time      10.8 μs <
   #  Memory estimate: 2.58 KiB, allocs estimate: 11.
@@ -976,4 +973,16 @@ end
 end
 
 
+@testset "broadcastable" begin
+  model = LinearElasticity3D(λ=3.0, μ=1.0)
+  _, P, _ = model()
+  function evaluate_stress(model, λ1, λ2)
+    F = TensorValue(λ1, 0, 0, 0, λ2, 0, 0, 0, 1/(λ1*λ2))
+    return P(F)[1]
+  end
+  λ1_vals = [1, 1]
+  λ2_vals = [1, 1]
+  P_vals = @. evaluate_stress(model, λ1_vals', λ2_vals)
+  @test P_vals == [0.0 0.0; 0.0 0.0]
+end
 
