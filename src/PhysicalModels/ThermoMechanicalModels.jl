@@ -171,7 +171,7 @@ function ThermoMech_Bonet(thermo::T, mechano::M; γv::Float64, γd::Float64, γv
 end
 
 function entropy(obj::ThermoMech_Bonet)
-  cv0, α, γv = obj.thermo.Cv, obj.thermo.α, obj.gv.γ
+  cv0, α, γv = obj.thermo.Cv, obj.thermo.α, obj.lawvol.γ
   J(F) = det(F)
   H(F) = cof(F)
   ηR(F) = α*(J(F) - 1.0) + cv0/γv
