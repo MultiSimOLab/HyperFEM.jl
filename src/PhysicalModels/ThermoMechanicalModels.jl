@@ -137,6 +137,22 @@ function derivatives(law::PolynomialLaw)
   return (f, ∂f, ∂∂f)
 end
 
+struct SigmoidLaw <: ThermalLaw
+  θr::Float64
+  θt::Float64
+  γ::Float64
+end
+
+function derivatives(law::SigmoidLaw)
+  @unpack θr, θt, γ = law
+  expθ(θ) = exp(-(θ/θt)^γ)
+  ξt = exp(θr)
+  f(θ) = exp(θ) / ξt
+  ∂f(θ) = -γ*θ^(γ-1)/(ξt*θt^γ) * expθ(θ)
+  ∂∂f(θ) = ∂f(θ) / θ * (γ - γ*((θ/θt)^γ) -1)
+  return (f, ∂f, ∂∂f)
+end
+
 struct LogisticLaw <: ThermalLaw
   θr::Float64
   μ::Float64
