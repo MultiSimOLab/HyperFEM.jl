@@ -59,10 +59,10 @@ end
 
 function derivatives(law::VolumetricLaw)
   @unpack θr, γ = law
-  g(θ) = 1/(γ+1) * ((θ/θr)^(γ+1) -1)
-  ∂g(θ) = θ^γ / θr^(γ+1)
-  ∂∂g(θ) = γ*θ^(γ-1) / θr^(γ+1)
-  return (g, ∂g, ∂∂g)
+  f(θ) = 1/(γ+1) * ((θ/θr)^(γ+1) -1)
+  ∂f(θ) = θ^γ / θr^(γ+1)
+  ∂∂f(θ) = γ*θ^(γ-1) / θr^(γ+1)
+  return (f, ∂f, ∂∂f)
 end
 
 struct EntropicMeltingLaw <: ThermalLaw
@@ -73,10 +73,10 @@ end
 
 function derivatives(law::EntropicMeltingLaw)
   @unpack θr, θM, γ = law
-  g(θ) = (1 - (θ/θM)^(γ+1)) / (1 - (θr/θM)^(γ+1))
-  ∂g(θ) = -(γ+1)*θ^γ/θM^(γ+1) / (1 - (θr/θM)^(γ+1))
-  ∂∂g(θ) = -γ*(γ+1)*θ^(γ-1)/θM^(γ+1) / (1 - (θr/θM)^(γ+1))
-  return (g, ∂g, ∂∂g)
+  f(θ) = (1 - (θ/θM)^(γ+1)) / (1 - (θr/θM)^(γ+1))
+  ∂f(θ) = -(γ+1)*θ^γ/θM^(γ+1) / (1 - (θr/θM)^(γ+1))
+  ∂∂f(θ) = -γ*(γ+1)*θ^(γ-1)/θM^(γ+1) / (1 - (θr/θM)^(γ+1))
+  return (f, ∂f, ∂∂f)
 end
 
 struct DeviatoricLaw <: ThermalLaw
@@ -86,10 +86,10 @@ end
 
 function derivatives(law::DeviatoricLaw)
   @unpack θr, γ = law
-  g(θ) = (θ/θr)^γ
-  ∂g(θ) = γ*θ^(γ-1) / θr^γ
-  ∂∂g(θ) = γ*(γ-1)*θ^(γ-2) / θr^γ
-  return (g, ∂g, ∂∂g)
+  f(θ) = (θ/θr)^γ
+  ∂f(θ) = γ*θ^(γ-1) / θr^γ
+  ∂∂f(θ) = γ*(γ-1)*θ^(γ-2) / θr^γ
+  return (f, ∂f, ∂∂f)
 end
 
 struct InterceptLaw <: ThermalLaw
@@ -100,10 +100,10 @@ end
 
 function derivatives(law::InterceptLaw)
   @unpack θr, γ, δ = law
-  g(θ) = (θ/θr)^(-γ) * (1-δ) + δ
-  ∂g(θ) = -γ*θ^(-γ-1) * θr^γ * (1-δ)
-  ∂∂g(θ) = γ*(γ+1)*θ^(-γ-2) * θr^γ * (1-δ)
-  return (g, ∂g, ∂∂g)
+  f(θ) = (θ/θr)^(-γ) * (1-δ) + δ
+  ∂f(θ) = -γ*θ^(-γ-1) * θr^γ * (1-δ)
+  ∂∂f(θ) = γ*(γ+1)*θ^(-γ-2) * θr^γ * (1-δ)
+  return (f, ∂f, ∂∂f)
 end
 
 struct TrigonometricLaw <: ThermalLaw
