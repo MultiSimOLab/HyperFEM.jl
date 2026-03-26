@@ -121,48 +121,51 @@ struct ThermoElectroMech_Bonet{T<:Thermo,E<:Electro,M<:Mechano} <: ThermoElectro
   thermo::T
   electro::E
   mechano::M
-  gv::VolumetricLaw
-  gd::DeviatoricLaw
-  gvis::DeviatoricLaw
+  lawvol::VolumetricLaw
+  lawdev::DeviatoricLaw
+  lawvis::DeviatoricLaw
 end
 
 function ThermoElectroMech_Bonet(thermo::T, electro::E, mechano::M; γv::Float64, γd::Float64, γvis::Float64=γd) where {T<:Thermo,E<:Electro,M<:Mechano}
-  gv   = VolumetricLaw(thermo.θr, γv)
-  gd   = DeviatoricLaw(thermo.θr, γd)
-  gvis = DeviatoricLaw(thermo.θr, γvis)
-  ThermoElectroMech_Bonet{T,E,M}(thermo,electro,mechano,gv,gd,gvis)
+  lawvol = VolumetricLaw(thermo.θr, γv)
+  lawdev = DeviatoricLaw(thermo.θr, γd)
+  lawvis = DeviatoricLaw(thermo.θr, γvis)
+  ThermoElectroMech_Bonet{T,E,M}(thermo,electro,mechano,lawvol,lawdev,lawvis)
 end
 
 function (obj::ThermoElectroMech_Bonet{<:Thermo,<:Electro,<:Elasto})(Λ::Float64=0.0)
   θr = obj.thermo.θr
-  gv, ∂gv, ∂∂gv = derivatives(obj.gv)
-  gd, ∂gd, ∂∂gd = derivatives(obj.gd)
+  fv, ∂fv, ∂∂fv = derivatives(obj.lawvol)
+  fd, ∂fd, ∂∂fd = derivatives(obj.lawdev)
   em = ElectroMechModel(obj.electro, obj.mechano)
   Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = em()
   ηR, ∂ηR∂F, ∂∂ηR∂FF = entropy(obj)
 
-  Ψ(F, E, θ, X...) = gd(θ)*Ψem(F, E, X...) - θr*gv(θ)*ηR(F)
+  Ψ(F, E, θ, X...) = fd(θ)*Ψem(F, E, X...) - θr*fv(θ)*ηR(F)
 
-  ∂Ψ∂F(F, E, θ, X...)  =  gd(θ)*∂Ψem∂F(F, E, X...) - θr*gv(θ)*∂ηR∂F(F)
-  ∂Ψ∂E(F, E, θ, X...)  =  gd(θ)*∂Ψem∂E(F, E, X...)
-  ∂Ψ∂θ(F, E, θ, X...)  =  ∂gd(θ)*Ψem(F, E, X...) - θr*∂gv(θ)*ηR(F)
+  ∂Ψ∂F(F, E, θ, X...)  =  fd(θ)*∂Ψem∂F(F, E, X...) - θr*fv(θ)*∂ηR∂F(F)
+  ∂Ψ∂E(F, E, θ, X...)  =  fd(θ)*∂Ψem∂E(F, E, X...)
+  ∂Ψ∂θ(F, E, θ, X...)  =  ∂fd(θ)*Ψem(F, E, X...) - θr*∂fv(θ)*ηR(F)
 
-  ∂∂Ψ∂FF(F, E, θ, X...)  =  gd(θ)*∂Ψem∂FF(F, E, X...) - θr*gv(θ)*∂∂ηR∂FF(F)
-  ∂∂Ψ∂EE(F, E, θ, X...)  =  gd(θ)*∂Ψem∂EE(F, E, X...)
-  ∂∂Ψ∂θθ(F, E, θ, X...)  =  ∂∂gd(θ)*Ψem(F, E, X...) - θr*∂∂gv(θ)*ηR(F)
+  ∂∂Ψ∂FF(F, E, θ, X...)  =  fd(θ)*∂Ψem∂FF(F, E, X...) - θr*fv(θ)*∂∂ηR∂FF(F)
+  ∂∂Ψ∂EE(F, E, θ, X...)  =  fd(θ)*∂Ψem∂EE(F, E, X...)
+  ∂∂Ψ∂θθ(F, E, θ, X...)  =  ∂∂fd(θ)*Ψem(F, E, X...) - θr*∂∂fv(θ)*ηR(F)
 
-  ∂∂Ψ∂EF(F, E, θ, X...)  =  gd(θ)*∂Ψem∂EF(F, E, X...)
-  ∂∂Ψ∂Fθ(F, E, θ, X...)  =  ∂gd(θ)*∂Ψem∂F(F, E, X...) - θr*∂gv(θ)*∂ηR∂F(F)
-  ∂∂Ψ∂Eθ(F, E, θ, X...)  =  ∂gd(θ)*∂Ψem∂E(F, E, X...)
+  ∂∂Ψ∂EF(F, E, θ, X...)  =  fd(θ)*∂Ψem∂EF(F, E, X...)
+  ∂∂Ψ∂Fθ(F, E, θ, X...)  =  ∂fd(θ)*∂Ψem∂F(F, E, X...) - θr*∂fv(θ)*∂ηR∂F(F)
+  ∂∂Ψ∂Eθ(F, E, θ, X...)  =  ∂fd(θ)*∂Ψem∂E(F, E, X...)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂EE, ∂∂Ψ∂θθ, ∂∂Ψ∂EF, ∂∂Ψ∂Fθ, ∂∂Ψ∂Eθ)
 end
 
 function entropy(obj::ThermoElectroMech_Bonet)
-  tm = ThermoMech_Bonet(obj.thermo, obj.mechano, obj.gv, obj.gd, obj.gvis)
+  tm = ThermoMech_Bonet(obj.thermo, obj.mechano, obj.lawvol, obj.lawdev, obj.lawvis)
   entropy(tm)
 end
 
 function Dissipation(obj::ThermoElectroMech_Bonet)
-  tm = ThermoMech_Bonet(obj.thermo, obj.mechano, obj.gv, obj.gd, obj.gvis)
-  Dissipation(tm)
+  tm = ThermoMech_Bonet(obj.thermo, obj.mechano, obj.lawvol, obj.lawdev, obj.lawvis)
+  Dtm, ∂Dtm = Dissipation(tm)
+  Dtem(F, E, θ, X...) = Dtm(F, θ, X...)
+  ∂Dtem(F, E, θ, X...) = ∂Dtm(F, θ, X...)
+  return (Dtem, ∂Dtem)
 end
