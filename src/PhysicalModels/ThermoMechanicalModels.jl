@@ -96,12 +96,14 @@ struct SofteningLaw <: ThermalLaw
   θr::Float64
   θt::Float64
   γ::Float64
+  δ::Float64
 end
 
 function derivatives(law::SofteningLaw)
-  @unpack θr, θt, γ = law
-  f(θ) = exp((θr/θt)^γ-(θ/θt)^γ)
-  ∂f(θ) = -γ/θt * (θ/θt)^(γ-1) * f(θ)
+  @unpack θr, θt, γ, δ = law
+  h(θ) = exp((θr/θt)^γ-(θ/θt)^γ) * δ
+  f(θ) = h(θ) + 1 - δ
+  ∂f(θ) = -γ/θt * (θ/θt)^(γ-1) * h(θ)
   ∂∂f(θ) = 1/θ * (γ -1 -γ*(θ/θt)^γ) * ∂f(θ)
   return (f, ∂f, ∂∂f)
 end

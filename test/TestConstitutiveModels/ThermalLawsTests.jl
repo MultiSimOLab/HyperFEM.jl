@@ -21,7 +21,7 @@ end
 end
 
 @testset "SofteningLaw" begin
-  law = SofteningLaw(273.15, 300.0, 2.0)
+  law = SofteningLaw(273.15, 300.0, 2.0, 0.5)
   f, df, ddf = derivatives(law)
   for θ ∈ 200.0:50:400
     @test isapprox(df(θ), ForwardDiff.derivative(f, θ), rtol=1e-10)
