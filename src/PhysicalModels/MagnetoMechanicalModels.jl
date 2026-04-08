@@ -69,7 +69,7 @@ function _getCoupling(mag::HardMagnetic, ::Mechano, Λ::Float64=1.0)
   # delay crack propagation, Journal of the Mechanics and Physics of Solids,
 
 
-  μ, αr, χe, χr, βcoup, βmok = mag.μ, mag.αr, mag.χe, mag.χr, mag.βcoup, mag.βmok
+  μ, αr, χr, χt, βcoup, βmok = mag.μ, mag.αr, mag.χr, mag.χt, mag.βcoup, mag.βmok
   J(F) = det(F)
   H(F) = det(F) * inv(F)'
  
@@ -108,15 +108,15 @@ function _getCoupling(mag::HardMagnetic, ::Mechano, Λ::Float64=1.0)
   # FOURTH TERM
   #-------------------------------------------------------------------------------------
   Hℋᵣ(F, N) = H(F) * ℋᵣ(N)
-  Ψtorq(F, ℋ₀, N) = (μ * (1 + χe) / J(F)) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
-  ∂Ψtorq_∂H(F, ℋ₀, N) = (μ * (1 + χe) / J(F)) * (Hℋᵣ(F, N) ⊗ ℋ₀ + Hℋ₀(F, ℋ₀) ⊗ ℋᵣ(N))
-  ∂Ψtorq_∂J(F, ℋ₀, N) = -(μ * (1 + χe) / J(F)^2) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
+  Ψtorq(F, ℋ₀, N) = (μ * (1 + χt) / J(F)) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
+  ∂Ψtorq_∂H(F, ℋ₀, N) = (μ * (1 + χt) / J(F)) * (Hℋᵣ(F, N) ⊗ ℋ₀ + Hℋ₀(F, ℋ₀) ⊗ ℋᵣ(N))
+  ∂Ψtorq_∂J(F, ℋ₀, N) = -(μ * (1 + χt) / J(F)^2) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
   ∂Ψtorq_∂u(F, ℋ₀, N) = ∂Ψtorq_∂H(F, ℋ₀, N) × F + ∂Ψtorq_∂J(F, ℋ₀, N) * H(F)
-  ∂Ψtorq_∂φ(F, ℋ₀, N) = (μ * (1 + χe) / J(F)) * (H(F)' * Hℋᵣ(F, N))
+  ∂Ψtorq_∂φ(F, ℋ₀, N) = (μ * (1 + χt) / J(F)) * (H(F)' * Hℋᵣ(F, N))
 
-  ∂Ψtorq_∂HH(F, ℋ₀, N) = (μ * (1 + χe) / J(F)) * (I3 ⊗₁₃²⁴ (ℋᵣ(N) ⊗ ℋ₀ + ℋ₀ ⊗ ℋᵣ(N)))
-  ∂Ψtorq_∂HJ(F, ℋ₀, N) = -(μ * (1 + χe) / J(F)^2) * (Hℋᵣ(F, N) ⊗ ℋ₀ + Hℋ₀(F, ℋ₀) ⊗ ℋᵣ(N))
-  ∂Ψtorq_∂JJ(F, ℋ₀, N) = (μ * (1 + χe) / J(F)^3) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
+  ∂Ψtorq_∂HH(F, ℋ₀, N) = (μ * (1 + χt) / J(F)) * (I3 ⊗₁₃²⁴ (ℋᵣ(N) ⊗ ℋ₀ + ℋ₀ ⊗ ℋᵣ(N)))
+  ∂Ψtorq_∂HJ(F, ℋ₀, N) = -(μ * (1 + χt) / J(F)^2) * (Hℋᵣ(F, N) ⊗ ℋ₀ + Hℋ₀(F, ℋ₀) ⊗ ℋᵣ(N))
+  ∂Ψtorq_∂JJ(F, ℋ₀, N) = (μ * (1 + χt) / J(F)^3) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
 
   ∂Ψtorq_∂uu(F, ℋ₀, N) = (F × (∂Ψtorq_∂HH(F, ℋ₀, N) × F)) +
                          H(F) ⊗₁₂³⁴ (∂Ψtorq_∂HJ(F, ℋ₀, N) × F) +
@@ -125,8 +125,8 @@ function _getCoupling(mag::HardMagnetic, ::Mechano, Λ::Float64=1.0)
                          ×ᵢ⁴(∂Ψtorq_∂H(F, ℋ₀, N) + ∂Ψtorq_∂J(F, ℋ₀, N) * F)
 
 
-  ∂Ψtorq_∂ℋ₀H(F, ℋ₀, N) = (μ / (J(F))) * ((I3 ⊗₁₃² Hℋᵣ(F, N)) + (H(F)' ⊗₁₂³ Hℋᵣ(F, N))) * (1 + χe)
-  ∂Ψtorq_∂ℋ₀J(F, ℋ₀, N) = (-μ / (J(F))^2.0) * (H(F)' * Hℋᵣ(F, N)) * (1 + χe)
+  ∂Ψtorq_∂ℋ₀H(F, ℋ₀, N) = (μ / (J(F))) * ((I3 ⊗₁₃² Hℋᵣ(F, N)) + (H(F)' ⊗₁₂³ Hℋᵣ(F, N))) * (1 + χt)
+  ∂Ψtorq_∂ℋ₀J(F, ℋ₀, N) = (-μ / (J(F))^2.0) * (H(F)' * Hℋᵣ(F, N)) * (1 + χt)
 
   ∂Ψtorq_∂φu(F, ℋ₀, N) = (∂Ψtorq_∂ℋ₀H(F, ℋ₀, N) × F) + (∂Ψtorq_∂ℋ₀J(F, ℋ₀, N) ⊗₁²³ H(F))
 
@@ -150,7 +150,7 @@ function _getCoupling(mag::HardMagnetic2D, ::Mechano, Λ::Float64=1.0)
   # Hard magnetics in ultra-soft magnetorheological elastomers enhance fracture toughness and 
   # delay crack propagation, Journal of the Mechanics and Physics of Solids,
 
-  μ, αr, χe, χr, βcoup, βmok = mag.μ, mag.αr, mag.χe, mag.χr, mag.βcoup, mag.βmok
+  μ, αr, χr, χt, βcoup, βmok = mag.μ, mag.αr, mag.χr, mag.χt, mag.βcoup, mag.βmok
   J(F) = det(F)
   H(F) = det(F) * inv(F)'
  
@@ -187,15 +187,15 @@ function _getCoupling(mag::HardMagnetic2D, ::Mechano, Λ::Float64=1.0)
   # FOURTH TERM
   #-------------------------------------------------------------------------------------
   Hℋᵣ(F, N) = H(F) * ℋᵣ(N)
-  Ψtorq(F, ℋ₀, N) = (μ * (1 + χe) / J(F)) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
-  ∂Ψtorq_∂H(F, ℋ₀, N) = (μ * (1 + χe) / J(F)) * (Hℋᵣ(F, N) ⊗ ℋ₀ + Hℋ₀(F, ℋ₀) ⊗ ℋᵣ(N))
-  ∂Ψtorq_∂J(F, ℋ₀, N) = -(μ * (1 + χe) / J(F)^2) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
+  Ψtorq(F, ℋ₀, N) = (μ * (1 + χt) / J(F)) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
+  ∂Ψtorq_∂H(F, ℋ₀, N) = (μ * (1 + χt) / J(F)) * (Hℋᵣ(F, N) ⊗ ℋ₀ + Hℋ₀(F, ℋ₀) ⊗ ℋᵣ(N))
+  ∂Ψtorq_∂J(F, ℋ₀, N) = -(μ * (1 + χt) / J(F)^2) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
   ∂Ψtorq_∂u(F, ℋ₀, N) = (tr(∂Ψtorq_∂H(F, ℋ₀, N)) * I2) - ∂Ψtorq_∂H(F, ℋ₀, N)' + ∂Ψtorq_∂J(F, ℋ₀, N) * H(F)
-  ∂Ψtorq_∂φ(F, ℋ₀, N) = (μ * (1 + χe) / J(F)) * (H(F)' * Hℋᵣ(F, N))
+  ∂Ψtorq_∂φ(F, ℋ₀, N) = (μ * (1 + χt) / J(F)) * (H(F)' * Hℋᵣ(F, N))
 
-  ∂Ψtorq_∂HH(F, ℋ₀, N) = (μ * (1 + χe) / J(F)) * (I2 ⊗₁₃²⁴ (ℋᵣ(N) ⊗ ℋ₀ + ℋ₀ ⊗ ℋᵣ(N)))
-  ∂Ψtorq_∂HJ(F, ℋ₀, N) = -(μ * (1 + χe) / J(F)^2) * (Hℋᵣ(F, N) ⊗ ℋ₀ + Hℋ₀(F, ℋ₀) ⊗ ℋᵣ(N))
-  ∂Ψtorq_∂JJ(F, ℋ₀, N) = (μ * (1 + χe) / J(F)^3) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
+  ∂Ψtorq_∂HH(F, ℋ₀, N) = (μ * (1 + χt) / J(F)) * (I2 ⊗₁₃²⁴ (ℋᵣ(N) ⊗ ℋ₀ + ℋ₀ ⊗ ℋᵣ(N)))
+  ∂Ψtorq_∂HJ(F, ℋ₀, N) = -(μ * (1 + χt) / J(F)^2) * (Hℋᵣ(F, N) ⊗ ℋ₀ + Hℋ₀(F, ℋ₀) ⊗ ℋᵣ(N))
+  ∂Ψtorq_∂JJ(F, ℋ₀, N) = (μ * (1 + χt) / J(F)^3) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
 
   ∂Ψtorq_∂uu(F, ℋ₀, N) = _∂H∂F_2D()' * ∂Ψtorq_∂HH(F, ℋ₀, N) * _∂H∂F_2D() +
                          _∂H∂F_2D()' * (∂Ψtorq_∂HJ(F, ℋ₀, N) ⊗ H(F)) +
@@ -203,8 +203,8 @@ function _getCoupling(mag::HardMagnetic2D, ::Mechano, Λ::Float64=1.0)
                          ∂Ψtorq_∂JJ(F, ℋ₀, N) * (H(F) ⊗ H(F)) +
                          ∂Ψtorq_∂J(F, ℋ₀, N) * _∂H∂F_2D()
 
-  ∂Ψtorq_∂ℋ₀H(F, ℋ₀, N) = (μ / (J(F))) * ((I2 ⊗₁₃² Hℋᵣ(F, N)) + (H(F)' ⊗₁₂³ Hℋᵣ(F, N))) * (1 + χe)
-  ∂Ψtorq_∂ℋ₀J(F, ℋ₀, N) = (-μ / (J(F))^2.0) * (H(F)' * Hℋᵣ(F, N)) * (1 + χe)
+  ∂Ψtorq_∂ℋ₀H(F, ℋ₀, N) = (μ / (J(F))) * ((I2 ⊗₁₃² Hℋᵣ(F, N)) + (H(F)' ⊗₁₂³ Hℋᵣ(F, N))) * (1 + χt)
+  ∂Ψtorq_∂ℋ₀J(F, ℋ₀, N) = (-μ / (J(F))^2.0) * (H(F)' * Hℋᵣ(F, N)) * (1 + χt)
 
 
   ∂Ψtorq_∂φu(F, ℋ₀, N) = (∂Ψtorq_∂ℋ₀H(F, ℋ₀, N) * _∂H∂F_2D()) + (∂Ψtorq_∂ℋ₀J(F, ℋ₀, N) ⊗₁²³ H(F))
