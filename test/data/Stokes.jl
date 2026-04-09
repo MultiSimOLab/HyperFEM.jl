@@ -11,7 +11,7 @@ function Stokes(; writevtk=true, verbose=true)
   simdir = projdir("data", "sims", pname)
   setupfolder(simdir)
 
-  geomodel  = GmshDiscreteModel(projdir() * "/test/models/test_stokes.msh",; has_affine_map=true)
+  geomodel  = GmshDiscreteModel(projdir() * "/test/models/test_stokes.msh"; has_affine_map=false)
 
 
   # Setup integration
