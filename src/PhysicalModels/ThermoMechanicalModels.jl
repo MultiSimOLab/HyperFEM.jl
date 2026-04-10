@@ -125,36 +125,6 @@ function derivatives(law::DeviatoricLaw)
   return (f, ∂f, ∂∂f)
 end
 
-struct SofteningLaw <: ThermalLaw
-  θr::Float64
-  θt::Float64
-  γ::Float64
-  δ::Float64
-end
-
-function derivatives(law::SofteningLaw)
-  @unpack θr, θt, γ, δ = law
-  h(θ) = exp((θr/θt)^γ-(θ/θt)^γ) * δ
-  f(θ) = h(θ) + 1 - δ
-  ∂f(θ) = -γ/θt * (θ/θt)^(γ-1) * h(θ)
-  ∂∂f(θ) = 1/θ * (γ -1 -γ*(θ/θt)^γ) * ∂f(θ)
-  return (f, ∂f, ∂∂f)
-end
-
-struct InterceptLaw <: ThermalLaw
-  θr::Float64
-  γ::Float64
-  δ::Float64
-end
-
-function derivatives(law::InterceptLaw)
-  @unpack θr, γ, δ = law
-  f(θ) = (θ/θr)^(-γ) * (1-δ) + δ
-  ∂f(θ) = -γ*θ^(-γ-1) * θr^γ * (1-δ)
-  ∂∂f(θ) = γ*(γ+1)*θ^(-γ-2) * θr^γ * (1-δ)
-  return (f, ∂f, ∂∂f)
-end
-
 struct TrigonometricLaw <: ThermalLaw
   θr::Float64
   θM::Float64
@@ -183,24 +153,6 @@ function derivatives(law::PolynomialLaw)
   f(θ)   = a*((θ-θr)/θr)^3  + b*((θ-θr)/θr)^2 + c*(θ-θr)/θr + 1
   ∂f(θ)  = 3a*(θ-θr)^2/θr^3 + 2b*(θ-θr)/θr^2 + c/θr
   ∂∂f(θ) = 6a*(θ-θr)/θr^3 + 2b/θr^2
-  return (f, ∂f, ∂∂f)
-end
-
-struct LogisticLaw <: ThermalLaw
-  θr::Float64
-  μ::Float64
-  σ::Float64
-end
-
-function derivatives(law::LogisticLaw)
-  @unpack θr, μ, σ = law
-  z(x) = (log(x) - μ) / σ
-  std_pdf(x) = 1/(σ*sqrt(2 * π)) * exp(-z(x)^2 / 2)
-  std_cdf(x) = 0.5 * (1 + erf(z(x) / sqrt(2)))
-  ξR = 1 / (1-std_cdf(θr))
-  f(θ) = ξR * (1-std_cdf(θ))
-  ∂f(θ) = -ξR / θ * std_pdf(θ)
-  ∂∂f(θ) = ξR / θ^2 * std_pdf(θ) * (1 + z(θ)/σ)
   return (f, ∂f, ∂∂f)
 end
 
