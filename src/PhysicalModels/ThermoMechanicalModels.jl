@@ -65,19 +65,52 @@ function derivatives(law::VolumetricLaw)
   return (f, ∂f, ∂∂f)
 end
 
-struct EntropicMeltingLaw <: ThermalLaw
+struct EntropicElasticityLaw <: ThermalLaw
+  θr::Float64
+  γ::Float64
+end
+
+function derivatives(law::EntropicElasticityLaw)
+  @unpack θr, γ = law
+  f(θ) = (θ/θr)^(γ+1)
+  ∂f(θ) = (γ+1) * θ^γ / θr^(γ+1)
+  ∂∂f(θ) = γ*(γ+1) * θ^(γ-1) / θr^(γ+1)
+  return (f, ∂f, ∂∂f)
+end
+
+struct NonlinearMeltingLaw <: ThermalLaw
   θr::Float64
   θM::Float64
   γ::Float64
 end
 
-function derivatives(law::EntropicMeltingLaw)
+function derivatives(law::NonlinearMeltingLaw)
   @unpack θr, θM, γ = law
   f(θ) = (1 - (θ/θM)^(γ+1)) / (1 - (θr/θM)^(γ+1))
   ∂f(θ) = -(γ+1)*θ^γ/θM^(γ+1) / (1 - (θr/θM)^(γ+1))
   ∂∂f(θ) = -γ*(γ+1)*θ^(γ-1)/θM^(γ+1) / (1 - (θr/θM)^(γ+1))
   return (f, ∂f, ∂∂f)
 end
+
+struct NonlinearSofteningLaw <: ThermalLaw
+  θr::Float64
+  θt::Float64
+  γ::Float64
+  δ::Float64
+end
+
+function derivatives(law::NonlinearSofteningLaw)
+  @unpack θr, θt, γ, δ = law
+  u(θ) = exp(-(θ/θt)^(γ+1))
+  C = (1-δ) * u(θr) + δ
+  f(θ) = ((1-δ) * u(θ) + δ) / C
+  ∂f(θ) = -(1-δ)/C * (γ+1)/θt * (θ/θt)^γ * u(θ)
+  ∂∂f(θ) = (1-δ)/C * (γ+1)/θ^2 * (θ/θt)^(γ+1) * ((γ+1)*(θ/θt)^(γ+1)-γ) * u(θ)
+  return (f, ∂f, ∂∂f)
+end
+
+@deprecate EntropicMeltingLaw NonlinearMeltingLaw
+@deprecate SofteningLaw NonlinearSofteningLaw
 
 struct DeviatoricLaw <: ThermalLaw
   θr::Float64
