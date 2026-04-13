@@ -117,10 +117,10 @@ function InjectivityCheck(α, ∇u, ∇du, β)
   F = ∇u + one(∇u)
   J = det(F)
   H = J * inv(F)'
-   if det(F+∇du) < 0.95
-   println("Jacobian print")
-   @show det(F), det(F+∇du), β * abs((-J) / (det(∇du) + tr(H' * ∇du)))
-   end
+   #if det(F+∇du) < 0.95
+   #println("Jacobian print")
+   #@show det(F), det(F+∇du), β * abs((-J) / (det(∇du) + tr(H' * ∇du)))
+   #end
   return true, min(β * abs((-J) / (det(∇du) + tr(H' * ∇du))), 1.0)
 
 end
