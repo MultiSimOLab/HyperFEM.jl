@@ -103,8 +103,11 @@ struct Injectivity_Preserving_LS{A} <: AbstractLineSearch
     #   α *= ρ
     #   m += 1
     # end
-    return α
-  end
+     if obj.maskphys == 0
+      return (α, ), ranges
+     else
+      return ntuple(i -> i == obj.maskphys ? α : 1.0, length(U)), ranges
+    end
 
 end
 
@@ -114,7 +117,7 @@ function InjectivityCheck(α, ∇u, ∇du, β)
   J = det(F)
   H = J * inv(F)'
   # if det(F+∇du) < 0.2
-  # @show det(F), det(F+∇du)
+   @show det(F), det(F+∇du)
   # end
   return true, min(β * abs((-J) / (det(∇du) + tr(H' * ∇du))), 1.0)
 
