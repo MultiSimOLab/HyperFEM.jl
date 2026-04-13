@@ -81,10 +81,11 @@ struct Injectivity_Preserving_LS{A} <: AbstractLineSearch
     α = update_cellstate!(obj, xh, dxh)
     m = 0
     R₀ = b' * dx
-
+    
     while α > αmin && m < maxiter
       residual!(b, op, x + α * dx)
       R = b' * dx
+      @show R
       if abs(R) <= abs(c * R₀)
         break
       end
