@@ -93,7 +93,7 @@ struct Injectivity_Preserving_LS{A} <: AbstractLineSearch
     while α > αmin && m < maxiter
       residual!(b, op, x + α * dx)
       R = sum(abs(b[r]' * dx[r]) for r in ranges)
-      @show R
+      @show b[ranges[1]]' * dx[ranges[1]], b[ranges[2]]' * dx[ranges[2]]
       if abs(R) <= abs(c * R₀)
         break
       end
