@@ -99,7 +99,6 @@ end
 @publish PhysicalModels EntropicElasticityLaw
 @publish PhysicalModels NonlinearMeltingLaw
 @publish PhysicalModels NonlinearSofteningLaw
-@publish PhysicalModels LogisticLaw
 @publish PhysicalModels InterceptLaw
 @publish PhysicalModels TrigonometricLaw
 @publish PhysicalModels PolynomialLaw
