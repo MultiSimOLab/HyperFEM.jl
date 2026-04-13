@@ -1,7 +1,6 @@
 using Gridap.TensorValues
 using Gridap.Arrays
 using HyperFEM.TensorAlgebra
-using SpecialFunctions
 using Test
 
 
