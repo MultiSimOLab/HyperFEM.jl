@@ -103,12 +103,12 @@ struct Injectivity_Preserving_LS{A} <: AbstractLineSearch
     #   α *= ρ
     #   m += 1
     # end
-     if obj.maskphys == 0
-      return (α, ), ranges
-     else
-      return ntuple(i -> i == obj.maskphys ? α : 1.0, length(U)), ranges
-    end
-
+    #  if obj.maskphys == 0
+    #   return (α, ), ranges
+    #  else
+    #   return ntuple(i -> i == obj.maskphys ? α : 1.0, length(U)), ranges
+    # end
+    return α
 end
 
 function InjectivityCheck(α, ∇u, ∇du, β)
