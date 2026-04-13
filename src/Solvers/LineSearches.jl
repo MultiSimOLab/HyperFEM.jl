@@ -67,7 +67,7 @@ struct Injectivity_Preserving_LS{A} <: AbstractLineSearch
   caches::A
   function Injectivity_Preserving_LS(α::CellState, U, V; maxiter::Int64=50, αmin::Float64=1e-16, ρ::Float64=0.5, c::Float64=0.95, β::Float64=0.95, maskphys::Int64=0)
     # extract parent indices
-    ranges = if obj.maskphys == 0
+    ranges = if maskphys == 0
       (1:U.space.nfree,)
     else
       nfree = ntuple(i -> U[i].space.nfree, length(U))
