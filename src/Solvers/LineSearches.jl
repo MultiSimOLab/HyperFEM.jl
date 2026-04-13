@@ -110,6 +110,7 @@ struct Injectivity_Preserving_LS{A} <: AbstractLineSearch
     # end
     return α
 end
+end
 
 function InjectivityCheck(α, ∇u, ∇du, β)
   # ε = 1e-6
@@ -117,7 +118,7 @@ function InjectivityCheck(α, ∇u, ∇du, β)
   J = det(F)
   H = J * inv(F)'
   # if det(F+∇du) < 0.2
-   @show det(F), det(F+∇du)
+#   @show det(F), det(F+∇du)
   # end
   return true, min(β * abs((-J) / (det(∇du) + tr(H' * ∇du))), 1.0)
 
