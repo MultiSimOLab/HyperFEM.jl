@@ -66,7 +66,15 @@ struct Injectivity_Preserving_LS{A} <: AbstractLineSearch
   maskphys::Int64
   caches::A
   function Injectivity_Preserving_LS(α::CellState, U, V; maxiter::Int64=50, αmin::Float64=1e-16, ρ::Float64=0.5, c::Float64=0.95, β::Float64=0.95, maskphys::Int64=0)
-    caches = (U, V)
+    # extract parent indices
+    ranges = if maskphys == 0
+      (1:U.space.nfree,)
+    else
+      nfree = ntuple(i -> U[i].space.nfree, length(U))
+      offsets = cumsum((0, nfree...))
+      ntuple(i -> offsets[i]+1:offsets[i+1], length(U))
+    end
+    caches = (U, V, ranges)
     new{typeof(caches)}(α, maxiter, αmin, ρ, c, CellField(β, α.points.trian), maskphys, caches)
   end
 
@@ -75,16 +83,17 @@ struct Injectivity_Preserving_LS{A} <: AbstractLineSearch
 
     _, maxiter, αmin, ρ, c = obj.α, obj.maxiter, obj.αmin, obj.ρ, obj.c
     #update cell state
-    U, V = obj.caches
+    U, V, ranges = obj.caches
     xh = FEFunction(U, x)
     dxh = FEFunction(V, dx)
     α = update_cellstate!(obj, xh, dxh)
     m = 0
-    R₀ = b' * dx
+    R₀ = sum(abs(b[r]' * dx[r]) for r in ranges)
 
     while α > αmin && m < maxiter
       residual!(b, op, x + α * dx)
-      R = b' * dx
+      R = sum(abs(b[r]' * dx[r]) for r in ranges)
+
       if abs(R) <= abs(c * R₀)
         break
       end
