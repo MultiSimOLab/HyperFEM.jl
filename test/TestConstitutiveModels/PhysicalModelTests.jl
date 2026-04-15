@@ -59,8 +59,8 @@ function test_second_piola_3D_(model::PhysicalModel; rtol=1e-12, kwargs...)
   F = I3 + ∇u3
   C = F'·F
   Ψ, S, ∂S∂C = SecondPiola(model)
-  @test isapprox(S(C), 2*TensorValue(ForwardDiff.gradient(Ψ, get_array(C))), rtol=rtol, kwargs...)
-  @test isapprox(∂S∂C(C), TensorValue(ForwardDiff.hessian(S, get_array(C))), rtol=rtol, kwargs...)
+  @test isapprox(S(C),  2*TensorValue(ForwardDiff.gradient(Ψ, get_array(C))), rtol=rtol, kwargs...)
+  @test isapprox(∂S∂C(C), TensorValue(ForwardDiff.jacobian(S, get_array(C))), rtol=rtol, kwargs...)
 end
 
 
