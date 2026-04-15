@@ -14,6 +14,10 @@ import Base: -
 (-)(A::TensorValue, B::SMatrix) = get_array(A) - B
 
 
+import Gridap.inner
+
+inner(a::SMatrix, b::SMatrix) = sum(get_array(a).data .* get_array(b).data)
+
 const ∇u2 = TensorValue(1.0, 2.0, 3.0, 4.0) * 1e-3
 const ∇u3 = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0) * 1e-3
 const μParams = [6456.9137547089595, 896.4633794151492,
@@ -214,7 +218,7 @@ end
 
 @testset "IsochoricNeoHookean3D" begin
   model = IsochoricNeoHookean3D(μ=3)
-  test_derivatives_3D_(model, Kinematics(Mechano,Solid))
+  test_derivatives_3D_(model, Kinematics(Mechano,Solid), rtol=1e-12)
   test_second_piola_3D_(model)
   test_equilibrium_at_rest_3D(model)
 end
