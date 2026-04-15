@@ -213,7 +213,7 @@ end
 
 
 @testset "IsochoricNeoHookean3D" begin
-  model = IsochoricNeoHookean3D(λ=3)
+  model = IsochoricNeoHookean3D(μ=3)
   test_derivatives_3D_(model, Kinematics(Mechano,Solid))
   test_second_piola_3D_(model)
   test_equilibrium_at_rest_3D(model)
