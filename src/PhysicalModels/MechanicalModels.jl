@@ -1054,18 +1054,18 @@ function (obj::IsochoricNeoHookean3D)()
 end
 
 function SecondPiola(obj::IsochoricNeoHookean3D)
-  Ψ(C) = obj.μ / 2 * (tr(C) * det(C)^(-1/3) - 3)
-  S(C) = begin
-    J2 = det(C)
-    invC = inv(C)
-    obj.μ * J2^(-1 / 3) * I3 - obj.μ / 3 * tr(C) * J2^(-1 / 3) * invC
+  μ = obj.μ
+  H(F) = cof(F)
+  Ψ(C) = μ / 2 * tr(C) * (det(C))^(-1 / 3)
+  ∂Ψ∂C(C) = μ / 2 * I3 * (det(C))^(-1 / 3)
+  ∂Ψ∂dC(C) = -μ / 6 * tr(C) * (det(C))^(-4 / 3)
+  S(C) = let HC = H(C)
+    2 * (∂Ψ∂C(C) + ∂Ψ∂dC(C) * HC)
   end
-  ∂S∂C(C) = begin
-    J2 = det(C)
-    trC = tr(C)
-    invC = inv(C)
-    IinvC = I3 ⊗ invC
-    1 / 3 * obj.μ * J2^(-1 / 3) * (4 / 3 * trC * invC ⊗ invC - (IinvC + IinvC') - trC / J2 * ×ᵢ⁴(C))
+  ∂2Ψ∂CdC(C) = -μ / 6 * I3 * (det(C))^(-4 / 3)
+  ∂2Ψ∂2dC(C) = 2 * μ / 9 * tr(C) * (det(C))^(-7 / 3)
+  ∂S∂C(C) = let HC = H(C)
+    2 * (∂2Ψ∂2dC(C) * (HC ⊗ HC) + ∂2Ψ∂CdC(C) ⊗ HC + HC ⊗ ∂2Ψ∂CdC(C) + ∂Ψ∂dC(C) * ×ᵢ⁴(C))
   end
   return (Ψ, S, ∂S∂C)
 end
@@ -1087,16 +1087,14 @@ struct IncompressibleNeoHookean3D_2dP <: Mechano
     Ψ(Ce) = μ / 2 * tr(Ce) * (det(Ce))^(-1 / 3)
     ∂Ψ∂Ce(Ce) = μ / 2 * I3 * (det(Ce))^(-1 / 3)
     ∂Ψ∂dCe(Ce) = -μ / 6 * tr(Ce) * (det(Ce))^(-4 / 3)
-    Se(Ce) =
-      let HCe = H(Ce)
-        2 * (∂Ψ∂Ce(Ce) + ∂Ψ∂dCe(Ce) * HCe)
-      end
+    Se(Ce) = let HCe = H(Ce)
+      2 * (∂Ψ∂Ce(Ce) + ∂Ψ∂dCe(Ce) * HCe)
+    end
     ∂2Ψ∂CedCe(Ce) = -μ / 6 * I3 * (det(Ce))^(-4 / 3)
     ∂2Ψ∂2dCe(Ce) = 2 * μ / 9 * tr(Ce) * (det(Ce))^(-7 / 3)
-    ∂Se∂Ce(Ce) =
-      let HCe = H(Ce)
-        2 * (∂2Ψ∂2dCe(Ce) * (HCe ⊗ HCe) + ∂2Ψ∂CedCe(Ce) ⊗ HCe + HCe ⊗ ∂2Ψ∂CedCe(Ce) + ∂Ψ∂dCe(Ce) * ×ᵢ⁴(Ce))
-      end
+    ∂Se∂Ce(Ce) = let HCe = H(Ce)
+      2 * (∂2Ψ∂2dCe(Ce) * (HCe ⊗ HCe) + ∂2Ψ∂CedCe(Ce) ⊗ HCe + HCe ⊗ ∂2Ψ∂CedCe(Ce) + ∂Ψ∂dCe(Ce) * ×ᵢ⁴(Ce))
+    end
 
     return (Ψ, Se, ∂Se∂Ce)
   end
