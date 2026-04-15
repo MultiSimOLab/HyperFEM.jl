@@ -1050,6 +1050,7 @@ function (obj::IsochoricNeoHookean3D)()
     H = cof(F)
     TensorValue(ForwardDiff.jacobian(∂Ψ∂F, get_array(F)))
   end
+  return (Ψ, ∂Ψ∂F, ∂Ψ∂FF)
 end
 
 function SecondPiola(obj::IsochoricNeoHookean3D)
