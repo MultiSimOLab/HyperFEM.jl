@@ -18,6 +18,7 @@ import Gridap: update_state!
 export Yeoh3D
 export Gent2D
 export NeoHookean3D
+export IsochoricNeoHookean3D
 export IncompressibleNeoHookean3D
 export IncompressibleNeoHookean2D
 export IncompressibleNeoHookean2D_CV

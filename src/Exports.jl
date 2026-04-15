@@ -30,6 +30,7 @@ end
 @publish PhysicalModels Yeoh3D
 @publish PhysicalModels Gent2D
 @publish PhysicalModels NeoHookean3D
+@publish PhysicalModels IsochoricNeoHookean3D
 @publish PhysicalModels IncompressibleNeoHookean3D
 @publish PhysicalModels IncompressibleNeoHookean2D
 @publish PhysicalModels IncompressibleNeoHookean2D_CV

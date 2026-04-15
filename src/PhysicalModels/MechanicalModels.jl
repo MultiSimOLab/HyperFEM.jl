@@ -1026,6 +1026,50 @@ struct ARAP2D <: IsoElastic
 end
 
 
+struct IsochoricNeoHookean3D <: IsoElastic
+  μ::Float64
+end
+
+function IsochoricNeoHookean3D(; μ::Real)
+  IsochoricNeoHookean3D(float(μ))
+end
+
+function (obj::IsochoricNeoHookean3D)()
+  Ψ(F) = obj.μ / 2 * (F⊙F * det(F)^(-2/3) - 3)
+  ∂Ψ∂F(F) = begin
+    μ = obj.μ
+    J = det(F)
+    Ic = F⊙F
+    obj.μ * J^(-2/3) * (F - 1/3*Ic*inv(F)')
+  end
+  ∂Ψ∂FF(F) = begin
+    μ = obj.μ
+    J = det(F)
+    Ic = F⊙F
+    invF = inv(F)
+    H = cof(F)
+    TensorValue(ForwardDiff.jacobian(∂Ψ∂F, get_array(F)))
+  end
+end
+
+function SecondPiola(obj::IsochoricNeoHookean3D)
+  Ψ(C) = obj.μ / 2 * (tr(C) * det(C)^(-1/3) - 3)
+  S(C) = begin
+    J2 = det(C)
+    invC = inv(C)
+    obj.μ * J2^(-1 / 3) * I3 - obj.μ / 3 * tr(C) * J2^(-1 / 3) * invC
+  end
+  ∂S∂C(C) = begin
+    J2 = det(C)
+    trC = tr(C)
+    invC = inv(C)
+    IinvC = I3 ⊗ invC
+    1 / 3 * obj.μ * J2^(-1 / 3) * (4 / 3 * trC * invC ⊗ invC - (IinvC + IinvC') - trC / J2 * ×ᵢ⁴(C))
+  end
+  return (Ψ, S, ∂S∂C)
+end
+
+
 struct IncompressibleNeoHookean3D_2dP <: Mechano
   μ::Float64
   τ::Float64

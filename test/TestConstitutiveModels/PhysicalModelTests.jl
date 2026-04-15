@@ -51,6 +51,14 @@ function test_equilibrium_at_rest_3D(obj::Mechano, atol=1e-10)
   @test isapprox(Ψ(I3), 0.0, atol=atol)
 end
 
+function test_second_piola_3D_(model::PhysicalModel; rtol=1e-12, kwargs...)
+  F = I3 + ∇u3
+  C = F'·F
+  Ψ, S, ∂S∂C = SecondPiola(model)
+  @test isapprox(S, 2*TensorValue(ForwardDiff.gradient(Ψ, get_array(C))), rtol=rtol, kwargs...)
+  @test isapprox(∂S∂C, TensorValue(ForwardDiff.hessian(S, get_array(C))), rtol=rtol, kwargs...)
+end
+
 
 
 
@@ -200,6 +208,14 @@ end
   #  Memory estimate: 0 bytes, allocs estimate: 0.
   model = NonlinearNeoHookean_CV(λ=3.0, μ=1.0, α=2.0, γ=6.0)
   test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-13)
+  test_equilibrium_at_rest_3D(model)
+end
+
+
+@testset "IsochoricNeoHookean3D" begin
+  model = IsochoricNeoHookean3D(λ=3)
+  test_derivatives_3D_(model, Kinematics(Mechano,Solid))
+  test_second_piola_3D_(model)
   test_equilibrium_at_rest_3D(model)
 end
 
