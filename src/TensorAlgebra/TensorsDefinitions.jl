@@ -39,15 +39,15 @@ const I9 = I_(9)
 
 
 
-function Id(A::VectorValue{2, Float64})
+function Id(::VectorValue{2, Float64})
 return I2
 end
 
-function Id(A::VectorValue{3, Float64})
+function Id(::VectorValue{3, Float64})
 return I3
 end
 
-function Id(A::VectorValue{4, Float64})
+function Id(::VectorValue{4, Float64})
 return I4
 end
 
