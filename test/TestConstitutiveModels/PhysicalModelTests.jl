@@ -8,15 +8,18 @@ using HyperFEM.TensorAlgebra
 using HyperFEM.IO
 
 
-import Base: -
-(-)(A::SMatrix, B::TensorValue) = A - get_array(B)  # NOTE: These functions are required for LinearElasticity to work with ForwardDiff
+import Base: +,-
+(+)(A::SMatrix, B::TensorValue) = A + get_array(B)  # + is required by SecondPiola to work with ForwardDiff
+(+)(A::TensorValue, B::SMatrix) = get_array(A) + B
+(-)(A::SMatrix, B::TensorValue) = A - get_array(B)  # - is required by LinearElasticity to work with ForwardDiff
 (-)(A::TensorValue, B::SMatrix) = get_array(A) - B
 
-import Gridap:inner
-inner(a::SMatrix, b::SMatrix) = sum(get_array(a).data .* get_array(b).data)  # This function is required to work with ForwardDiff
+import Gridap: inner
+inner(a::SMatrix, b::SMatrix) = sum(a.data .* b.data)  # inner function is required by SecondPiola to work with ForwardDiff
 
-import HyperFEM.TensorAlgebra:cof
-cof(a::SMatrix) = det(a) * inv(a)'  # This function is required to work with ForwardDiff
+import HyperFEM.TensorAlgebra: cof
+cof(a::SMatrix) = det(a) * inv(a)'  # cof is required by SecondPiola to work with ForwardDiff
+
 
 const ∇u2 = TensorValue(1.0, 2.0, 3.0, 4.0) * 1e-3
 const ∇u3 = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0) * 1e-3
