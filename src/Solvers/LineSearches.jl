@@ -8,7 +8,8 @@ struct LineSearch <: AbstractLineSearch
   end
   function (obj::LineSearch)(x::AbstractVector, dx::AbstractVector, b::AbstractVector, op::NonlinearOperator)
     α = 1.0
-    residual!(b, op, x + α * dx)
+    x .+= α * dx
+    residual!(b, op, x)
     return α
   end
 
@@ -37,9 +38,11 @@ struct Roman_LS <: AbstractLineSearch
     m = 0
     α = 1.0
     R₀ = b' * dx
+    x_trial = similar(x)
 
     while α > αmin && m < maxiter
-      residual!(b, op, x + α * dx)
+      x_trial .= x .+ α .* dx   # in-place, sin allocations
+      residual!(b, op, x_trial)
       R = b' * dx
       if R <= c * R₀
         break
@@ -47,6 +50,7 @@ struct Roman_LS <: AbstractLineSearch
       α *= ρ
       m += 1
     end
+    x .= x_trial
     return α
   end
 end
@@ -88,10 +92,18 @@ struct Injectivity_Preserving_LS{A} <: AbstractLineSearch
     dxh = FEFunction(V, dx)
     α = update_cellstate!(obj, xh, dxh)
     m = 0
+    x_trial = similar(x)
     R₀ = sum(abs(b[r]' * dx[r]) for r in ranges)
 
     while α > αmin && m < maxiter
-      residual!(b, op, x + α * dx)
+      if obj.maskphys == 0
+        x_trial .= x .+ α .* dx
+      else
+        x_trial .= x .+ dx
+        x_trial[ranges[obj.maskphys]] .= x[ranges[obj.maskphys]] .+ α .* dx[ranges[obj.maskphys]]
+      end
+      residual!(b, op, x_trial)
+
       R = sum(abs(b[r]' * dx[r]) for r in ranges)
 
       if abs(R) <= abs(c * R₀)
@@ -100,6 +112,7 @@ struct Injectivity_Preserving_LS{A} <: AbstractLineSearch
       α *= ρ
       m += 1
     end
+    x .= x_trial
     return α
   end
 
@@ -114,18 +127,17 @@ function InjectivityCheck(α, ∇u, ∇du, β)
   # @show det(F), det(F+∇du)
   # end
   return true, min(β * abs((-J) / (det(∇du) + tr(H' * ∇du))), 1.0)
-
 end
 
 function update_cellstate!(obj::Injectivity_Preserving_LS, xh, dxh)
   uh = obj.maskphys == 0 ? xh : xh[obj.maskphys]
   duh = obj.maskphys == 0 ? dxh : dxh[obj.maskphys]
   update_state!(InjectivityCheck, obj.α, ∇(uh)', ∇(duh)', obj.β)
-  return minimum(minimum((obj.α.values)))
+  return mapreduce(minimum, min, obj.α.values)
 end
 
 
 # function update_cellstate!(obj::Injectivity_Preserving_LS, xh, dxh)
 #   update_state!(InjectivityCheck, obj.α, ∇(xh)', ∇(dxh)', obj.β)
-#   return minimum(minimum((obj.α.values)))
+#   return mapreduce(minimum, min, obj.α.values)
 # end

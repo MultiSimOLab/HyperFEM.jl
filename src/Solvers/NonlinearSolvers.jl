@@ -71,8 +71,9 @@ function _solve_nr!(x, A, b, dx, ns, nls, op)
       break
     end
 
-    α = linesearch(x, dx, b, op)
-    x .+= α * dx
+    # Mutates x (accepted trial point) and b (residual at x)!!
+    linesearch(x, dx, b, op)
+
     # if α < 1.0 && Int(log.verbose)>0
     # println("Activated line-search: $α")
     # end
