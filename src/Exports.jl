@@ -48,6 +48,7 @@ end
 @publish PhysicalModels TransverseIsotropy3D
 @publish PhysicalModels TransverseIsotropy2D
 @publish PhysicalModels ThermalModel
+@publish PhysicalModels ThermalVolumetric
 @publish PhysicalModels IdealDielectric
 @publish PhysicalModels Magnetic
 @publish PhysicalModels IdealMagnetic
@@ -92,7 +93,6 @@ end
 @publish PhysicalModels get_Kinematics
 @publish PhysicalModels getIsoInvariants
 
-@publish PhysicalModels entropy
 @publish PhysicalModels derivatives
 @publish PhysicalModels ThermalLaw
 @publish PhysicalModels VolumetricLaw

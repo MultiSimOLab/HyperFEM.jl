@@ -117,53 +117,70 @@ struct ThermoElectroMech_Govindjee{T<:Thermo,E<:Electro,M<:Mechano} <: ThermoEle
 end
 
 
-struct ThermoElectroMech_Bonet{T<:Thermo,E<:Electro,M<:Mechano} <: ThermoElectroMechano{T,E,M}
-  thermo::T
+struct ThermoElectroMech_Bonet{E<:Electro,M<:Mechano} <: ThermoElectroMechano{ThermalVolumetric,E,M}
+  thermo::ThermalVolumetric
   electro::E
   mechano::M
-  lawvol::VolumetricLaw
-  lawdev::DeviatoricLaw
-  lawvis::DeviatoricLaw
+  lawel::ThermalLaw
+  lawvis::ThermalLaw
+  lawelec::ThermalLaw
 end
 
-function ThermoElectroMech_Bonet(thermo::T, electro::E, mechano::M; γv::Float64, γd::Float64, γvis::Float64=γd) where {T<:Thermo,E<:Electro,M<:Mechano}
-  lawvol = VolumetricLaw(thermo.θr, γv)
-  lawdev = DeviatoricLaw(thermo.θr, γd)
-  lawvis = DeviatoricLaw(thermo.θr, γvis)
-  ThermoElectroMech_Bonet{T,E,M}(thermo,electro,mechano,lawvol,lawdev,lawvis)
+function ThermoElectroMech_Bonet(thermo::ThermalVolumetric, electro::E, mechano::M; mech::ThermalLaw, elec::ThermalLaw) where {E<:Electro,M<:Elasto}
+  ThermoElectroMech_Bonet{E,M}(thermo,electro,mechano,mech,mech,elec)
 end
 
-function (obj::ThermoElectroMech_Bonet{<:Thermo,<:Electro,<:Elasto})(Λ::Float64=0.0)
-  θr = obj.thermo.θr
-  fv, ∂fv, ∂∂fv = derivatives(obj.lawvol)
-  fd, ∂fd, ∂∂fd = derivatives(obj.lawdev)
-  em = ElectroMechModel(obj.electro, obj.mechano)
-  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = em()
-  ηR, ∂ηR∂F, ∂∂ηR∂FF = entropy(obj)
+function ThermoElectroMech_Bonet(thermo::ThermalVolumetric, electro::E, mechano::M; el::ThermalLaw, vis::ThermalLaw, elec::ThermalLaw) where {E<:Electro,M<:ViscoElastic}
+  ThermoElectroMech_Bonet{E,M}(thermo,electro,mechano,el,vis,elec)
+end
 
-  Ψ(F, E, θ, X...) = fd(θ)*Ψem(F, E, X...) - θr*fv(θ)*ηR(F)
+function (obj::ThermoElectroMech_Bonet{<:Electro,<:Elasto})()
+  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
+  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano()
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂∂Ψem∂EE = _getCoupling(obj.electro, obj.mechano)
+  fe, dfe, ddfe = derivatives(obj.lawel)
+  felec, dfelec, ddfelec = derivatives(obj.lawelec)
 
-  ∂Ψ∂F(F, E, θ, X...)  =  fd(θ)*∂Ψem∂F(F, E, X...) - θr*fv(θ)*∂ηR∂F(F)
-  ∂Ψ∂E(F, E, θ, X...)  =  fd(θ)*∂Ψem∂E(F, E, X...)
-  ∂Ψ∂θ(F, E, θ, X...)  =  ∂fd(θ)*Ψem(F, E, X...) - θr*∂fv(θ)*ηR(F)
+  Ψ(F, E, θ)       =  Ψt(F,θ)      + fe(θ)*Ψm(F)      + felec(θ)*Ψem(F,E)
+  ∂Ψ∂F(F, E, θ)    =  ∂Ψt∂F(F,θ)   + fe(θ)*∂Ψm∂F(F)   + felec(θ)*∂Ψem∂F(F,E)
+  ∂Ψ∂E(F, E, θ)    =                                  + felec(θ)*∂Ψem∂E(F,E)
+  ∂Ψ∂θ(F, E, θ)    =  ∂Ψt∂θ(F,θ)   + dfe(θ)*Ψm(F)     + dfelec(θ)*Ψem(F,E)
+  ∂∂Ψ∂FF(F, E, θ)  =  ∂∂Ψt∂FF(F,θ) + fe(θ)*∂∂Ψm∂FF(F) + felec(θ)*∂Ψem∂FF(F,E)
+  ∂∂Ψ∂EE(F, E, θ)  =                                  + felec(θ)*∂∂Ψem∂EE(F,E)
+  ∂∂Ψ∂θθ(F, E, θ)  =  ∂∂Ψt∂θθ(F,θ) + ddfe(θ)*Ψm(F)    + ddfelec(θ)*Ψem(F,E)
+  ∂∂Ψ∂EF(F, E, θ)  =                                  + felec(θ)*∂Ψem∂EF(F,E)
+  ∂∂Ψ∂Fθ(F, E, θ)  =  ∂∂Ψt∂Fθ(F,θ) + dfe(θ)*∂Ψm∂F(F)  + dfelec(θ)*∂Ψem∂F(F,E)
+  ∂∂Ψ∂Eθ(F, E, θ)  =                                  + dfelec(θ)*∂Ψem∂E(F,E)
 
-  ∂∂Ψ∂FF(F, E, θ, X...)  =  fd(θ)*∂Ψem∂FF(F, E, X...) - θr*fv(θ)*∂∂ηR∂FF(F)
-  ∂∂Ψ∂EE(F, E, θ, X...)  =  fd(θ)*∂Ψem∂EE(F, E, X...)
-  ∂∂Ψ∂θθ(F, E, θ, X...)  =  ∂∂fd(θ)*Ψem(F, E, X...) - θr*∂∂fv(θ)*ηR(F)
-
-  ∂∂Ψ∂EF(F, E, θ, X...)  =  fd(θ)*∂Ψem∂EF(F, E, X...)
-  ∂∂Ψ∂Fθ(F, E, θ, X...)  =  ∂fd(θ)*∂Ψem∂F(F, E, X...) - θr*∂fv(θ)*∂ηR∂F(F)
-  ∂∂Ψ∂Eθ(F, E, θ, X...)  =  ∂fd(θ)*∂Ψem∂E(F, E, X...)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂EE, ∂∂Ψ∂θθ, ∂∂Ψ∂EF, ∂∂Ψ∂Fθ, ∂∂Ψ∂Eθ)
 end
 
-function entropy(obj::ThermoElectroMech_Bonet)
-  tm = ThermoMech_Bonet(obj.thermo, obj.mechano, obj.lawvol, obj.lawdev, obj.lawvis)
-  entropy(tm)
+function (obj::ThermoElectroMech_Bonet{<:Electro,<:ViscoElastic})()
+  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
+  Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm()
+  Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches()
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂∂Ψem∂EE = _getCoupling(obj.electro, obj.mechano)
+  fe, dfe, ddfe = derivatives(obj.lawel)
+  fv, dfv, ddfv = derivatives(obj.lawvis)
+  felec, dfelec, ddfelec = derivatives(obj.lawelec)
+
+  Ψ(F, E, θ, A...)       =  Ψt(F,θ)      + fe(θ)*Ψe(F)      + fv(θ)*Ψv(F,A...)      + felec(θ)*Ψem(F,E)
+  ∂Ψ∂F(F, E, θ, A...)    =  ∂Ψt∂F(F,θ)   + fe(θ)*∂Ψe∂F(F)   + fv(θ)*∂Ψv∂F(F,A...)   + felec(θ)*∂Ψem∂F(F,E)
+  ∂Ψ∂E(F, E, θ, A...)    =                                                          + felec(θ)*∂Ψem∂E(F,E)
+  ∂Ψ∂θ(F, E, θ, A...)    =  ∂Ψt∂θ(F,θ)   + dfe(θ)*Ψe(F)     + dfv(θ)*Ψv(F,A...)     + dfelec(θ)*Ψem(F,E)
+  ∂∂Ψ∂FF(F, E, θ, A...)  =  ∂∂Ψt∂FF(F,θ) + fe(θ)*∂∂Ψe∂FF(F) + fv(θ)*∂∂Ψv∂FF(F,A...) + felec(θ)*∂Ψem∂FF(F,E)
+  ∂∂Ψ∂EE(F, E, θ, A...)  =                                                          + felec(θ)*∂∂Ψem∂EE(F,E)
+  ∂∂Ψ∂θθ(F, E, θ, A...)  =  ∂∂Ψt∂θθ(F,θ) + ddfe(θ)*Ψe(F)    + ddfv(θ)*Ψv(F,A...)    + ddfelec(θ)*Ψem(F,E)
+  ∂∂Ψ∂EF(F, E, θ, A...)  =                                                          + felec(θ)*∂Ψem∂EF(F,E)
+  ∂∂Ψ∂Fθ(F, E, θ, A...)  =  ∂∂Ψt∂Fθ(F,θ) + dfe(θ)*∂Ψe∂F(F)  + dfv(θ)*∂Ψv∂F(F,A...)  + dfelec(θ)*∂Ψem∂F(F,E)
+  ∂∂Ψ∂Eθ(F, E, θ, A...)  =                                                          + dfelec(θ)*∂Ψem∂E(F,E)
+
+  return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂EE, ∂∂Ψ∂θθ, ∂∂Ψ∂EF, ∂∂Ψ∂Fθ, ∂∂Ψ∂Eθ)
 end
 
+
 function Dissipation(obj::ThermoElectroMech_Bonet)
-  tm = ThermoMech_Bonet(obj.thermo, obj.mechano, obj.lawvol, obj.lawdev, obj.lawvis)
+  tm = ThermoMech_Bonet(obj.thermo, obj.mechano, obj.lawel, obj.lawvis)
   Dtm, ∂Dtm = Dissipation(tm)
   Dtem(F, E, θ, X...) = Dtm(F, θ, X...)
   ∂Dtem(F, E, θ, X...) = ∂Dtm(F, θ, X...)

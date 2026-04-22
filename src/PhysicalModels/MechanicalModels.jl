@@ -1,3 +1,34 @@
+
+
+# ============================================
+# Coercive volumetric Mechanical models
+# ============================================
+
+struct VolumetricEnergy <: Volumetric
+  λ::Float64
+  function VolumetricEnergy(; λ::Float64)
+    new(λ)
+  end
+end
+
+function tangent(obj::Volumetric)
+  _, _, ∂∂Ψ = obj()
+  ∂∂Ψ(I3)[1]
+end
+
+function (obj::VolumetricEnergy)(Λ::Float64=1.0)
+  λ = obj.λ
+  J(F) = det(F)
+  H(F) = det(F) * inv(F)'
+  Ψ(F) = (λ / 2.0) * (J(F) - 1)^2
+  ∂Ψ_∂J(F) = λ * (J(F) - 1)
+  ∂Ψ2_∂J2(F) = λ
+  ∂Ψu(F) = ∂Ψ_∂J(F) * H(F)
+  ∂Ψuu(F) = ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ×ᵢ⁴(∂Ψ_∂J(F) * F)
+  return (Ψ, ∂Ψu, ∂Ψuu)
+end
+
+
 # ============================================
 # Regularization of Mechanical models
 # ============================================
@@ -229,26 +260,6 @@ mutable struct LinearElasticity3D <: IsoElastic
     ∂Ψuu(F) = μ * (δᵢₖδⱼₗ3D + δᵢₗδⱼₖ3D) + λ * δᵢⱼδₖₗ3D
     ∂Ψu(F) = ∂Ψuu(F) ⊙ (F - I3)
     Ψ(F) = μ * sum(ε(F) .* ε(F)) + 0.5 * λ * tr(ε(F))^2
-    return (Ψ, ∂Ψu, ∂Ψuu)
-  end
-end
-
-
-struct VolumetricEnergy <: IsoElastic
-  λ::Float64
-  function VolumetricEnergy(; λ::Float64)
-    new(λ)
-  end
-
-  function (obj::VolumetricEnergy)(Λ::Float64=1.0)
-    λ = obj.λ
-    J(F) = det(F)
-    H(F) = det(F) * inv(F)'
-    Ψ(F) = (λ / 2.0) * (J(F) - 1)^2
-    ∂Ψ_∂J(F) = λ * (J(F) - 1)
-    ∂Ψ2_∂J2(F) = λ
-    ∂Ψu(F) = ∂Ψ_∂J(F) * H(F)
-    ∂Ψuu(F) = ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ×ᵢ⁴(∂Ψ_∂J(F) * F)
     return (Ψ, ∂Ψu, ∂Ψuu)
   end
 end

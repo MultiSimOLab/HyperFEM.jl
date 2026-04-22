@@ -46,6 +46,7 @@ export IdealMagnetic2D
 export HardMagnetic
 export HardMagnetic2D
 export ThermalModel
+export ThermalVolumetric
 export ElectroMechModel
 export ThermoElectroMechModel
 export ThermoMechModel
@@ -107,6 +108,7 @@ abstract type Thermo <: PhysicalModel end
 abstract type Elasto <: Mechano end
 abstract type IsoElastic <: Elasto end
 abstract type AnisoElastic <: Elasto end
+abstract type Volumetric <: IsoElastic end
 abstract type Visco <: Mechano end
 abstract type ViscoElastic{E<:Elasto} <: Mechano end
 

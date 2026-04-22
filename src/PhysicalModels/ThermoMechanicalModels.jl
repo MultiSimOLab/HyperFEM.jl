@@ -68,6 +68,7 @@ end
 struct EntropicElasticityLaw <: ThermalLaw
   θr::Float64
   γ::Float64
+  EntropicElasticityLaw(; θr, γ) = new(θr, γ)
 end
 
 function derivatives(law::EntropicElasticityLaw)
@@ -82,6 +83,7 @@ struct NonlinearMeltingLaw <: ThermalLaw
   θr::Float64
   θM::Float64
   γ::Float64
+  NonlinearMeltingLaw(; θr, θM, γ) = new(θr, θM, γ)
 end
 
 function derivatives(law::NonlinearMeltingLaw)
@@ -97,6 +99,7 @@ struct NonlinearSofteningLaw <: ThermalLaw
   θt::Float64
   γ::Float64
   δ::Float64
+  NonlinearSofteningLaw(; θr, θt, γ, δ=0) = new(θr, θt, γ, δ)
 end
 
 function derivatives(law::NonlinearSofteningLaw)
@@ -156,69 +159,54 @@ function derivatives(law::PolynomialLaw)
   return (f, ∂f, ∂∂f)
 end
 
-struct ThermoMech_Bonet{T<:Thermo,M<:Mechano} <: ThermoMechano{T,M}
-  thermo::T
+struct ThermoMech_Bonet{M<:Mechano, LE<:ThermalLaw, LV<:ThermalLaw} <: ThermoMechano{ThermalVolumetric,M}
+  thermo::ThermalVolumetric
   mechano::M
-  lawvol::VolumetricLaw
-  lawdev::ThermalLaw
-  lawvis::ThermalLaw
+  lawel::LE
+  lawvis::LV
+
+  function ThermoMech_Bonet(thermo::ThermalVolumetric, mechano::M, law::L) where {M<:Elasto, L<:ThermalLaw}
+    new{M,L,L}(thermo,mechano,law,law)
+  end
+  
+  function ThermoMech_Bonet(thermo::ThermalVolumetric, mechano::M, lawel::LE, lawvis::LV) where {M<:ViscoElastic, LE<:ThermalLaw, LV<:ThermalLaw}
+    new{M,LE,LV}(thermo,mechano,lawel,lawvis)
+  end
 end
 
-function ThermoMech_Bonet(thermo::T, mechano::M; γv::Float64, γd::Float64, γvis::Float64=γd) where {T<:Thermo,M<:Mechano}
-  lawvol = VolumetricLaw(thermo.θr, γv)
-  lawdev = DeviatoricLaw(thermo.θr, γd)
-  lawvis = DeviatoricLaw(thermo.θr, γvis)
-  ThermoMech_Bonet{T,M}(thermo,mechano,lawvol,lawdev,lawvis)
-end
-
-function entropy(obj::ThermoMech_Bonet)
-  cv0, α, γv = obj.thermo.Cv, obj.thermo.α, obj.lawvol.γ
-  J(F) = det(F)
-  H(F) = cof(F)
-  ηR(F) = α*(J(F) - 1.0) + cv0/γv
-  ∂ηR∂J(F) = α
-  ∂ηR∂F(F) = ∂ηR∂J(F)*H(F)
-  ∂∂ηR∂FF(F) = ×ᵢ⁴(∂ηR∂J(F) * F)
-  return (ηR, ∂ηR∂F, ∂∂ηR∂FF)
-end
-
-function (obj::ThermoMech_Bonet{<:Thermo,<:Elasto})(Λ::Float64=0.0)
-  θr = obj.thermo.θr
-  fv, ∂fv, ∂∂fv = derivatives(obj.lawvol)
-  fd, ∂fd, ∂∂fd = derivatives(obj.lawdev)
+function (obj::ThermoMech_Bonet{<:Elasto})()
+  Ψv, ∂Ψv∂F, ∂Ψv∂θ, ∂∂Ψv∂FF, ∂∂Ψv∂θθ, ∂∂Ψv∂Fθ = obj.thermo()
   Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano()
-  ηR, ∂ηR∂F, ∂∂ηR∂FF = entropy(obj)
-  Ψ(F, θ)       =  fd(θ)*Ψm(F)      - θr*fv(θ)*ηR(F)
-  ∂Ψ∂F(F, θ)    =  fd(θ)*∂Ψm∂F(F)   - θr*fv(θ)*∂ηR∂F(F)
-  ∂Ψ∂θ(F, θ)    =  ∂fd(θ)*Ψm(F)     - θr*∂fv(θ)*ηR(F)
-  ∂∂Ψ∂FF(F, θ)  =  fd(θ)*∂∂Ψm∂FF(F) - θr*fv(θ)*∂∂ηR∂FF(F)
-  ∂∂Ψ∂θθ(F, θ)  =  ∂∂fd(θ)*Ψm(F)    - θr*∂∂fv(θ)*ηR(F)
-  ∂∂Ψ∂Fθ(F, θ)  =  ∂fd(θ)*∂Ψm∂F(F)  - θr*∂fv(θ)*∂ηR∂F(F)
+  f, ∂f, ∂∂f = derivatives(obj.lawel)
+  Ψ(F, θ)       =  Ψv(F,θ)      + f(θ)*Ψm(F)
+  ∂Ψ∂F(F, θ)    =  ∂Ψv∂F(F,θ)   + f(θ)*∂Ψm∂F(F)
+  ∂Ψ∂θ(F, θ)    =  ∂Ψv∂θ(F,θ)   + ∂f(θ)*Ψm(F)
+  ∂∂Ψ∂FF(F, θ)  =  ∂∂Ψv∂FF(F,θ) + f(θ)*∂∂Ψm∂FF(F)
+  ∂∂Ψ∂θθ(F, θ)  =  ∂∂Ψv∂θθ(F,θ) + ∂∂f(θ)*Ψm(F)
+  ∂∂Ψ∂Fθ(F, θ)  =  ∂∂Ψv∂Fθ(F,θ) + ∂f(θ)*∂Ψm∂F(F)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂θθ, ∂∂Ψ∂Fθ)
 end
 
-function (obj::ThermoMech_Bonet{<:Thermo,<:ViscoElastic})(Λ::Float64=0.0)
-  θr = obj.thermo.θr
-  fv, ∂fv, ∂∂fv       = derivatives(obj.lawvol)
-  fd, ∂fd, ∂∂fd       = derivatives(obj.lawdev)
-  fvis, ∂fvis, ∂∂fvis = derivatives(obj.lawvis)
-  Ψe, ∂Ψe∂F, ∂∂Ψe∂FF  = obj.mechano.longterm()
-  Ψv, ∂Ψv∂F, ∂∂Ψv∂FF  = obj.mechano.branches()
-  ηR, ∂ηR∂F, ∂∂ηR∂FF  = entropy(obj)
-  Ψ(F, θ, X...)       =  fd(θ)*Ψe(F)      + fvis(θ)*Ψv(F, X...)      - θr*fv(θ)*ηR(F)
-  ∂Ψ∂F(F, θ, X...)    =  fd(θ)*∂Ψe∂F(F)   + fvis(θ)*∂Ψv∂F(F, X...)   - θr*fv(θ)*∂ηR∂F(F)
-  ∂Ψ∂θ(F, θ, X...)    =  ∂fd(θ)*Ψe(F)     + ∂fvis(θ)*Ψv(F, X...)     - θr*∂fv(θ)*ηR(F)
-  ∂∂Ψ∂FF(F, θ, X...)  =  fd(θ)*∂∂Ψe∂FF(F) + fvis(θ)*∂∂Ψv∂FF(F, X...) - θr*fv(θ)*∂∂ηR∂FF(F)
-  ∂∂Ψ∂θθ(F, θ, X...)  =  ∂∂fd(θ)*Ψe(F)    + ∂∂fvis(θ)*Ψv(F, X...)    - θr*∂∂fv(θ)*ηR(F)
-  ∂∂Ψ∂Fθ(F, θ, X...)  =  ∂fd(θ)*∂Ψe∂F(F)  + ∂fvis(θ)*∂Ψv∂F(F, X...)  - θr*∂fv(θ)*∂ηR∂F(F)
+function (obj::ThermoMech_Bonet{<:ViscoElastic})()
+  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
+  Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm()
+  Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches()
+  fe, ∂fe, ∂∂fe = derivatives(obj.lawel)
+  fv, ∂fv, ∂∂fv = derivatives(obj.lawvis)
+  Ψ(F, θ, X...)       =  Ψt(F, θ)      + fe(θ)*Ψe(F)      + fv(θ)*Ψv(F, X...)
+  ∂Ψ∂F(F, θ, X...)    =  ∂Ψt∂F(F, θ)   + fe(θ)*∂Ψe∂F(F)   + fv(θ)*∂Ψv∂F(F, X...)
+  ∂Ψ∂θ(F, θ, X...)    =  ∂Ψt∂θ(F, θ)   + ∂fe(θ)*Ψe(F)     + ∂fv(θ)*Ψv(F, X...)
+  ∂∂Ψ∂FF(F, θ, X...)  =  ∂∂Ψt∂FF(F, θ) + fe(θ)*∂∂Ψe∂FF(F) + fv(θ)*∂∂Ψv∂FF(F, X...)
+  ∂∂Ψ∂θθ(F, θ, X...)  =  ∂∂Ψt∂θθ(F, θ) + ∂∂fe(θ)*Ψe(F)    + ∂∂fv(θ)*Ψv(F, X...)
+  ∂∂Ψ∂Fθ(F, θ, X...)  =  ∂∂Ψt∂Fθ(F, θ) + ∂fe(θ)*∂Ψe∂F(F)  + ∂fv(θ)*∂Ψv∂F(F, X...)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂θθ, ∂∂Ψ∂Fθ)
 end
 
 function Dissipation(obj::ThermoMech_Bonet)
-  fvis, ∂fvis, _ = derivatives(obj.lawvis)
+  fv, ∂fv, _ = derivatives(obj.lawvis)
   Dvis = Dissipation(obj.mechano)
-  D(F, θ, X...) = fvis(θ) * Dvis(F, X...)
-  ∂D∂θ(F, θ, X...) = ∂fvis(θ) * Dvis(F, X...)
+  D(F, θ, X...) = fv(θ) * Dvis(F, X...)
+  ∂D∂θ(F, θ, X...) = ∂fv(θ) * Dvis(F, X...)
   return (D, ∂D∂θ)
 end
 
