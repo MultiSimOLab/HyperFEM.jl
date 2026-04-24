@@ -8,10 +8,17 @@ using HyperFEM.TensorAlgebra
 using HyperFEM.IO
 
 
-import Base: -
-
-(-)(A::SMatrix, B::TensorValue) = A - get_array(B)  # NOTE: These functions are required for LinearElasticity to work with ForwardDiff
+import Base: +,-
+(+)(A::SMatrix, B::TensorValue) = A + get_array(B)  # + is required by SecondPiola to work with ForwardDiff
+(+)(A::TensorValue, B::SMatrix) = get_array(A) + B
+(-)(A::SMatrix, B::TensorValue) = A - get_array(B)  # - is required by LinearElasticity to work with ForwardDiff
 (-)(A::TensorValue, B::SMatrix) = get_array(A) - B
+
+import Gridap: inner
+inner(a::SMatrix, b::SMatrix) = sum(a.data .* b.data)  # inner function is required by SecondPiola to work with ForwardDiff
+
+import HyperFEM.TensorAlgebra: cof
+cof(a::SMatrix) = det(a) * inv(a)'  # cof is required by SecondPiola to work with ForwardDiff
 
 
 const ∇u2 = TensorValue(1.0, 2.0, 3.0, 4.0) * 1e-3
@@ -49,6 +56,14 @@ end
 function test_equilibrium_at_rest_3D(obj::Mechano, atol=1e-10)
   Ψ, _... = obj()
   @test isapprox(Ψ(I3), 0.0, atol=atol)
+end
+
+function test_second_piola_3D_(model::PhysicalModel; rtol=1e-12, kwargs...)
+  F = I3 + ∇u3
+  C = F'·F
+  Ψ, S, ∂S∂C = SecondPiola(model)
+  @test isapprox(S(C),  2*TensorValue(ForwardDiff.gradient(Ψ, get_array(C))), rtol=rtol, kwargs...)
+  @test isapprox(∂S∂C(C), TensorValue(ForwardDiff.jacobian(S, get_array(C))), rtol=rtol, kwargs...)
 end
 
 
@@ -200,6 +215,14 @@ end
   #  Memory estimate: 0 bytes, allocs estimate: 0.
   model = NonlinearNeoHookean_CV(λ=3.0, μ=1.0, α=2.0, γ=6.0)
   test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-13)
+  test_equilibrium_at_rest_3D(model)
+end
+
+
+@testset "IsochoricNeoHookean3D" begin
+  model = IsochoricNeoHookean3D(μ=3)
+  test_derivatives_3D_(model, Kinematics(Mechano,Solid), rtol=1e-12)
+  test_second_piola_3D_(model)
   test_equilibrium_at_rest_3D(model)
 end
 
@@ -473,8 +496,10 @@ end
   cv0 = 17.385
   modelMR = MooneyRivlin3D(λ=0.0, μ1=0.5, μ2=0.5)
   modelID = IdealDielectric(ε=1.0)
-  modelT = ThermalModel(Cv=cv0, θr=θr, α=0.00156331, κ=1.0)
-  modelTEM = ThermoElectroMech_Bonet(modelT, modelID, modelMR, γv=2.0, γd=2.0)
+  modelT = ThermalVolumetric(cv0=cv0, θr=θr, α=0.00156331, κr=1.0, γ=2.0, κ=1.0)
+  lawMR = EntropicElasticityLaw(θr=θr, γ=2.0)
+  lawID = EntropicElasticityLaw(θr=θr, γ=2.0)
+  modelTEM = ThermoElectroMech_Bonet(modelT, modelID, modelMR, elec=lawID, mech=lawMR)
   Ψ, ∂Ψu, ∂ΨE, ∂Ψθ, ∂ΨFF, ∂ΨEE, ∂2Ψθθ, ∂ΨEF, ∂ΨFθ, ∂ΨEθ = modelTEM()
 
   K = Kinematics(Mechano, Solid)

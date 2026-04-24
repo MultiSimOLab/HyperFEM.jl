@@ -1,7 +1,6 @@
 using Gridap.TensorValues
 using Gridap.Arrays
 using HyperFEM.TensorAlgebra
-using SpecialFunctions
 using Test
 
 
@@ -114,11 +113,4 @@ end
   A = TensorValue(1.:9...) + I3
   cofA = det(A) * inv(A')
   @test isapprox(cof(A), cofA)
-end
-
-
-@testset "erf" begin
-  for x ∈ 0:.17234:2
-    @test isapprox(TensorAlgebra.erf(x), SpecialFunctions.erf(x), atol=1e-6)
-  end
 end

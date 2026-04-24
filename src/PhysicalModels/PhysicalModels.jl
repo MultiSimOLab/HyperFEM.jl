@@ -11,7 +11,6 @@ using StaticArrays
 using ..TensorAlgebra
 using ..TensorAlgebra: _∂H∂F_2D
 using ..TensorAlgebra: trAA
-using ..TensorAlgebra: erf
 
 import Base: +
 import Gridap: update_state!
@@ -19,6 +18,7 @@ import Gridap: update_state!
 export Yeoh3D
 export Gent2D
 export NeoHookean3D
+export IsochoricNeoHookean3D
 export IncompressibleNeoHookean3D
 export IncompressibleNeoHookean2D
 export IncompressibleNeoHookean2D_CV
@@ -46,6 +46,7 @@ export IdealMagnetic2D
 export HardMagnetic
 export HardMagnetic2D
 export ThermalModel
+export ThermalVolumetric
 export ElectroMechModel
 export ThermoElectroMechModel
 export ThermoMechModel
@@ -107,6 +108,7 @@ abstract type Thermo <: PhysicalModel end
 abstract type Elasto <: Mechano end
 abstract type IsoElastic <: Elasto end
 abstract type AnisoElastic <: Elasto end
+abstract type Volumetric <: IsoElastic end
 abstract type Visco <: Mechano end
 abstract type ViscoElastic{E<:Elasto} <: Mechano end
 

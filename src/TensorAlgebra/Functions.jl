@@ -22,28 +22,6 @@ function logreg(J; Threshold=0.01)
 end
 
 
-"""
-Fast and dependency-free implementation of erf function, up to 1e-6 precision.
-"""
-@inline function erf(x::Real)
-  p  = 0.3275911
-  a1 = 0.254829592
-  a2 = -0.284496736
-  a3 = 1.421413741
-  a4 = -1.453152027
-  a5 = 1.061405429
-
-  ax = abs(x)
-  t = 1.0 / (1.0 + p*ax)
-
-  y = (((((a5*t + a4)*t + a3)*t + a2)*t + a1)*t)
-
-  r = 1.0 - y*exp(-ax*ax)
-
-  return copysign(r, x)
-end
-
-
 function _∂H∂F_2D()
   TensorValue(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
 end

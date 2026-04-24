@@ -30,6 +30,7 @@ end
 @publish PhysicalModels Yeoh3D
 @publish PhysicalModels Gent2D
 @publish PhysicalModels NeoHookean3D
+@publish PhysicalModels IsochoricNeoHookean3D
 @publish PhysicalModels IncompressibleNeoHookean3D
 @publish PhysicalModels IncompressibleNeoHookean2D
 @publish PhysicalModels IncompressibleNeoHookean2D_CV
@@ -47,6 +48,7 @@ end
 @publish PhysicalModels TransverseIsotropy3D
 @publish PhysicalModels TransverseIsotropy2D
 @publish PhysicalModels ThermalModel
+@publish PhysicalModels ThermalVolumetric
 @publish PhysicalModels IdealDielectric
 @publish PhysicalModels Magnetic
 @publish PhysicalModels IdealMagnetic
@@ -91,14 +93,10 @@ end
 @publish PhysicalModels get_Kinematics
 @publish PhysicalModels getIsoInvariants
 
-@publish PhysicalModels entropy
-@publish PhysicalModels derivatives
 @publish PhysicalModels ThermalLaw
-@publish PhysicalModels VolumetricLaw
-@publish PhysicalModels DeviatoricLaw
-@publish PhysicalModels EntropicMeltingLaw
-@publish PhysicalModels LogisticLaw
-@publish PhysicalModels InterceptLaw
+@publish PhysicalModels EntropicElasticityLaw
+@publish PhysicalModels NonlinearMeltingLaw
+@publish PhysicalModels NonlinearSofteningLaw
 @publish PhysicalModels TrigonometricLaw
 @publish PhysicalModels PolynomialLaw
 

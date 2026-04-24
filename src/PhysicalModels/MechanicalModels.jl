@@ -1,3 +1,34 @@
+
+
+# ============================================
+# Coercive volumetric Mechanical models
+# ============================================
+
+struct VolumetricEnergy <: Volumetric
+  λ::Float64
+  function VolumetricEnergy(; λ::Float64)
+    new(λ)
+  end
+end
+
+function tangent(obj::Volumetric)
+  _, _, ∂∂Ψ = obj()
+  ∂∂Ψ(I3)[1]
+end
+
+function (obj::VolumetricEnergy)(Λ::Float64=1.0)
+  λ = obj.λ
+  J(F) = det(F)
+  H(F) = det(F) * inv(F)'
+  Ψ(F) = (λ / 2.0) * (J(F) - 1)^2
+  ∂Ψ_∂J(F) = λ * (J(F) - 1)
+  ∂Ψ2_∂J2(F) = λ
+  ∂Ψu(F) = ∂Ψ_∂J(F) * H(F)
+  ∂Ψuu(F) = ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ×ᵢ⁴(∂Ψ_∂J(F) * F)
+  return (Ψ, ∂Ψu, ∂Ψuu)
+end
+
+
 # ============================================
 # Regularization of Mechanical models
 # ============================================
@@ -229,26 +260,6 @@ mutable struct LinearElasticity3D <: IsoElastic
     ∂Ψuu(F) = μ * (δᵢₖδⱼₗ3D + δᵢₗδⱼₖ3D) + λ * δᵢⱼδₖₗ3D
     ∂Ψu(F) = ∂Ψuu(F) ⊙ (F - I3)
     Ψ(F) = μ * sum(ε(F) .* ε(F)) + 0.5 * λ * tr(ε(F))^2
-    return (Ψ, ∂Ψu, ∂Ψuu)
-  end
-end
-
-
-struct VolumetricEnergy <: IsoElastic
-  λ::Float64
-  function VolumetricEnergy(; λ::Float64)
-    new(λ)
-  end
-
-  function (obj::VolumetricEnergy)(Λ::Float64=1.0)
-    λ = obj.λ
-    J(F) = det(F)
-    H(F) = det(F) * inv(F)'
-    Ψ(F) = (λ / 2.0) * (J(F) - 1)^2
-    ∂Ψ_∂J(F) = λ * (J(F) - 1)
-    ∂Ψ2_∂J2(F) = λ
-    ∂Ψu(F) = ∂Ψ_∂J(F) * H(F)
-    ∂Ψuu(F) = ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ×ᵢ⁴(∂Ψ_∂J(F) * F)
     return (Ψ, ∂Ψu, ∂Ψuu)
   end
 end
@@ -1026,6 +1037,51 @@ struct ARAP2D <: IsoElastic
 end
 
 
+struct IsochoricNeoHookean3D <: IsoElastic
+  μ::Float64
+end
+
+function IsochoricNeoHookean3D(; μ::Real)
+  IsochoricNeoHookean3D(float(μ))
+end
+
+function (obj::IsochoricNeoHookean3D)()
+  Ψ(F) = obj.μ / 2 * (F⊙F * det(F)^(-2/3) - 3)
+  ∂Ψ∂F(F) = begin
+    μ = obj.μ
+    J = det(F)
+    Ic = F⊙F
+    obj.μ * J^(-2/3) * (F - 1/3*Ic*inv(F)')
+  end
+  ∂Ψ∂FF(F) = begin
+    μ = obj.μ
+    J = det(F)
+    Ic = F⊙F
+    invF = inv(F)
+    H = cof(F)
+    TensorValue(ForwardDiff.jacobian(∂Ψ∂F, get_array(F)))
+  end
+  return (Ψ, ∂Ψ∂F, ∂Ψ∂FF)
+end
+
+function SecondPiola(obj::IsochoricNeoHookean3D)
+  μ = obj.μ
+  H(F) = cof(F)
+  Ψ(C) = μ / 2 * tr(C) * (det(C))^(-1 / 3)
+  ∂Ψ∂C(C) = μ / 2 * I3 * (det(C))^(-1 / 3)
+  ∂Ψ∂dC(C) = -μ / 6 * tr(C) * (det(C))^(-4 / 3)
+  S(C) = let HC = H(C)
+    2 * (∂Ψ∂C(C) + ∂Ψ∂dC(C) * HC)
+  end
+  ∂2Ψ∂CdC(C) = -μ / 6 * I3 * (det(C))^(-4 / 3)
+  ∂2Ψ∂2dC(C) = 2 * μ / 9 * tr(C) * (det(C))^(-7 / 3)
+  ∂S∂C(C) = let HC = H(C)
+    2 * (∂2Ψ∂2dC(C) * (HC ⊗ HC) + ∂2Ψ∂CdC(C) ⊗ HC + HC ⊗ ∂2Ψ∂CdC(C) + ∂Ψ∂dC(C) * ×ᵢ⁴(C))
+  end
+  return (Ψ, S, ∂S∂C)
+end
+
+
 struct IncompressibleNeoHookean3D_2dP <: Mechano
   μ::Float64
   τ::Float64
@@ -1042,16 +1098,14 @@ struct IncompressibleNeoHookean3D_2dP <: Mechano
     Ψ(Ce) = μ / 2 * tr(Ce) * (det(Ce))^(-1 / 3)
     ∂Ψ∂Ce(Ce) = μ / 2 * I3 * (det(Ce))^(-1 / 3)
     ∂Ψ∂dCe(Ce) = -μ / 6 * tr(Ce) * (det(Ce))^(-4 / 3)
-    Se(Ce) =
-      let HCe = H(Ce)
-        2 * (∂Ψ∂Ce(Ce) + ∂Ψ∂dCe(Ce) * HCe)
-      end
+    Se(Ce) = let HCe = H(Ce)
+      2 * (∂Ψ∂Ce(Ce) + ∂Ψ∂dCe(Ce) * HCe)
+    end
     ∂2Ψ∂CedCe(Ce) = -μ / 6 * I3 * (det(Ce))^(-4 / 3)
     ∂2Ψ∂2dCe(Ce) = 2 * μ / 9 * tr(Ce) * (det(Ce))^(-7 / 3)
-    ∂Se∂Ce(Ce) =
-      let HCe = H(Ce)
-        2 * (∂2Ψ∂2dCe(Ce) * (HCe ⊗ HCe) + ∂2Ψ∂CedCe(Ce) ⊗ HCe + HCe ⊗ ∂2Ψ∂CedCe(Ce) + ∂Ψ∂dCe(Ce) * ×ᵢ⁴(Ce))
-      end
+    ∂Se∂Ce(Ce) = let HCe = H(Ce)
+      2 * (∂2Ψ∂2dCe(Ce) * (HCe ⊗ HCe) + ∂2Ψ∂CedCe(Ce) ⊗ HCe + HCe ⊗ ∂2Ψ∂CedCe(Ce) + ∂Ψ∂dCe(Ce) * ×ᵢ⁴(Ce))
+    end
 
     return (Ψ, Se, ∂Se∂Ce)
   end
