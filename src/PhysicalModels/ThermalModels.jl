@@ -31,7 +31,7 @@ struct EntropicElasticityLaw <: ThermalLaw
   EntropicElasticityLaw(; θr, γ) = new(θr, γ)
 end
 
-function derivatives(law::EntropicElasticityLaw)
+function (law::EntropicElasticityLaw)()
   @unpack θr, γ = law
   f(θ) = (θ/θr)^(γ+1)
   ∂f(θ) = (γ+1) * θ^γ / θr^(γ+1)
@@ -46,7 +46,7 @@ struct NonlinearMeltingLaw <: ThermalLaw
   NonlinearMeltingLaw(; θr, θM, γ) = new(θr, θM, γ)
 end
 
-function derivatives(law::NonlinearMeltingLaw)
+function (law::NonlinearMeltingLaw)()
   @unpack θr, θM, γ = law
   f(θ) = (1 - (θ/θM)^(γ+1)) / (1 - (θr/θM)^(γ+1))
   ∂f(θ) = -(γ+1)*θ^γ/θM^(γ+1) / (1 - (θr/θM)^(γ+1))
@@ -62,7 +62,7 @@ struct NonlinearSofteningLaw <: ThermalLaw
   NonlinearSofteningLaw(; θr, θt, γ, δ=0) = new(θr, θt, γ, δ)
 end
 
-function derivatives(law::NonlinearSofteningLaw)
+function (law::NonlinearSofteningLaw)()
   @unpack θr, θt, γ, δ = law
   u(θ) = exp(-(θ/θt)^(γ+1))
   C = (1-δ) * u(θr) + δ
@@ -77,7 +77,7 @@ struct TrigonometricLaw <: ThermalLaw
   θM::Float64
 end
 
-function derivatives(law::TrigonometricLaw)
+function (law::TrigonometricLaw)()
   @unpack θr, θM = law  
   g(θ) = θ/θr * sin(2π*θ/θM)
   G(θ) = 1/2/π * θM/θr * (1 - cos(2π*θ/θM))
@@ -95,7 +95,7 @@ struct PolynomialLaw <: ThermalLaw
   c::Float64
 end
 
-function derivatives(law::PolynomialLaw)
+function (law::PolynomialLaw)()
   @unpack θr, a, b, c = law
   f(θ)   = a*((θ-θr)/θr)^3  + b*((θ-θr)/θr)^2 + c*(θ-θr)/θr + 1
   ∂f(θ)  = 3a*(θ-θr)^2/θr^3 + 2b*(θ-θr)/θr^2 + c/θr

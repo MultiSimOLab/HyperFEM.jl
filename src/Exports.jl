@@ -93,7 +93,6 @@ end
 @publish PhysicalModels get_Kinematics
 @publish PhysicalModels getIsoInvariants
 
-@publish PhysicalModels derivatives
 @publish PhysicalModels ThermalLaw
 @publish PhysicalModels EntropicElasticityLaw
 @publish PhysicalModels NonlinearMeltingLaw
