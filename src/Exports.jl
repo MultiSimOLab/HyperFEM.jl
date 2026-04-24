@@ -95,8 +95,6 @@ end
 
 @publish PhysicalModels derivatives
 @publish PhysicalModels ThermalLaw
-@publish PhysicalModels VolumetricLaw
-@publish PhysicalModels DeviatoricLaw
 @publish PhysicalModels EntropicElasticityLaw
 @publish PhysicalModels NonlinearMeltingLaw
 @publish PhysicalModels NonlinearSofteningLaw

@@ -16,9 +16,53 @@ function update_time_step!(obj::TM, Δt::Float64) where {TM<:ThermoMechano}
   update_time_step!(obj.mechano, Δt)
 end
 
-# ===================
-# MultiPhysicalModel models
-# ===================
+
+# ====================
+# Multi-physics models
+# ====================
+
+struct ThermalVolumetric{T<:Thermo} <: ThermoMechano{T,Volumetric}
+  thermo::T
+  mechano::Volumetric
+  law::ThermalLaw
+
+  function ThermalVolumetric(energy; cv0, θr, α, γ, κ=1.0)
+    thermo = ThermalModel(Cv=cv0, θr=θr, α=α, κ=κ)
+    law = EntropicElasticityLaw(θr=θr, γ=γ)
+    new{ThermalModel}(thermo, energy, law)
+  end
+
+  function ThermalVolumetric(; cv0, θr, α, κr, γ, κ=1.0)
+    thermo = ThermalModel(Cv=cv0, θr=θr, α=α, κ=κ)
+    law = EntropicElasticityLaw(θr=θr, γ=γ)
+    energy = VolumetricEnergy(λ=κr)
+    new{ThermalModel}(thermo, energy, law)
+  end
+end
+
+function (obj::ThermalVolumetric)()
+  @unpack Cv, θr, α, κ = obj.thermo
+  cv0 = Cv  # FIXME
+  U, ∂U∂F, ∂∂U∂FF = obj.mechano()
+  κr = tangent(obj.mechano)
+  f, df, ddf = derivatives(obj.law)
+  ζr = 1/df(θr)
+  ξr = 1/(θr*ζr*ddf(θr))
+  J(F) = det(F)
+  H(F) = cof(F)
+  ηr(F) = cv0*ξr + 3*α*κr*(J(F) - 1)
+  ∂ηr∂J(F) = 3*α*κr
+  ∂ηr∂F(F) = ∂ηr∂J(F)*H(F)
+  ∂∂ηr∂FF(F) = ×ᵢ⁴(∂ηr∂J(F)*F)
+  Ψ(F,θ)      = U(F)      -ηr(F)*ζr*(f(θ) - 1)
+  ∂Ψ∂F(F,θ)   = ∂U∂F(F)   -∂ηr∂F(F)*ζr*(f(θ) - 1)
+  ∂∂Ψ∂FF(F,θ) = ∂∂U∂FF(F) -∂∂ηr∂FF(F)*ζr*(f(θ) - 1)
+  ∂Ψ∂θ(F,θ)   =           -ηr(F)*ζr*df(θ)
+  ∂∂Ψ∂θθ(F,θ) =           -ηr(F)*ζr*ddf(θ)
+  ∂∂Ψ∂Fθ(F,θ) =           -∂ηr∂F(F)*ζr*df(θ)
+  return (Ψ, ∂Ψ∂F, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂θθ, ∂∂Ψ∂Fθ)
+end
+
 
 struct ThermoMechModel{T<:Thermo,M<:Mechano} <: ThermoMechano{T,M}
   thermo::T
@@ -51,113 +95,6 @@ struct ThermoMechModel{T<:Thermo,M<:Mechano} <: ThermoMechano{T,M}
   end
 end
 
-
-struct VolumetricLaw <: ThermalLaw
-  θr::Float64
-  γ::Float64
-end
-
-function derivatives(law::VolumetricLaw)
-  @unpack θr, γ = law
-  f(θ) = 1/(γ+1) * ((θ/θr)^(γ+1) -1)
-  ∂f(θ) = θ^γ / θr^(γ+1)
-  ∂∂f(θ) = γ*θ^(γ-1) / θr^(γ+1)
-  return (f, ∂f, ∂∂f)
-end
-
-struct EntropicElasticityLaw <: ThermalLaw
-  θr::Float64
-  γ::Float64
-  EntropicElasticityLaw(; θr, γ) = new(θr, γ)
-end
-
-function derivatives(law::EntropicElasticityLaw)
-  @unpack θr, γ = law
-  f(θ) = (θ/θr)^(γ+1)
-  ∂f(θ) = (γ+1) * θ^γ / θr^(γ+1)
-  ∂∂f(θ) = γ*(γ+1) * θ^(γ-1) / θr^(γ+1)
-  return (f, ∂f, ∂∂f)
-end
-
-struct NonlinearMeltingLaw <: ThermalLaw
-  θr::Float64
-  θM::Float64
-  γ::Float64
-  NonlinearMeltingLaw(; θr, θM, γ) = new(θr, θM, γ)
-end
-
-function derivatives(law::NonlinearMeltingLaw)
-  @unpack θr, θM, γ = law
-  f(θ) = (1 - (θ/θM)^(γ+1)) / (1 - (θr/θM)^(γ+1))
-  ∂f(θ) = -(γ+1)*θ^γ/θM^(γ+1) / (1 - (θr/θM)^(γ+1))
-  ∂∂f(θ) = -γ*(γ+1)*θ^(γ-1)/θM^(γ+1) / (1 - (θr/θM)^(γ+1))
-  return (f, ∂f, ∂∂f)
-end
-
-struct NonlinearSofteningLaw <: ThermalLaw
-  θr::Float64
-  θt::Float64
-  γ::Float64
-  δ::Float64
-  NonlinearSofteningLaw(; θr, θt, γ, δ=0) = new(θr, θt, γ, δ)
-end
-
-function derivatives(law::NonlinearSofteningLaw)
-  @unpack θr, θt, γ, δ = law
-  u(θ) = exp(-(θ/θt)^(γ+1))
-  C = (1-δ) * u(θr) + δ
-  f(θ) = ((1-δ) * u(θ) + δ) / C
-  ∂f(θ) = -(1-δ)/C * (γ+1)/θt * (θ/θt)^γ * u(θ)
-  ∂∂f(θ) = (1-δ)/C * (γ+1)/θ^2 * (θ/θt)^(γ+1) * ((γ+1)*(θ/θt)^(γ+1)-γ) * u(θ)
-  return (f, ∂f, ∂∂f)
-end
-
-@deprecate EntropicMeltingLaw NonlinearMeltingLaw
-@deprecate SofteningLaw NonlinearSofteningLaw
-
-struct DeviatoricLaw <: ThermalLaw
-  θr::Float64
-  γ::Float64
-end
-
-function derivatives(law::DeviatoricLaw)
-  @unpack θr, γ = law
-  f(θ) = (θ/θr)^γ
-  ∂f(θ) = γ*θ^(γ-1) / θr^γ
-  ∂∂f(θ) = γ*(γ-1)*θ^(γ-2) / θr^γ
-  return (f, ∂f, ∂∂f)
-end
-
-struct TrigonometricLaw <: ThermalLaw
-  θr::Float64
-  θM::Float64
-end
-
-function derivatives(law::TrigonometricLaw)
-  @unpack θr, θM = law  
-  g(θ) = θ/θr * sin(2π*θ/θM)
-  G(θ) = 1/2/π * θM/θr * (1 - cos(2π*θ/θM))
-  H(θ) = 1/2/π * θM/θr * (θ - θM/2/π * sin(2π*θ/θM))
-  f(θ) = (H(θr) - H(θ)) / (H(θM) - H(θr)) + 1.0
-  ∂f(θ) = -G(θ) / (H(θM) - H(θr))
-  ∂∂f(θ) = -g(θ) / θ / (H(θM) - H(θr))
-  return (f, ∂f, ∂∂f)
-end
-
-struct PolynomialLaw <: ThermalLaw
-  θr::Float64
-  a::Float64
-  b::Float64
-  c::Float64
-end
-
-function derivatives(law::PolynomialLaw)
-  @unpack θr, a, b, c = law
-  f(θ)   = a*((θ-θr)/θr)^3  + b*((θ-θr)/θr)^2 + c*(θ-θr)/θr + 1
-  ∂f(θ)  = 3a*(θ-θr)^2/θr^3 + 2b*(θ-θr)/θr^2 + c/θr
-  ∂∂f(θ) = 6a*(θ-θr)/θr^3 + 2b/θr^2
-  return (f, ∂f, ∂∂f)
-end
 
 struct ThermoMech_Bonet{M<:Mechano, LE<:ThermalLaw, LV<:ThermalLaw} <: ThermoMechano{ThermalVolumetric,M}
   thermo::ThermalVolumetric
