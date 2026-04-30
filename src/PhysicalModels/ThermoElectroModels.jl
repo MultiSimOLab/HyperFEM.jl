@@ -1,5 +1,5 @@
 
-struct ThermoElectroModel{E} <: ThermoElectro
+struct ThermoElectroModel{E<:Electro} <: ThermoElectro{E}
   electro::E
   law::ThermalLaw
 
