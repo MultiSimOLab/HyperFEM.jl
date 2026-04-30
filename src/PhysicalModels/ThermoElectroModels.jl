@@ -10,7 +10,7 @@ end
 
 function (obj::ThermoElectroModel)()
   Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂∂Ψem∂FF, ∂∂Ψem∂EF, ∂∂Ψem∂EE = obj.electro()
-  f, df, ddf = law()
+  f, df, ddf = obj.law()
 
   Ψ(F, E, θ)       =  f(θ)*Ψem(F,E)
   ∂Ψ∂F(F, E, θ)    =  f(θ)*∂Ψem∂F(F,E)
