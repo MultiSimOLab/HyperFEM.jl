@@ -9,7 +9,7 @@ struct ThermoElectroModel{E<:Electro} <: ThermoElectro{E}
 end
 
 function (obj::ThermoElectroModel)()
-  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂∂Ψem∂FF, ∂∂Ψem∂EF, ∂∂Ψem∂EE = obj()
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂∂Ψem∂FF, ∂∂Ψem∂EF, ∂∂Ψem∂EE = obj.electro()
   f, df, ddf = law()
 
   Ψ(F, E, θ)       =  f(θ)*Ψem(F,E)
