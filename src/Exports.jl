@@ -58,6 +58,7 @@ end
 @publish PhysicalModels ElectroMechModel
 @publish PhysicalModels ThermoElectroMechModel
 @publish PhysicalModels ThermoMechModel
+@publish PhysicalModels ThermoElectroModel
 @publish PhysicalModels ThermoMech_Bonet
 @publish PhysicalModels ThermoMech_EntropicPolyconvex
 @publish PhysicalModels FlexoElectroModel

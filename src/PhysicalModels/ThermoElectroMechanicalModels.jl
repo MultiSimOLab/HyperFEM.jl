@@ -134,6 +134,10 @@ function ThermoElectroMech_Bonet(thermo::ThermalVolumetric, electro::E, mechano:
   ThermoElectroMech_Bonet{E,M}(thermo,electro,mechano,el,vis,elec)
 end
 
+function ThermoElectroMech_Bonet(thermo::ThermalVolumetric, electro::ThermoElectro{E}, mechano::M; el::ThermalLaw, vis::ThermalLaw) where {E<:Electro,M<:ViscoElastic}
+  ThermoElectroMech_Bonet{E,M}(thermo,electro.electro,mechano,el,vis,electro.law)
+end
+
 function (obj::ThermoElectroMech_Bonet{<:Electro,<:Elasto})()
   Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
   Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano()

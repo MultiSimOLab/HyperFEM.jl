@@ -50,6 +50,7 @@ export ThermalVolumetric
 export ElectroMechModel
 export ThermoElectroMechModel
 export ThermoMechModel
+export ThermoElectroModel
 export ThermoMech_Bonet
 export ThermoMech_EntropicPolyconvex
 export FlexoElectroModel
@@ -119,7 +120,7 @@ abstract type MultiPhysicalModel <: PhysicalModel end
 abstract type ElectroMechano{E,M} <: MultiPhysicalModel end
 abstract type ThermoElectroMechano{T,E,M} <: MultiPhysicalModel end
 abstract type ThermoMechano{T,M} <: MultiPhysicalModel end
-abstract type ThermoElectro{E,M} <: MultiPhysicalModel end
+abstract type ThermoElectro{E} <: MultiPhysicalModel end
 abstract type FlexoElectro{EM} <: MultiPhysicalModel end
 abstract type MagnetoMechano{G,M} <: MultiPhysicalModel end
 
@@ -136,6 +137,8 @@ include("ElectricalModels.jl")
 include("ThermalModels.jl")
 
 include("ThermoMechanicalModels.jl")
+
+include("ThermoElectroModels.jl")
 
 include("ElectroMechanicalModels.jl")
 
