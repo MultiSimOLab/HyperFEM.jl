@@ -134,7 +134,7 @@ function ThermoElectroMech_Bonet(thermo::ThermalVolumetric, electro::E, mechano:
   ThermoElectroMech_Bonet{E,M}(thermo,electro,mechano,el,vis,elec)
 end
 
-function ThermoElectroMech_Bonet(thermo::ThermalVolumetric, electro::ThermoElectro, mechano::M; el::ThermalLaw, vis::ThermalLaw) where {M<:ViscoElastic}
+function ThermoElectroMech_Bonet(thermo::ThermalVolumetric, electro::ThermoElectro{E}, mechano::M; el::ThermalLaw, vis::ThermalLaw) where {E<:Electro,M<:ViscoElastic}
   ThermoElectroMech_Bonet{E,M}(thermo,electro.electro,mechano,el,vis,electro.law)
 end
 
