@@ -787,6 +787,11 @@ end
   @test norm(∂Ψφφ(F(∇u), H0(∇φ), N)) == 2.1878750641250348e-6
 end
 
+@testset "Magnetic_αr_mutability" begin
+  model = Magnetic(μ0=1.2566e-6, αr=4e-2, χe=0.0)
+  model.αr = 1e-2
+  @test isa(model, Any)
+end
 
 @testset "Magnetic3D" begin
   #  Memory estimate: 0 bytes, allocs estimate: 0.

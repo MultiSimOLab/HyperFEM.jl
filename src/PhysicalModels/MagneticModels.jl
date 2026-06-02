@@ -16,7 +16,7 @@ end
 
 function (obj::Magnetic)(Λ::Float64=1.0)
   μ, αr, χe = obj.μ, obj.αr, obj.χe
-  ℋᵣ(N) = αr[] * Λ * N
+  ℋᵣ(N) = αr * Λ * N
   # Energy #
   Ψmm(ℋ₀, N) = (-μ / 2.0) * ((ℋ₀ + ℋᵣ(N)) ⋅ (ℋ₀ + ℋᵣ(N))) * (1 + χe)
   ∂Ψmm_∂φ(ℋ₀, N) = (-μ) * (ℋ₀ + ℋᵣ(N)) * (1 + χe)
