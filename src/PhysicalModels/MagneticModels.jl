@@ -15,8 +15,8 @@ struct Magnetic{T<:Real} <: Magneto
 end
 
 function (obj::Magnetic)(Λ::Float64=1.0)
-  μ, αr, χe = obj.μ, obj.αr, obj.χe
-  ℋᵣ(N) = αr * Λ * N
+  (; μ, χe) = obj
+  ℋᵣ(N) = obj.αr * Λ * N
   # Energy #
   Ψmm(ℋ₀, N) = (-μ / 2.0) * ((ℋ₀ + ℋᵣ(N)) ⋅ (ℋ₀ + ℋᵣ(N))) * (1 + χe)
   ∂Ψmm_∂φ(ℋ₀, N) = (-μ) * (ℋ₀ + ℋᵣ(N)) * (1 + χe)
@@ -33,7 +33,7 @@ struct IdealMagnetic <: Magneto
   end
   function (obj::IdealMagnetic)(Λ::Float64=1.0)
 
-    μ, χe = obj.μ, obj.χe
+    (; μ, χe) = obj
     J(F) = det(F)
     H(F) = J(F) * inv(F)'
 
@@ -79,7 +79,7 @@ struct IdealMagnetic2D <: Magneto
 
   function (obj::IdealMagnetic2D)(Λ::Float64=1.0)
 
-    μ, χe = obj.μ, obj.χe
+    (; μ, χe) = obj
     J(F) = det(F)
     H(F) = J(F) * inv(F)'
 
@@ -125,7 +125,7 @@ struct HardMagnetic <: Magneto
   end
 
   function (obj::HardMagnetic)(Λ::Float64=1.0)
-    μ, χe = obj.μ, obj.χe
+    (; μ, χe) = obj
     J(F) = det(F)
     H(F) = J(F) * inv(F)'
 
@@ -176,7 +176,7 @@ struct HardMagnetic2D{T<:Real} <: Magneto
 
   function (obj::HardMagnetic2D)(Λ::Float64=1.0)
 
-    μ, χe = obj.μ, obj.χe
+    (; μ, χe) = obj
     J(F) = det(F)
     H(F) = J(F) * inv(F)'
 

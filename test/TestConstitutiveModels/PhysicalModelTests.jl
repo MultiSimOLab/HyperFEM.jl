@@ -789,8 +789,16 @@ end
 
 @testset "Magnetic_αr_mutability" begin
   model = Magnetic(μ0=1.2566e-6, αr=4e-2, χe=0.0)
+  @test model.αr == 4e-2
   model.αr = 1e-2
-  @test isa(model, Any)
+  @test model.αr == 1e-2
+  Ψ, _... = model()
+  H0 = VectorValue(rand(3))
+  N  = VectorValue(rand(3))
+  Ψ1 = Ψ(H0, N)
+  model.αr *= 2
+  Ψ2 = Ψ(H0, N)
+  @test Ψ2 < Ψ1
 end
 
 @testset "Magnetic3D" begin
