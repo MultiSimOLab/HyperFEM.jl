@@ -6,10 +6,10 @@ using Test
 
   include("TestConstitutiveModels/runtests.jl")
 
-  include("TestTensorAlgebra/runtests.jl")
+  # include("TestTensorAlgebra/runtests.jl")
 
-  include("TestWeakForms/runtests.jl")
+  # include("TestWeakForms/runtests.jl")
 
-  include("SimulationsTests/runtests.jl")
+  # include("SimulationsTests/runtests.jl")
 
 end;

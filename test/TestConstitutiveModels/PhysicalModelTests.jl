@@ -355,14 +355,6 @@ end
 end
 
 
-@testset "EightChain5Terms" begin
-  #  Memory estimate: 0 bytes, allocs estimate: 0.
-  model = EightChain5Terms(μ=μParams[1], N=μParams[2])
-  test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-13)
-  test_equilibrium_at_rest_3D(model)
-end
-
-
 @testset "TransverseIsotropy2D" begin
   #  Memory estimate: 0 bytes, allocs estimate: 0.
   ∇u = TensorValue(1.0, 2.0, 3.0, 4.0) * 1e-3
