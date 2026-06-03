@@ -631,7 +631,7 @@ struct EightChain <: IsoElastic
   EightChain(; μ::Float64, N::Float64) = new(μ, N)
 end
 
-function (obj::EightChain)()
+function (obj::EightChain)(::Float64=0.0)
   (; μ, N) = obj
   α = (1/2, 1/20, 11/1050, 19/7000, 519/673750)
   β = 1 / N
