@@ -9,7 +9,8 @@ struct Magnetic{T<:Real} <: Magneto
   αr::Base.RefValue{T}
   χe::Real
   
-  function Magnetic(; μ0::Real, αr::T, χe::Real=0.0) where {T<:Real}
+  function Magnetic(; μ0::Real, αr::Real, χe::Real=0.0)
+    T = typeof(αr)
     new{T}(μ0, Ref{T}(αr), χe)
   end
 end
@@ -119,9 +120,10 @@ struct HardMagnetic <: Magneto
   χt::Real
   βmok::Real
   βcoup::Real
+
   function HardMagnetic(; μ0::Real, αr::Real, χe::Real=0.0, χr::Real=8.0, χt::Union{Real,Nothing}=nothing, βmok::Real=0.0, βcoup::Real=0.0)
-    χt_val = isnothing(χt) ? χe : χt
-    new(μ0, αr, χe, χr, χt_val, βmok, βcoup)
+    χt = isnothing(χt) ? χe : χt
+    new(μ0, αr, χe, χr, χt, βmok, βcoup)
   end
 
   function (obj::HardMagnetic)(Λ::Float64=1.0)
@@ -169,9 +171,11 @@ struct HardMagnetic2D{T<:Real} <: Magneto
   χt::Real
   βmok::Real
   βcoup::Real
-  function HardMagnetic2D(; μ0::Real, αr::T, χe::Real=0.0, χr::Real=8.0, χt::Union{Real,Nothing}=nothing, βmok::Real=0.0, βcoup::Real=0.0) where {T<:Real}
-    χt_val = isnothing(χt) ? χe : χt
-    new{T}(μ0, Ref{T}(αr), χe, χr, χt_val, βmok, βcoup)
+
+  function HardMagnetic2D(; μ0::Real, αr::Real, χe::Real=0.0, χr::Real=8.0, χt::Union{Real,Nothing}=nothing, βmok::Real=0.0, βcoup::Real=0.0)
+    χt = isnothing(χt) ? χe : χt
+    T = typeof(αr)
+    new{T}(μ0, Ref{T}(αr), χe, χr, χt, βmok, βcoup)
   end
 
   function (obj::HardMagnetic2D)(Λ::Float64=1.0)
