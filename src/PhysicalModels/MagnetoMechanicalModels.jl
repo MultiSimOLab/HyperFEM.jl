@@ -69,7 +69,7 @@ function _getCoupling(mag::HardMagnetic, ::Mechano, Λ::Float64=1.0)
   # delay crack propagation, Journal of the Mechanics and Physics of Solids,
 
 
-  μ, αr, χr, χt, βcoup, βmok = mag.μ, mag.αr, mag.χr, mag.χt, mag.βcoup, mag.βmok
+  (; μ, χr, χt, βcoup, βmok) = mag  # αr is a reference. Accessing it will dereference the internal value.
   J(F) = det(F)
   H(F) = det(F) * inv(F)'
  
@@ -85,7 +85,7 @@ function _getCoupling(mag::HardMagnetic, ::Mechano, Λ::Float64=1.0)
   Hℋ₀(F, ℋ₀) = H(F) * ℋ₀
   Hℋ₀Hℋ₀(F, ℋ₀) = Hℋ₀(F, ℋ₀) ⋅ Hℋ₀(F, ℋ₀)
 
-  ℋᵣ(N) = αr * Λ* N
+  ℋᵣ(N) = mag.αr * Λ * N
   Fℋᵣ(F, N) = F * ℋᵣ(N)
   Ψcoup(F, N) = (μ * J(F)) * (Fℋᵣ(F, N) ⋅ Fℋᵣ(F, N) - ℋᵣ(N) ⋅ ℋᵣ(N))
   ∂Ψcoup_∂F(F, N) = 2 * (μ * J(F)) * (Fℋᵣ(F, N) ⊗ ℋᵣ(N))
@@ -150,7 +150,7 @@ function _getCoupling(mag::HardMagnetic2D, ::Mechano, Λ::Float64=1.0)
   # Hard magnetics in ultra-soft magnetorheological elastomers enhance fracture toughness and 
   # delay crack propagation, Journal of the Mechanics and Physics of Solids,
 
-  μ, αr, χr, χt, βcoup, βmok = mag.μ, mag.αr, mag.χr, mag.χt, mag.βcoup, mag.βmok
+  (; μ, χr, χt, βcoup, βmok) = mag  # αr is a reference. Accessing it will dereference the internal value.
   J(F) = det(F)
   H(F) = det(F) * inv(F)'
  
@@ -164,7 +164,7 @@ function _getCoupling(mag::HardMagnetic2D, ::Mechano, Λ::Float64=1.0)
   #-------------------------------------------------------------------------------------
   Hℋ₀(F, ℋ₀) = H(F) * ℋ₀
   Hℋ₀Hℋ₀(F, ℋ₀) = Hℋ₀(F, ℋ₀) ⋅ Hℋ₀(F, ℋ₀)
-  ℋᵣ(N) = αr[] * Λ* N
+  ℋᵣ(N) = mag.αr * Λ * N
   Fℋᵣ(F, N) = F * ℋᵣ(N)
   Ψcoup(F, N) = (μ * J(F)) * (Fℋᵣ(F, N) ⋅ Fℋᵣ(F, N) - ℋᵣ(N) ⋅ ℋᵣ(N))
   ∂Ψcoup_∂F(F, N) = 2 * (μ * J(F)) * (Fℋᵣ(F, N) ⊗ ℋᵣ(N))

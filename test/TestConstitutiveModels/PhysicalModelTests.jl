@@ -642,6 +642,20 @@ end
 end
 
 
+@testset "Magnetic_αr_mutability" begin
+  model = Magnetic(μ0=1.2566e-6, αr=4e-2, χe=0.0)
+  @test model.αr == 4e-2  # We don't need to access the reference lik αr[] = ...
+  model.αr = 1e-2
+  @test model.αr == 1e-2  # In practice, it is working like a mutable field
+  Ψ, _... = model()
+  H0 = VectorValue(rand(3))
+  N  = VectorValue(rand(3))
+  Ψ1 = Ψ(H0, N)
+  model.αr *= 2
+  Ψ2 = Ψ(H0, N)
+  @test Ψ2 < Ψ1  # The energy is accessing the αr as a reference
+end
+
 
 @testset "IdealMagnetic2D" begin
   #  Memory estimate: 0 bytes, allocs estimate: 0.
