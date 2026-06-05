@@ -636,11 +636,12 @@ function (obj::EightChain)(::Float64=0.0)
   α = (1/2, 1/20, 11/1050, 19/7000, 519/673750)
   β = 1 / N
   C1 = μ / 2 / sum(i*αi*(3*β)^(i-1) for (i, αi) in enumerate(α))
-  Ψ(I) = C1 * sum(αi*β^(i-1)*(I^i - 3^i) for (i, αi) in enumerate(α))
-  ∂Ψ∂I(I) = C1 * sum(i*αi*β^(i-1)*I^(i-1) for (i, αi) in enumerate(α))
-  ∂∂Ψ∂II(I) = C1 * sum(i*(i-1)*α[i]*β^(i-1)*I^(i-2) for i in 2:length(α))
-  ∂Ψ∂F(F) = ∂Ψ∂I(I1iso(F)) * ∂I1iso_∂Ftotal(F)
-  ∂∂Ψ∂FF(F) = ∂∂Ψ∂II(I1iso(F)) * ∂I1iso_∂Ftotal(F) ⊗ ∂I1iso_∂Ftotal(F) + ∂Ψ∂I(I1iso(F)) * ∂I1iso_∂F∂Ftotal(F)
+  W(I) = C1 * sum(αi*β^(i-1)*(I^i - 3^i) for (i, αi) in enumerate(α))
+  ∂W∂I(I) = C1 * sum(i*αi*β^(i-1)*I^(i-1) for (i, αi) in enumerate(α))
+  ∂∂W∂II(I) = C1 * sum(i*(i-1)*α[i]*β^(i-1)*I^(i-2) for i in 2:length(α))
+  Ψ(F) = W(I1iso(F))
+  ∂Ψ∂F(F) = ∂W∂I(I1iso(F)) * ∂I1iso_∂Ftotal(F)
+  ∂∂Ψ∂FF(F) = ∂∂W∂II(I1iso(F)) * ∂I1iso_∂Ftotal(F) ⊗ ∂I1iso_∂Ftotal(F) + ∂W∂I(I1iso(F)) * ∂I1iso_∂F∂Ftotal(F)
   return (Ψ, ∂Ψ∂F, ∂∂Ψ∂FF)
 end
 
