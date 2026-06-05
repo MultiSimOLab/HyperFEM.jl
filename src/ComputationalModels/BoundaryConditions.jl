@@ -12,10 +12,6 @@ end
 
 getindex(bc::MultiFieldBC, i) = bc.BoundaryCondition[i]
 
-include("EvolutionFunctions.jl")
-include("CartesianTags.jl")
-include("FaceLabeling.jl")
-
 
 struct MultiFieldTC{A} <: TimedependentCondition
     vh::A # could be a multifield or single field

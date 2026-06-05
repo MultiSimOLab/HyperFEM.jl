@@ -2,6 +2,24 @@
 "Shortcuts for the tags of cartesian discrete models."
 module CartesianTags
 
+export face0YZ, face1YZ, faceX0Z, faceX1Z, faceXY0, faceXY1
+
+export edgeX00, edgeX10, edgeX01, edgeX11
+export edge0Y0, edge1Y0, edge0Y1, edge1Y1
+export edge00Z, edge10Z, edge01Z, edge11Z
+
+export corner000, corner100, corner010, corner110
+export corner001, corner101, corner011, corner111
+
+export edgeX00⁺, edgeX10⁺, edgeX01⁺, edgeX11⁺
+export edge0Y0⁺, edge1Y0⁺, edge0Y1⁺, edge1Y1⁺
+export edge00Z⁺, edge10Z⁺, edge01Z⁺, edge11Z⁺
+
+export face0YZ⁺, face1YZ⁺, faceX0Z⁺, faceX1Z⁺, faceXY0⁺, faceXY1⁺
+
+# Deprecated tags
+export faceX0, faceX1, faceY0, faceY1, faceZ0, faceZ1
+
 # --- Face tags ---
 
 "Tags indicating the face at plane X0."
