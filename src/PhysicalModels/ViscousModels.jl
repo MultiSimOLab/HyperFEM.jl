@@ -26,9 +26,18 @@ function update_time_step!(obj::ViscousIncompressible, Δt::Float64)
   obj.Δt[] = Δt
 end
 
-function initialize_state(::ViscousIncompressible, points::Measure)
-  v = VectorValue(1.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0,0.0)
+function Gridap.CellData.CellState(::ViscousIncompressible, F0::TensorValue, points::Measure)
+  v = VectorValue(F0..., 0.0)
   CellState(v, points)
+end
+
+function Gridap.CellData.CellState(obj::ViscousIncompressible, points::Measure)
+  CellState(obj, I3, points)
+end
+
+function initialize_state(obj::ViscousIncompressible, points::Measure)
+  @warn "The function 'initialize_state' is deprecated, use 'CellState' instead."
+  CellState(obj, points)
 end
 
 function update_state!(obj::ViscousIncompressible, state, F, Fn)
@@ -79,8 +88,13 @@ function update_time_step!(obj::NVisco, Δt::Float64)
   Δt
 end
 
+function Gridap.CellData.CellState(obj::NVisco, args...)
+  map(b -> CellState(b, args...), obj)
+end
+
 function initialize_state(obj::NVisco, points::Measure)
-  map(b -> initialize_state(b, points), obj)
+  @warn "The function 'initialize_state' is deprecated, use 'CellState' instead."
+  map(b -> CellState(b, points), obj)
 end
 
 function update_state!(obj::NVisco, states, F, Fn)
@@ -125,8 +139,13 @@ function update_time_step!(obj::GeneralizedMaxwell, Δt::Float64)
   update_time_step!(obj.branches, Δt)
 end
 
+function Gridap.CellData.CellState(obj::GeneralizedMaxwell, args...)
+  CellState(obj.branches, args...)
+end
+
 function initialize_state(obj::GeneralizedMaxwell, points::Measure)
-  initialize_state(obj.branches, points)
+  @warn "The function 'initialize_state' is deprecated, use 'CellState' instead."
+  CellState(obj.branches, points)
 end
 
 function update_state!(obj::GeneralizedMaxwell{<:IsoElastic}, states, F, Fn)

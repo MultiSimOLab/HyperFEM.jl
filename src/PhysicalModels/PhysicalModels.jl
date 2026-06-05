@@ -3,7 +3,6 @@ module PhysicalModels
 using Gridap
 using Gridap.CellData
 using Gridap.Helpers
-using UnPack
 using ForwardDiff
 using LinearAlgebra
 using StaticArrays
@@ -47,9 +46,11 @@ export HardMagnetic
 export HardMagnetic2D
 export ThermalModel
 export ThermalVolumetric
+export ThermalDeviatoric
 export ElectroMechModel
 export ThermoElectroMechModel
 export ThermoMechModel
+export ThermoElectroModel
 export ThermoMech_Bonet
 export ThermoMech_EntropicPolyconvex
 export FlexoElectroModel
@@ -81,8 +82,6 @@ export EnergyInterpolationScheme
 export SecondPiola
 export Dissipation
 
-export DerivativeStrategy
-
 export initialize_state
 export update_time_step!
 
@@ -96,8 +95,6 @@ export getIsoInvariants
 
 export HessianRegularization
 export Hessian∇JRegularization
-
-struct DerivativeStrategy{Kind} end
 
 abstract type PhysicalModel end
 abstract type Mechano <: PhysicalModel end
@@ -119,7 +116,7 @@ abstract type MultiPhysicalModel <: PhysicalModel end
 abstract type ElectroMechano{E,M} <: MultiPhysicalModel end
 abstract type ThermoElectroMechano{T,E,M} <: MultiPhysicalModel end
 abstract type ThermoMechano{T,M} <: MultiPhysicalModel end
-abstract type ThermoElectro{E,M} <: MultiPhysicalModel end
+abstract type ThermoElectro{E} <: MultiPhysicalModel end
 abstract type FlexoElectro{EM} <: MultiPhysicalModel end
 abstract type MagnetoMechano{G,M} <: MultiPhysicalModel end
 
@@ -136,6 +133,8 @@ include("ElectricalModels.jl")
 include("ThermalModels.jl")
 
 include("ThermoMechanicalModels.jl")
+
+include("ThermoElectroModels.jl")
 
 include("ElectroMechanicalModels.jl")
 
@@ -155,13 +154,17 @@ Base.broadcastable(m::PhysicalModel) = Ref(m) # Allows to use the @. syntax for 
 """
 Initialize the state variables for the given constitutive model and discretization.
 """
+function Gridap.CellData.CellState(::PhysicalModel, args...)
+  return nothing
+end
+
 function initialize_state(::PhysicalModel, points::Measure)
   return nothing
 end
 
 
 """
-Update the state variables. The state variables must be initialized using the function 'initialize_state'.
+Update the state variables. The state variables must be initialized using the function 'CellState' with the constitutive model.
 """
 function update_state!(::PhysicalModel, vars...)
 end

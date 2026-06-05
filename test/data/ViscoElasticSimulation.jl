@@ -66,7 +66,7 @@ function visco_elastic_simulation(;t_end=15, writevtk=true, verbose=true)
 
   uh = FEFunction(Uu, zero_free_values(Uu))
   unh = FEFunction(Uun, zero_free_values(Uun))
-  state_vars = initialize_state(cons_model, dΩ)
+  state_vars = CellState(cons_model, dΩ)
   F,_,_ = get_Kinematics(k)
   Fnh = F∘∇(unh)'
 

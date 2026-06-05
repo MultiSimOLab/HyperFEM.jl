@@ -1,6 +1,11 @@
 
+function Gridap.CellData.CellState(obj::ThermoElectroMechano, args...)
+  CellState(obj.mechano, args...)
+end
+
 function initialize_state(obj::ThermoElectroMechano, points::Measure)
-  initialize_state(obj.mechano, points)
+  @warn "The function 'initialize_state' is deprecated, use 'CellState' instead."
+  CellState(obj.mechano, points)
 end
 
 function update_state!(obj::ThermoElectroMechano, state, F, E, θ, args...)
@@ -31,7 +36,7 @@ struct ThermoElectroMechModel{T<:Thermo,E<:Electro,M<:Mechano} <: ThermoElectroM
   function (obj::ThermoElectroMechModel)(Λ::Float64=1.0)
     Ψt, ∂Ψt_θ, ∂Ψt_θθ = obj.thermo(Λ)
     Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano(Λ)
-    Ψem, ∂Ψem_u, ∂Ψem_φ, ∂Ψem_uu, ∂Ψem_φu, ∂Ψem_φφ = _getCoupling(obj.electro, obj.mechano, Λ)
+    Ψem, ∂Ψem_u, ∂Ψem_φ, ∂Ψem_uu, ∂Ψem_φu, ∂Ψem_φφ = obj.electro()
     Ψtm, ∂Ψtm_u, ∂Ψtm_θ, ∂Ψtm_uu, ∂Ψtm_uθ, ∂Ψtm_θθ = _getCoupling(obj.thermo, obj.mechano, Λ)
     f(δθ) = (obj.fθ(δθ)::Float64)
     df(δθ) = (obj.dfdθ(δθ)::Float64)
@@ -73,7 +78,7 @@ struct ThermoElectroMech_Govindjee{T<:Thermo,E<:Electro,M<:Mechano} <: ThermoEle
 
   function (obj::ThermoElectroMech_Govindjee)(Λ::Float64=1.0)
     Ψm, _, _ = obj.mechano(Λ)
-    Ψem, _, _, _, _, _ = _getCoupling(obj.electro, obj.mechano, Λ)
+    Ψem, _, _, _, _, _ = obj.electro()
     f(δθ) = obj.fθ(δθ)
     df(δθ) = obj.dfdθ(δθ)
     g(δθ) = obj.gθ(δθ)
@@ -134,10 +139,14 @@ function ThermoElectroMech_Bonet(thermo::ThermalVolumetric, electro::E, mechano:
   ThermoElectroMech_Bonet{E,M}(thermo,electro,mechano,el,vis,elec)
 end
 
+function ThermoElectroMech_Bonet(thermo::ThermalVolumetric, electro::ThermoElectro{E}, mechano::M; el::ThermalLaw, vis::ThermalLaw) where {E<:Electro,M<:ViscoElastic}
+  ThermoElectroMech_Bonet{E,M}(thermo,electro.electro,mechano,el,vis,electro.law)
+end
+
 function (obj::ThermoElectroMech_Bonet{<:Electro,<:Elasto})()
   Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
   Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano()
-  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂∂Ψem∂EE = _getCoupling(obj.electro, obj.mechano)
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂∂Ψem∂EE = obj.electro()
   fe, dfe, ddfe = obj.lawel()
   felec, dfelec, ddfelec = obj.lawelec()
 
@@ -159,7 +168,7 @@ function (obj::ThermoElectroMech_Bonet{<:Electro,<:ViscoElastic})()
   Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
   Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm()
   Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches()
-  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂∂Ψem∂EE = _getCoupling(obj.electro, obj.mechano)
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂∂Ψem∂EE = obj.electro()
   fe, dfe, ddfe = obj.lawel()
   fv, dfv, ddfv = obj.lawvis()
   felec, dfelec, ddfelec = obj.lawelec()

@@ -24,7 +24,6 @@ end
 @publish TensorAlgebra Tensorize
 
 
-@publish PhysicalModels DerivativeStrategy
 @publish PhysicalModels LinearElasticity3D
 @publish PhysicalModels LinearElasticity2D
 @publish PhysicalModels Yeoh3D
@@ -49,6 +48,7 @@ end
 @publish PhysicalModels TransverseIsotropy2D
 @publish PhysicalModels ThermalModel
 @publish PhysicalModels ThermalVolumetric
+@publish PhysicalModels ThermalDeviatoric
 @publish PhysicalModels IdealDielectric
 @publish PhysicalModels Magnetic
 @publish PhysicalModels IdealMagnetic
@@ -58,6 +58,7 @@ end
 @publish PhysicalModels ElectroMechModel
 @publish PhysicalModels ThermoElectroMechModel
 @publish PhysicalModels ThermoMechModel
+@publish PhysicalModels ThermoElectroModel
 @publish PhysicalModels ThermoMech_Bonet
 @publish PhysicalModels ThermoMech_EntropicPolyconvex
 @publish PhysicalModels FlexoElectroModel
@@ -94,10 +95,11 @@ end
 @publish PhysicalModels getIsoInvariants
 
 @publish PhysicalModels ThermalLaw
+@publish PhysicalModels ConstantEnergyLaw
+@publish PhysicalModels ConstantCvLaw
 @publish PhysicalModels EntropicElasticityLaw
 @publish PhysicalModels NonlinearMeltingLaw
 @publish PhysicalModels NonlinearSofteningLaw
-@publish PhysicalModels TrigonometricLaw
 @publish PhysicalModels PolynomialLaw
 
 @publish PhysicalModels SecondPiola

@@ -80,7 +80,7 @@ function staggered_visco_electric_simulation(; t_end=2, writevtk=true, verbose=t
 
   Fh  = F∘∇(uh⁺)'
   Fh⁻ = F∘∇(uh⁻)'
-  A   = initialize_state(cons_model, dΩ)
+  A   = CellState(cons_model, dΩ)
 
   # Electrical staggered step
   res_elec(Λ) = (φ, vφ) -> residual(cons_model, Electro, (ku, ke), (uh⁺, φ), vφ, dΩ, 0.0, Fh⁻, A...)

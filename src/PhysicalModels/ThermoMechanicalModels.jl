@@ -3,8 +3,13 @@
 # Common functions
 # ===================
 
+function Gridap.CellData.CellState(obj::ThermoMechano, args...)
+  CellState(obj.mechano, args...)
+end
+
 function initialize_state(obj::TM, points::Measure) where {TM<:ThermoMechano}
-  initialize_state(obj.mechano, points)
+  @warn "The function 'initialize_state' is deprecated, use 'CellState' instead."
+  CellState(obj.mechano, points)
 end
 
 function update_state!(obj::TM, state, F, θ, args...) where {TM<:ThermoMechano}
@@ -41,7 +46,7 @@ struct ThermalVolumetric{T<:Thermo} <: ThermoMechano{T,Volumetric}
 end
 
 function (obj::ThermalVolumetric)()
-  @unpack Cv, θr, α, κ = obj.thermo
+  (; Cv, θr, α, κ) = obj.thermo
   cv0 = Cv  # FIXME
   U, ∂U∂F, ∂∂U∂FF = obj.mechano()
   κr = tangent(obj.mechano)
@@ -60,6 +65,28 @@ function (obj::ThermalVolumetric)()
   ∂Ψ∂θ(F,θ)   =           -ηr(F)*ζr*df(θ)
   ∂∂Ψ∂θθ(F,θ) =           -ηr(F)*ζr*ddf(θ)
   ∂∂Ψ∂Fθ(F,θ) =           -∂ηr∂F(F)*ζr*df(θ)
+  return (Ψ, ∂Ψ∂F, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂θθ, ∂∂Ψ∂Fθ)
+end
+
+
+struct ThermalDeviatoric{M<:Mechano} <: ThermoMechano{Nothing,M}
+  mechano::M
+  law::ThermalLaw
+
+  function ThermalDeviatoric(mechano::M, law::ThermalLaw) where {M<:Mechano}
+    new{M}(mechano, law)
+  end
+end
+
+function (obj::ThermalDeviatoric{<:IsoElastic})()
+  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano()
+  f, df, ddf = obj.law()
+  Ψ(F,θ)      = Ψm(F) * f(θ)
+  ∂Ψ∂F(F,θ)   = ∂Ψm∂F(F) * f(θ)
+  ∂∂Ψ∂FF(F,θ) = ∂∂Ψm∂FF(F) * f(θ)
+  ∂Ψ∂θ(F,θ)   = Ψm(F) * df(θ)
+  ∂∂Ψ∂θθ(F,θ) = Ψm(F) * ddf(θ)
+  ∂∂Ψ∂Fθ(F,θ) = ∂Ψm∂F(F) * df(θ)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂θθ, ∂∂Ψ∂Fθ)
 end
 

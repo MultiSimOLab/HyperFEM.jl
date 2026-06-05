@@ -1,11 +1,26 @@
 using Gridap.TensorValues
 using HyperFEM.PhysicalModels
 using HyperFEM.TensorAlgebra
+using ForwardDiff
 
 
 const ∇φ = VectorValue(1.0:3.0...)
 const ∇u = TensorValue(1.0:9.0...) * 1e-3
 const ∇un = TensorValue(1.0:9.0...) * 5e-4
+
+
+@testset "IdealDielectric" begin
+  model = IdealDielectric(ε=4.0*8.85e-12)
+  Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE = model()
+  E0 = VectorValue(rand(3)) * 6000 / 0.001
+  F1 = I3 + 0.1*TensorValue(rand(9)...)
+  @test get_array(∂Ψ∂F(F1,E0))  ≈ ForwardDiff.gradient(Fi -> Ψ(Fi, get_array(E0)), get_array(F1))
+  @test get_array(∂Ψ∂E(F1,E0))  ≈ ForwardDiff.gradient(Ei -> Ψ(get_array(F1), Ei), get_array(E0))
+  @test get_array(∂Ψ∂FF(F1,E0)) ≈ ForwardDiff.jacobian(Fi -> ∂Ψ∂F(Fi, get_array(E0)), get_array(F1))
+  @test get_array(∂Ψ∂EF(F1,E0)) ≈ ForwardDiff.jacobian(Fi -> ∂Ψ∂E(Fi, get_array(E0)), get_array(F1))
+  @test get_array(∂Ψ∂EF(F1,E0)) ≈ ForwardDiff.jacobian(Ei -> ∂Ψ∂F(get_array(F1), Ei), get_array(E0))'
+  @test get_array(∂Ψ∂EE(F1,E0)) ≈ ForwardDiff.jacobian(Ei -> ∂Ψ∂E(get_array(F1), Ei), get_array(E0))
+end
 
 
 @testset "Electro+4*HGO_1Fiber" begin
