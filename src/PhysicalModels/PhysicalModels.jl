@@ -34,7 +34,6 @@ export NonlinearNeoHookean_CV
 export NonlinearMooneyRivlin_CV
 export NonlinearIncompressibleMooneyRivlin2D_CV
 export EightChain
-export EightChain5Terms
 export TransverseIsotropy3D
 export TransverseIsotropy2D
 export LinearElasticity3D

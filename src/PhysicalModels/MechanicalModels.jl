@@ -614,100 +614,36 @@ struct NonlinearIncompressibleMooneyRivlin2D_CV <: IsoElastic
 end
 
 
+I1iso(F) = det(F)^(-2 / 3) * F ⊙ F
+∂I1iso_∂F(F) = 2 * det(F)^(-2 / 3) * F
+∂I1iso_∂J(F) = -(2 / 3) * det(F)^(-5 / 3) * F ⊙ F
+∂I1iso_∂F∂F(F) = 2 * det(F)^(-2 / 3) * I9
+∂I1iso_∂J∂J(F) = (10 / 9) * det(F)^(-8 / 3) * F ⊙ F
+∂I1iso_∂F∂J(F) = -(4 / 3) * det(F)^(-5 / 3) * F
+
+∂I1iso_∂Ftotal(F) = ∂I1iso_∂F(F) + ∂I1iso_∂J(F)*cof(F)
+∂I1iso_∂F∂Ftotal(F) = ∂I1iso_∂F∂F(F) + ∂I1iso_∂F∂J(F) ⊗ cof(F) + cof(F) ⊗ ∂I1iso_∂F∂J(F) + ∂I1iso_∂J∂J(F)*cof(F) ⊗ cof(F) + ∂I1iso_∂J(F)*×ᵢ⁴(F)
+
+
 struct EightChain <: IsoElastic
   μ::Float64
   N::Float64
-  function EightChain(; μ::Float64, N::Float64)
-    new(μ, N)
-  end
-
-  function (obj::EightChain)(Λ::Float64=1.0)
-    μ, N = obj.μ, obj.N
-    J(F) = det(F)
-    H(F) = det(F) * inv(F)'
-    Ψ(F) = begin
-      C = F' * F
-      C_iso = J(F)^(-2 / 3) * C
-      β = sqrt(tr(C_iso) / 3 / N)
-      L = β * (3.0 - β^2) / (1.0 - β^2)
-      β0 = 1 / sqrt(N)
-      L0 = β0 * (3.0 - β0^2) / (1.0 - β0^2)
-      μ * N * (β * L + log(L / sinh(L)) - β0*L0 - log(L0 / sinh(L0)))
-    end
-
-    ∂Ψ∂F(F) = begin
-      C = F' * F
-      C_iso = J(F)^(-2 / 3) * C
-      β = sqrt(tr(C_iso) / 3 / N)
-      L = β * (3.0 - β^2) / (1.0 - β^2)
-      ∂β∂I1_ = 0.5 / sqrt(tr(C_iso) * 3 * N)
-      ∂L∂I1_ = ((3 * (1 - β^2)^2 + 2 * β * (3 * β - β^3)) / (1 - β^2)^2) * ∂β∂I1_
-      n = (∂L∂I1_ * sinh(L) - L * cosh(L) * ∂L∂I1_)
-      d = (L * sinh(L))
-      ∂Ψ∂I1_ = μ * N * (∂β∂I1_ * L + β * ∂L∂I1_ + n / d)
-      ∂I1_∂F = 2 * J(F)^(-2 / 3) * F
-      ∂I1_∂J = -(2 / 3) * J(F)^(-5 / 3) * tr(C)
-      ∂Ψ∂I1_ * (∂I1_∂F + ∂I1_∂J * H(F))
-    end
-
-    ∂Ψ∂FF(F) = begin
-      H_ = H(F)
-      C = F' * F
-      C_iso = det(F)^(-2 / 3) * C
-      β = sqrt(tr(C_iso) / 3 / N)
-      L = β * (3.0 - β^2) / (1.0 - β^2)
-      ∂β∂I1_ = 0.5 / sqrt(tr(C_iso) * 3 * N)
-      ∂L∂I1_ = ((3 * (1 - β^2)^2 + 2 * β * (3 * β - β^3)) / (1 - β^2)^2) * ∂β∂I1_
-      ∂β∂I1I1_ = -(3 * N) / (4 * (3 * N * tr(C_iso))^(3 / 2))
-      ∂L∂I1I1_ = ((4 * β * (β^2 + 3)) / (1 - β^2)^3) * ∂β∂I1_^2 + ((3 * (1 - β^2)^2 + 2 * β * (3 * β - β^3)) / (1 - β^2)^2) * ∂β∂I1I1_
-      ∂I1_∂F = 2 * det(F)^(-2 / 3) * F
-      ∂I1_∂J = -(2 / 3) * det(F)^(-5 / 3) * tr(C)
-      ∂I1_∂F∂F = 2 * det(F)^(-2 / 3) * I9
-      ∂I1_∂J∂J = (10 / 9) * det(F)^(-8 / 3) * tr(C)
-      ∂I1_∂F∂J = -(4 / 3) * det(F)^(-5 / 3) * F
-      n = (∂L∂I1_ * sinh(L) - L * cosh(L) * ∂L∂I1_)
-      d = (L * sinh(L))
-      ∂n∂I1_ = ∂L∂I1I1_ * sinh(L) + ∂L∂I1_ * ∂L∂I1_ * cosh(L) - ∂L∂I1_^2 * cosh(L) - L * sinh(L) * ∂L∂I1_^2 - L * cosh(L) * ∂L∂I1I1_
-      ∂d∂I1_ = ∂L∂I1_ * sinh(L) + L * ∂L∂I1_ * cosh(L)
-      ∂Ψ∂I1_ = μ * N * (∂β∂I1_ * L + β * ∂L∂I1_ + n / d)
-      ∂Ψ∂I1I1_ = μ * N * (∂β∂I1I1_ * L + 2 * ∂β∂I1_ * ∂L∂I1_ + β * ∂L∂I1I1_ + (∂n∂I1_ * d - n * ∂d∂I1_) / d^2)
-      ∂Ψ∂I1I1_ * ((∂I1_∂F + ∂I1_∂J * H_) ⊗ (∂I1_∂F + ∂I1_∂J * H_)) + ∂Ψ∂I1_ * (∂I1_∂F∂F + ∂I1_∂F∂J ⊗ H_ + H_ ⊗ ∂I1_∂F∂J + ∂I1_∂J∂J * (H_ ⊗ H_) + I9 × (∂I1_∂J * F))
-    end
-    return (Ψ, ∂Ψ∂F, ∂Ψ∂FF)
-  end
+  EightChain(; μ::Float64, N::Float64) = new(μ, N)
 end
 
-
-struct EightChain5Terms <: IsoElastic
-  μ::Float64
-  N::Float64
-  EightChain5Terms(; μ::Float64, N::Float64) = new(μ, N)
-end
-
-function (obj::EightChain5Terms)()
+function (obj::EightChain)(::Float64=0.0)
   (; μ, N) = obj
   α = (1/2, 1/20, 11/1050, 19/7000, 519/673750)
   β = 1 / N
-  ∂W∂I(I) = sum(i*αi*β^(i-1)*I^(i-1) for (i, αi) in enumerate(α))
-  ∂∂W∂II(I) = sum(i*(i-1)*α[i]*β^(i-1)*I^(i-2) for i in 2:length(α))
-  C1 = μ / 2 / ∂W∂I(3)
-  Ψ(F) = begin
-    I1F = F⊙F
-    C1 * sum(αi*β^(i-1)*(I1F^i - 3^i) for (i, αi) in enumerate(α))
-  end
-  ∂Ψ∂I(I) = C1 * ∂W∂I(I)
-  ∂Ψ∂F(F) = begin
-    I1F = F⊙F
-    ∂Ψ∂I(I1F) * 2F
-  end
-  ∂∂Ψ∂II(I) = C1 * ∂∂W∂II(I)
-  ∂∂Ψ∂FF(F) = begin
-    I1F = F⊙F
-    4*∂∂Ψ∂II(I1F)*(F⊗F) + 2*∂Ψ∂I(I1F)*δᵢₖδⱼₗ3D
-  end
+  C1 = μ / 2 / sum(i*αi*(3*β)^(i-1) for (i, αi) in enumerate(α))
+  W(I) = C1 * sum(αi*β^(i-1)*(I^i - 3^i) for (i, αi) in enumerate(α))
+  ∂W∂I(I) = C1 * sum(i*αi*β^(i-1)*I^(i-1) for (i, αi) in enumerate(α))
+  ∂∂W∂II(I) = C1 * sum(i*(i-1)*α[i]*β^(i-1)*I^(i-2) for i in 2:length(α))
+  Ψ(F) = W(I1iso(F))
+  ∂Ψ∂F(F) = ∂W∂I(I1iso(F)) * ∂I1iso_∂Ftotal(F)
+  ∂∂Ψ∂FF(F) = ∂∂W∂II(I1iso(F)) * ∂I1iso_∂Ftotal(F) ⊗ ∂I1iso_∂Ftotal(F) + ∂W∂I(I1iso(F)) * ∂I1iso_∂F∂Ftotal(F)
   return (Ψ, ∂Ψ∂F, ∂∂Ψ∂FF)
 end
-
 
 
 struct TransverseIsotropy3D <: AnisoElastic
