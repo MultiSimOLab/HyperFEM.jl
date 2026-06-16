@@ -138,7 +138,7 @@ struct ThermoMech_Bonet{M<:Mechano, LE<:ThermalLaw, LV<:ThermalLaw} <: ThermoMec
   end
 end
 
-function (obj::ThermoMech_Bonet{<:Elasto})()
+function (obj::ThermoMech_Bonet{<:IsoElastic})()
   Ψv, ∂Ψv∂F, ∂Ψv∂θ, ∂∂Ψv∂FF, ∂∂Ψv∂θθ, ∂∂Ψv∂Fθ = obj.thermo()
   Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano()
   f, ∂f, ∂∂f = obj.lawel()
@@ -151,7 +151,20 @@ function (obj::ThermoMech_Bonet{<:Elasto})()
   return (Ψ, ∂Ψ∂F, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂θθ, ∂∂Ψ∂Fθ)
 end
 
-function (obj::ThermoMech_Bonet{<:ViscoElastic})()
+function (obj::ThermoMech_Bonet{<:AnisoElastic})()
+  Ψv, ∂Ψv∂F, ∂Ψv∂θ, ∂∂Ψv∂FF, ∂∂Ψv∂θθ, ∂∂Ψv∂Fθ = obj.thermo()
+  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano()
+  f, ∂f, ∂∂f = obj.lawel()
+  Ψ(F, θ, N)       =  Ψv(F,θ)      + f(θ)*Ψm(F, N)
+  ∂Ψ∂F(F, θ, N)    =  ∂Ψv∂F(F,θ)   + f(θ)*∂Ψm∂F(F, N)
+  ∂Ψ∂θ(F, θ, N)    =  ∂Ψv∂θ(F,θ)   + ∂f(θ)*Ψm(F, N)
+  ∂∂Ψ∂FF(F, θ, N)  =  ∂∂Ψv∂FF(F,θ) + f(θ)*∂∂Ψm∂FF(F, N)
+  ∂∂Ψ∂θθ(F, θ, N)  =  ∂∂Ψv∂θθ(F,θ) + ∂∂f(θ)*Ψm(F, N)
+  ∂∂Ψ∂Fθ(F, θ, N)  =  ∂∂Ψv∂Fθ(F,θ) + ∂f(θ)*∂Ψm∂F(F, N)
+  return (Ψ, ∂Ψ∂F, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂θθ, ∂∂Ψ∂Fθ)
+end
+
+function (obj::ThermoMech_Bonet{<:ViscoElastic{<:IsoElastic}})()
   Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
   Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm()
   Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches()
@@ -163,6 +176,21 @@ function (obj::ThermoMech_Bonet{<:ViscoElastic})()
   ∂∂Ψ∂FF(F, θ, X...)  =  ∂∂Ψt∂FF(F, θ) + fe(θ)*∂∂Ψe∂FF(F) + fv(θ)*∂∂Ψv∂FF(F, X...)
   ∂∂Ψ∂θθ(F, θ, X...)  =  ∂∂Ψt∂θθ(F, θ) + ∂∂fe(θ)*Ψe(F)    + ∂∂fv(θ)*Ψv(F, X...)
   ∂∂Ψ∂Fθ(F, θ, X...)  =  ∂∂Ψt∂Fθ(F, θ) + ∂fe(θ)*∂Ψe∂F(F)  + ∂fv(θ)*∂Ψv∂F(F, X...)
+  return (Ψ, ∂Ψ∂F, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂θθ, ∂∂Ψ∂Fθ)
+end
+
+function (obj::ThermoMech_Bonet{<:ViscoElastic{<:AnisoElastic}})()
+  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
+  Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm()
+  Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches()
+  fe, ∂fe, ∂∂fe = obj.lawel()
+  fv, ∂fv, ∂∂fv = obj.lawvis()
+  Ψ(F, θ, N, X...)       =  Ψt(F, θ)      + fe(θ)*Ψe(F, N)      + fv(θ)*Ψv(F, X...)
+  ∂Ψ∂F(F, θ, N, X...)    =  ∂Ψt∂F(F, θ)   + fe(θ)*∂Ψe∂F(F, N)   + fv(θ)*∂Ψv∂F(F, X...)
+  ∂Ψ∂θ(F, θ, N, X...)    =  ∂Ψt∂θ(F, θ)   + ∂fe(θ)*Ψe(F, N)     + ∂fv(θ)*Ψv(F, X...)
+  ∂∂Ψ∂FF(F, θ, N, X...)  =  ∂∂Ψt∂FF(F, θ) + fe(θ)*∂∂Ψe∂FF(F, N) + fv(θ)*∂∂Ψv∂FF(F, X...)
+  ∂∂Ψ∂θθ(F, θ, N, X...)  =  ∂∂Ψt∂θθ(F, θ) + ∂∂fe(θ)*Ψe(F, N)    + ∂∂fv(θ)*Ψv(F, X...)
+  ∂∂Ψ∂Fθ(F, θ, N, X...)  =  ∂∂Ψt∂Fθ(F, θ) + ∂fe(θ)*∂Ψe∂F(F, N)  + ∂fv(θ)*∂Ψv∂F(F, X...)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂θθ, ∂∂Ψ∂Fθ)
 end
 

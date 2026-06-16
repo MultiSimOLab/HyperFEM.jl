@@ -143,7 +143,7 @@ function ThermoElectroMech_Bonet(thermo::ThermalVolumetric, electro::ThermoElect
   ThermoElectroMech_Bonet{E,M}(thermo,electro.electro,mechano,el,vis,electro.law)
 end
 
-function (obj::ThermoElectroMech_Bonet{<:Electro,<:Elasto})()
+function (obj::ThermoElectroMech_Bonet{<:Electro,<:IsoElastic})()
   Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
   Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano()
   Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂∂Ψem∂EE = obj.electro()
@@ -164,7 +164,28 @@ function (obj::ThermoElectroMech_Bonet{<:Electro,<:Elasto})()
   return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂EE, ∂∂Ψ∂θθ, ∂∂Ψ∂EF, ∂∂Ψ∂Fθ, ∂∂Ψ∂Eθ)
 end
 
-function (obj::ThermoElectroMech_Bonet{<:Electro,<:ViscoElastic})()
+function (obj::ThermoElectroMech_Bonet{<:Electro,<:AnisoElastic})()
+  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
+  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano()
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂∂Ψem∂EE = obj.electro()
+  fe, dfe, ddfe = obj.lawel()
+  felec, dfelec, ddfelec = obj.lawelec()
+
+  Ψ(F, E, θ, N)       =  Ψt(F,θ)      + fe(θ)*Ψm(F,N)      + felec(θ)*Ψem(F,E)
+  ∂Ψ∂F(F, E, θ, N)    =  ∂Ψt∂F(F,θ)   + fe(θ)*∂Ψm∂F(F,N)   + felec(θ)*∂Ψem∂F(F,E)
+  ∂Ψ∂E(F, E, θ, N)    =                                    + felec(θ)*∂Ψem∂E(F,E)
+  ∂Ψ∂θ(F, E, θ, N)    =  ∂Ψt∂θ(F,θ)   + dfe(θ)*Ψm(F,N)     + dfelec(θ)*Ψem(F,E)
+  ∂∂Ψ∂FF(F, E, θ, N)  =  ∂∂Ψt∂FF(F,θ) + fe(θ)*∂∂Ψm∂FF(F,N) + felec(θ)*∂Ψem∂FF(F,E)
+  ∂∂Ψ∂EE(F, E, θ, N)  =                                    + felec(θ)*∂∂Ψem∂EE(F,E)
+  ∂∂Ψ∂θθ(F, E, θ, N)  =  ∂∂Ψt∂θθ(F,θ) + ddfe(θ)*Ψm(F,N)    + ddfelec(θ)*Ψem(F,E)
+  ∂∂Ψ∂EF(F, E, θ, N)  =                                    + felec(θ)*∂Ψem∂EF(F,E)
+  ∂∂Ψ∂Fθ(F, E, θ, N)  =  ∂∂Ψt∂Fθ(F,θ) + dfe(θ)*∂Ψm∂F(F,N)  + dfelec(θ)*∂Ψem∂F(F,E)
+  ∂∂Ψ∂Eθ(F, E, θ, N)  =                                    + dfelec(θ)*∂Ψem∂E(F,E)
+
+  return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂EE, ∂∂Ψ∂θθ, ∂∂Ψ∂EF, ∂∂Ψ∂Fθ, ∂∂Ψ∂Eθ)
+end
+
+function (obj::ThermoElectroMech_Bonet{<:Electro,<:ViscoElastic{<:IsoElastic}})()
   Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
   Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm()
   Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches()
@@ -183,6 +204,29 @@ function (obj::ThermoElectroMech_Bonet{<:Electro,<:ViscoElastic})()
   ∂∂Ψ∂EF(F, E, θ, A...)  =                                                          + felec(θ)*∂Ψem∂EF(F,E)
   ∂∂Ψ∂Fθ(F, E, θ, A...)  =  ∂∂Ψt∂Fθ(F,θ) + dfe(θ)*∂Ψe∂F(F)  + dfv(θ)*∂Ψv∂F(F,A...)  + dfelec(θ)*∂Ψem∂F(F,E)
   ∂∂Ψ∂Eθ(F, E, θ, A...)  =                                                          + dfelec(θ)*∂Ψem∂E(F,E)
+
+  return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂EE, ∂∂Ψ∂θθ, ∂∂Ψ∂EF, ∂∂Ψ∂Fθ, ∂∂Ψ∂Eθ)
+end
+
+function (obj::ThermoElectroMech_Bonet{<:Electro,<:ViscoElastic{<:AnisoElastic}})()
+  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
+  Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm()
+  Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches()
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂∂Ψem∂EE = obj.electro()
+  fe, dfe, ddfe = obj.lawel()
+  fv, dfv, ddfv = obj.lawvis()
+  felec, dfelec, ddfelec = obj.lawelec()
+
+  Ψ(F, E, θ, N, A...)       =  Ψt(F,θ)      + fe(θ)*Ψe(F,N)      + fv(θ)*Ψv(F,A...)      + felec(θ)*Ψem(F,E)
+  ∂Ψ∂F(F, E, θ, N, A...)    =  ∂Ψt∂F(F,θ)   + fe(θ)*∂Ψe∂F(F,N)   + fv(θ)*∂Ψv∂F(F,A...)   + felec(θ)*∂Ψem∂F(F,E)
+  ∂Ψ∂E(F, E, θ, N, A...)    =                                                            + felec(θ)*∂Ψem∂E(F,E)
+  ∂Ψ∂θ(F, E, θ, N, A...)    =  ∂Ψt∂θ(F,θ)   + dfe(θ)*Ψe(F,N)     + dfv(θ)*Ψv(F,A...)     + dfelec(θ)*Ψem(F,E)
+  ∂∂Ψ∂FF(F, E, θ, N, A...)  =  ∂∂Ψt∂FF(F,θ) + fe(θ)*∂∂Ψe∂FF(F,N) + fv(θ)*∂∂Ψv∂FF(F,A...) + felec(θ)*∂Ψem∂FF(F,E)
+  ∂∂Ψ∂EE(F, E, θ, N, A...)  =                                                            + felec(θ)*∂∂Ψem∂EE(F,E)
+  ∂∂Ψ∂θθ(F, E, θ, N, A...)  =  ∂∂Ψt∂θθ(F,θ) + ddfe(θ)*Ψe(F,N)    + ddfv(θ)*Ψv(F,A...)    + ddfelec(θ)*Ψem(F,E)
+  ∂∂Ψ∂EF(F, E, θ, N, A...)  =                                                            + felec(θ)*∂Ψem∂EF(F,E)
+  ∂∂Ψ∂Fθ(F, E, θ, N, A...)  =  ∂∂Ψt∂Fθ(F,θ) + dfe(θ)*∂Ψe∂F(F,N)  + dfv(θ)*∂Ψv∂F(F,A...)  + dfelec(θ)*∂Ψem∂F(F,E)
+  ∂∂Ψ∂Eθ(F, E, θ, N, A...)  =                                                            + dfelec(θ)*∂Ψem∂E(F,E)
 
   return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂EE, ∂∂Ψ∂θθ, ∂∂Ψ∂EF, ∂∂Ψ∂Fθ, ∂∂Ψ∂Eθ)
 end
