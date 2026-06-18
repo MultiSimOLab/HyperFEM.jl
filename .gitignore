@@ -2,5 +2,6 @@ Manifest.toml
 results/
 debug/
 data/sims/
+docs/src/index.md
 **/.DS_Store
 .vscode/
