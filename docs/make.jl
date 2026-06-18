@@ -1,25 +1,20 @@
-using HyperFEM
 using Documenter
+using HyperFEM
 
-DocMeta.setdocmeta!(HyperFEM, :DocTestSetup, :(using HyperFEM); recursive=true)
+readme_path = joinpath(@__DIR__, "..", "README.md")
+index_path = joinpath(@__DIR__, "src", "index.md")
+cp(readme_path, index_path, force=true)
 
-makedocs(;
-    modules=[HyperFEM],
-    authors="MultiSimo_Group",
-    repo="https://github.com/jmartfrut/Mimosa.jl/blob/{commit}{path}#{line}",
-    sitename="HyperFEM.jl",
-    format=Documenter.HTML(;
-        prettyurls=get(ENV, "CI", "false") == "true",
-        canonical="https://jmartfrut.github.io/HyperFEM.jl",
-        edit_link="main",
-        assets=String[],
-    ),
-    pages=[
-        "Home" => "index.md",
-    ],
+makedocs(
+  sitename = "HyperFEM.jl",
+  modules = [HyperFEM],
+  pages = [
+    "HyperFEM" => "index.md",       # Inject README.md (previously cloned into index.md)
+    "API reference" => "api.md"  # Inject the docstrings from the code
+  ]
 )
 
-deploydocs(;
-    repo="github.com/jmartfrut/HyperFEM.jl",
-    devbranch="main",
+deploydocs(
+  repo = "github.com/MultiSimOLab/HyperFEM.jl.git",
+  devbranch = "main"
 )

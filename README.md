@@ -173,4 +173,4 @@ src="https://github.com/MultiSimOLab/HyperFEM/blob/main/docs/imgs/aei.png?raw=tr
  
 #  Contact
 
-Contact the project administrator [Jesús Martínez-Frutos](jesus.martinez@upct.es) for further questions about licenses and terms of use.
+Contact the project administrator [Jesús Martínez-Frutos](mailto:jesus.martinez@upct.es) for further questions about licenses and terms of use.
