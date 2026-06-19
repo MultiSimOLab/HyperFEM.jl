@@ -7,11 +7,23 @@ cp(readme_path, index_path, force=true)
 
 makedocs(
   sitename = "HyperFEM.jl",
-  modules = [HyperFEM],
+  modules = [
+    HyperFEM,
+    HyperFEM.TensorAlgebra,
+    HyperFEM.PhysicalModels,
+    HyperFEM.WeakForms,
+    HyperFEM.Solvers,
+    HyperFEM.DiscreteModeling,
+    HyperFEM.ComputationalModels
+  ],
   pages = [
     "HyperFEM" => "index.md",       # Inject README.md (previously cloned into index.md)
     "API reference" => "api.md"  # Inject the docstrings from the code
   ],
+  format = Documenter.HTML(
+    prettyurls = get(ENV, "CI", "false") == "true",
+    canonical = "https://MultiSimOLab.github.io/HyperFEM.jl",
+  ),
   checkdocs = :none,
   warnonly = true
 )
