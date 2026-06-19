@@ -1012,7 +1012,7 @@ function IsochoricNeoHookean3D(; μ::Real)
   IsochoricNeoHookean3D(float(μ))
 end
 
-function (obj::IsochoricNeoHookean3D)()
+function (obj::IsochoricNeoHookean3D)(::Float64)
   Ψ(F) = obj.μ / 2 * (F⊙F * det(F)^(-2/3) - 3)
   ∂Ψ∂F(F) = begin
     μ = obj.μ
