@@ -1,9 +1,4 @@
- <p align="center"> 
-&nbsp; &nbsp; &nbsp; &nbsp;
-<img alt="Dark"
-src="https://github.com/jmartfrut/HyperFEM/raw/main/docs/imgs/logo.png?raw=true" width="30%">
-</p>
- 
+<img src="https://github.com/jmartfrut/HyperFEM/raw/main/docs/imgs/logo.png" width="30%">
 
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://jmartfrut.github.io/HyperFEM.jl/stable/)
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://jmartfrut.github.io/HyperFEM.jl/dev/)
@@ -12,12 +7,7 @@ src="https://github.com/jmartfrut/HyperFEM/raw/main/docs/imgs/logo.png?raw=true"
 
 # Multiphysics Simulation of Multifunctional Soft Materials
 
-<div align="justify" style="margin-left: 40px; margin-right: 40px;">
-
 **HyperFEM** is a library within the [Gridap](https://github.com/gridap/Gridap.jl) ecosystem designed for the simulation of multiphysics problems involving multifunctional hyperelastic materials. The ultimate goal of HyperFEM is to provide a **high-level, expressive, and rapid prototyping tool** that accelerates the modeling stages of **Thermo–Electro–Magneto–Mechanical** multiphysics problems. To this end, it includes a comprehensive library of **analytically derived constitutive models** formulated through tensor algebra. In addition, HyperFEM provides abstractions for **monolithic and staggered solution schemes**, extending Gridap’s capabilities in the context of **nonlinear solid mechanics**.
-
-</div>
-
 
 
 ## Installation
@@ -139,12 +129,7 @@ x = solve!(comp_model; stepping=(nsteps=5, maxbisec=5), post=post_model)
 
 ## HyperFEM Gallery
 
-
- <p align="center"> 
-&nbsp; &nbsp; &nbsp; &nbsp;
-<img alt="Dark"
-src="https://github.com/MultiSimOLab/HyperFEM/raw/main/docs/imgs/sims_.png?raw=true" width="110%">
-</p>
+<img src="https://github.com/MultiSimOLab/HyperFEM/raw/main/docs/imgs/sims_.png" width="110%">
 
  
 
@@ -162,12 +147,7 @@ along with the required citations for [Gridap](https://github.com/gridap/Gridap.
  
 - Grants PID2022-141957OA-C22/PID2022-141957OB-C22  funded by MCIN/AEI/ 10.13039/501100011033  and by ''ERDF A way of making Europe''
 
-
- <p align="center"> 
-&nbsp; &nbsp; &nbsp; &nbsp;
-<img alt="Dark"
-src="https://github.com/MultiSimOLab/HyperFEM/raw/main/docs/imgs/aei.png?raw=true" width="70%">
-</p>
+<img src="https://github.com/MultiSimOLab/HyperFEM/raw/main/docs/imgs/aei.png" width="70%">
 
 ##  Contact
 
