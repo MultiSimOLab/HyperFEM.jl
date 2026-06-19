@@ -4,6 +4,12 @@
 # Coercive volumetric Mechanical models
 # ============================================
 
+"""
+Coercive volumetric energy term of the form
+```math
+\\Psi = \\frac{1}{\\kappa} (J-1)^2
+```
+"""
 struct VolumetricEnergy <: Volumetric
   λ::Float64
   function VolumetricEnergy(; λ::Float64)
@@ -190,6 +196,12 @@ end
 # Mechanical models
 # ===================
 
+"""
+Yeoh constitutive model for 3D solid kinematics.
+```math
+\\Psi = \\sum_{i=1}^3 C_i (I_1 - 3)^i
+```
+"""
 struct Yeoh3D <: IsoElastic
   λ::Float64
   C10::Float64
@@ -625,6 +637,14 @@ I1iso(F) = det(F)^(-2 / 3) * F ⊙ F
 ∂I1iso_∂F∂Ftotal(F) = ∂I1iso_∂F∂F(F) + ∂I1iso_∂F∂J(F) ⊗ cof(F) + cof(F) ⊗ ∂I1iso_∂F∂J(F) + ∂I1iso_∂J∂J(F)*cof(F) ⊗ cof(F) + ∂I1iso_∂J(F)*×ᵢ⁴(F)
 
 
+"""
+Simplified eight-chain model by Arruda and Boyce.
+the implementation uses the first five terms of the inverse Langevin function.
+
+```math
+\\Psi = C_1 \\sum_{i=1}^{3} \\alpha_i \\beta^{i-1} (I_1^i - 3^i)
+```
+"""
 struct EightChain <: IsoElastic
   μ::Float64
   N::Float64
@@ -846,22 +866,6 @@ struct IncompressibleNeoHookean3D <: IsoElastic
 
 end
 
-function SecondPiola(obj::IncompressibleNeoHookean3D, Λ::Float64=1.0)
-  Ψ(C) = obj.μ / 2 * tr(C) * det(C)^(-1 / 3) - 3 * obj.μ / 2
-  S(C) = begin
-    detC = det(C)
-    invC = inv(C)
-    obj.μ * detC^(-1 / 3) * I3 - obj.μ / 3 * tr(C) * detC^(-1 / 3) * invC
-  end
-  ∂S∂C(C) = begin
-    detC = det(C)
-    trC = tr(C)
-    invC = inv(C)
-    IinvC = I3 ⊗ invC
-    1 / 3 * obj.μ * detC^(-1 / 3) * (4 / 3 * trC * invC ⊗ invC - (IinvC + IinvC') - trC / detC * ×ᵢ⁴(C))
-  end
-  return (Ψ, S, ∂S∂C)
-end
 
 struct IncompressibleNeoHookean2D <: IsoElastic
   λ::Float64
@@ -1046,34 +1050,4 @@ function SecondPiola(obj::IsochoricNeoHookean3D)
     2 * (∂2Ψ∂2dC(C) * (HC ⊗ HC) + ∂2Ψ∂CdC(C) ⊗ HC + HC ⊗ ∂2Ψ∂CdC(C) + ∂Ψ∂dC(C) * ×ᵢ⁴(C))
   end
   return (Ψ, S, ∂S∂C)
-end
-
-
-struct IncompressibleNeoHookean3D_2dP <: Mechano
-  μ::Float64
-  τ::Float64
-  Δt::Float64
-  ρ::Float64
-
-  function IncompressibleNeoHookean3D_2dP(; μ::Float64, τ::Float64, Δt::Float64, ρ::Float64=0.0)
-    new(μ, τ, Δt, ρ)
-  end
-
-  function (obj::IncompressibleNeoHookean3D_2dP)(Λ::Float64=1.0; Threshold=0.01)
-    μ = obj.μ
-    H(F) = det(F) * inv(F)'
-    Ψ(Ce) = μ / 2 * tr(Ce) * (det(Ce))^(-1 / 3)
-    ∂Ψ∂Ce(Ce) = μ / 2 * I3 * (det(Ce))^(-1 / 3)
-    ∂Ψ∂dCe(Ce) = -μ / 6 * tr(Ce) * (det(Ce))^(-4 / 3)
-    Se(Ce) = let HCe = H(Ce)
-      2 * (∂Ψ∂Ce(Ce) + ∂Ψ∂dCe(Ce) * HCe)
-    end
-    ∂2Ψ∂CedCe(Ce) = -μ / 6 * I3 * (det(Ce))^(-4 / 3)
-    ∂2Ψ∂2dCe(Ce) = 2 * μ / 9 * tr(Ce) * (det(Ce))^(-7 / 3)
-    ∂Se∂Ce(Ce) = let HCe = H(Ce)
-      2 * (∂2Ψ∂2dCe(Ce) * (HCe ⊗ HCe) + ∂2Ψ∂CedCe(Ce) ⊗ HCe + HCe ⊗ ∂2Ψ∂CedCe(Ce) + ∂Ψ∂dCe(Ce) * ×ᵢ⁴(Ce))
-    end
-
-    return (Ψ, Se, ∂Se∂Ce)
-  end
 end
