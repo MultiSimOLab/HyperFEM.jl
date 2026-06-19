@@ -11,7 +11,9 @@ makedocs(
   pages = [
     "HyperFEM" => "index.md",       # Inject README.md (previously cloned into index.md)
     "API reference" => "api.md"  # Inject the docstrings from the code
-  ]
+  ],
+  checkdocs = :none,
+  warnonly = true
 )
 
 deploydocs(

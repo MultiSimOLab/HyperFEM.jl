@@ -1,11 +1,9 @@
  <p align="center"> 
 &nbsp; &nbsp; &nbsp; &nbsp;
 <img alt="Dark"
-src="https://github.com/jmartfrut/HyperFEM/blob/main/docs/imgs/logo.png?raw=true" width="30%">
+src="https://github.com/jmartfrut/HyperFEM/raw/main/docs/imgs/logo.png?raw=true" width="30%">
 </p>
  
-
-<!-- # HyperFEM :construction: :construction: :construction: **Work in progress** :construction: :construction: :construction: -->
 
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://jmartfrut.github.io/HyperFEM.jl/stable/)
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://jmartfrut.github.io/HyperFEM.jl/dev/)
@@ -145,7 +143,7 @@ x = solve!(comp_model; stepping=(nsteps=5, maxbisec=5), post=post_model)
  <p align="center"> 
 &nbsp; &nbsp; &nbsp; &nbsp;
 <img alt="Dark"
-src="https://github.com/MultiSimOLab/HyperFEM/blob/main/docs/imgs/sims_.png?raw=true" width="110%">
+src="https://github.com/MultiSimOLab/HyperFEM/raw/main/docs/imgs/sims_.png?raw=true" width="110%">
 </p>
 
  
@@ -160,7 +158,7 @@ C. Perez‐Garcia, R. Ortigosa, J. Martínez‐Frutos, and D. Garcia‐Gonzalez,
 along with the required citations for [Gridap](https://github.com/gridap/Gridap.jl).
 
 
-# Project funded by:
+## Project funded by
  
 - Grants PID2022-141957OA-C22/PID2022-141957OB-C22  funded by MCIN/AEI/ 10.13039/501100011033  and by ''ERDF A way of making Europe''
 
@@ -168,9 +166,9 @@ along with the required citations for [Gridap](https://github.com/gridap/Gridap.
  <p align="center"> 
 &nbsp; &nbsp; &nbsp; &nbsp;
 <img alt="Dark"
-src="https://github.com/MultiSimOLab/HyperFEM/blob/main/docs/imgs/aei.png?raw=true" width="70%">
+src="https://github.com/MultiSimOLab/HyperFEM/raw/main/docs/imgs/aei.png?raw=true" width="70%">
 </p>
- 
-#  Contact
+
+##  Contact
 
 Contact the project administrator [Jesús Martínez-Frutos](mailto:jesus.martinez@upct.es) for further questions about licenses and terms of use.
