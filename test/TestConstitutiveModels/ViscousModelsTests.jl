@@ -124,12 +124,12 @@ end;
 end;
 
 @testset "ViscousIncompressible" begin
-  visco = ViscousIncompressible(IncompressibleNeoHookean3D(λ=0., μ=μ1), τ=τ1)
+  visco = ViscousIncompressible(IsochoricNeoHookean3D(μ=μ1), τ=τ1)
   test_viscous_derivatives_numerical(visco, rtolP=1e-3, rtolH=1e-3)
 end
 
 @testset "ViscousIncompressible2" begin
-  visco = ViscousIncompressible(IncompressibleNeoHookean3D(λ=0., μ=1.0), τ=10.0)
+  visco = ViscousIncompressible(IsochoricNeoHookean3D(μ=1.0), τ=10.0)
   update_time_step!(visco, 0.1)
   Ψ, ∂Ψu, ∂Ψuu = visco()
   F    =  1e-2*TensorValue(1,2,3,4,5,6,7,8,9) + I3
@@ -156,13 +156,13 @@ end
 
 @testset "GeneralizedMaxwell NeoHookean 1-branch" begin
   hyper_elastic_model = NeoHookean3D(λ=λ, μ=μ)
-  branch1 = ViscousIncompressible(IncompressibleNeoHookean3D(λ=0., μ=μ1), τ=τ1)
+  branch1 = ViscousIncompressible(IsochoricNeoHookean3D(μ=μ1), τ=τ1)
   cons_model = GeneralizedMaxwell(hyper_elastic_model, branch1)
   test_viscous_derivatives_numerical(cons_model, rtolP=1e-3, rtolH=1e-2)
 end
 
 @testset "Dissipation ViscousIncompressible" begin
-  branch1 = ViscousIncompressible(IncompressibleNeoHookean3D(λ=0., μ=μ1), τ=τ1)
+  branch1 = ViscousIncompressible(IsochoricNeoHookean3D(μ=μ1), τ=τ1)
   D = Dissipation(branch1, 0.1)
   F = I3
   Fn = I3
@@ -174,7 +174,7 @@ end
   Δt = 0.1
   μ = 1.0
   τ = 1.234
-  short_term = IncompressibleNeoHookean3D(λ=0., μ=μ)
+  short_term = IsochoricNeoHookean3D(μ=μ)
   branch1 = ViscousIncompressible(short_term, τ=τ)
   branch1.Δt[] = Δt
 
@@ -210,7 +210,7 @@ end
 
 @testset "GeneralizedMaxell energy at rest" begin
   hyper_elastic_model = NeoHookean3D(λ=λ, μ=μ)
-  short_term = IncompressibleNeoHookean3D(λ=0., μ=μ1)
+  short_term = IsochoricNeoHookean3D(μ=μ1)
   visco_branch = ViscousIncompressible(short_term, τ=τ1)
   cons_model = GeneralizedMaxwell(hyper_elastic_model, visco_branch)
   update_time_step!(cons_model, 0.1)

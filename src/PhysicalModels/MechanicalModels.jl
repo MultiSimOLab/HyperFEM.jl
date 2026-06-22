@@ -993,33 +993,21 @@ end
 end
 
 function (obj::IsochoricNeoHookean3D)()
-  Ψ(F) = obj.μ / 2 * (F⊙F * det(F)^(-2/3) - 3)
-  ∂Ψ∂F(F) = begin
-    μ = obj.μ
-    J = det(F)
-    Ic = F⊙F
-    obj.μ * J^(-2/3) * (F - 1/3*Ic*inv(F)')
-  end
-  ∂Ψ∂FF(F) = begin
-    μ = obj.μ
-    J = det(F)
-    Ic = F⊙F
-    invF = inv(F)
-    H = cof(F)
-    TensorValue(ForwardDiff.jacobian(∂Ψ∂F, get_array(F)))
-  end
-  return (Ψ, ∂Ψ∂F, ∂Ψ∂FF)
+  W(I) = obj.μ / 2 * (I - 3)
+  ∂W∂I(I) = obj.μ / 2
+  Ψ(F) = W(I1iso(F))
+  ∂Ψ∂F(F) = ∂W∂I(I1iso(F)) * ∂I1iso_∂Ftotal(F)
+  ∂∂Ψ∂FF(F) = ∂W∂I(I1iso(F)) * ∂I1iso_∂F∂Ftotal(F)
+  return Ψ, ∂Ψ∂F, ∂∂Ψ∂FF
 end
 
 function SecondPiola(obj::IsochoricNeoHookean3D)
   μ = obj.μ
   H(F) = cof(F)
-  Ψ(C) = μ / 2 * tr(C) * (det(C))^(-1 / 3)
+  Ψ(C) = μ / 2 * tr(C) * (det(C))^(-1 / 3) -3*μ/2
   ∂Ψ∂C(C) = μ / 2 * I3 * (det(C))^(-1 / 3)
   ∂Ψ∂dC(C) = -μ / 6 * tr(C) * (det(C))^(-4 / 3)
-  S(C) = let HC = H(C)
-    2 * (∂Ψ∂C(C) + ∂Ψ∂dC(C) * HC)
-  end
+  S(C) = 2 * (∂Ψ∂C(C) + ∂Ψ∂dC(C) * H(C))
   ∂2Ψ∂CdC(C) = -μ / 6 * I3 * (det(C))^(-4 / 3)
   ∂2Ψ∂2dC(C) = 2 * μ / 9 * tr(C) * (det(C))^(-7 / 3)
   ∂S∂C(C) = let HC = H(C)
