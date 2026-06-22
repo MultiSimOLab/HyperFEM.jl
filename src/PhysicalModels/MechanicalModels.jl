@@ -1042,22 +1042,12 @@ function IsochoricNeoHookean3D(; μ::Real)
 end
 
 function (obj::IsochoricNeoHookean3D)(::Float64=1.0)
-  Ψ(F) = obj.μ / 2 * (F⊙F * det(F)^(-2/3) - 3)
-  ∂Ψ∂F(F) = begin
-    μ = obj.μ
-    J = det(F)
-    Ic = F⊙F
-    obj.μ * J^(-2/3) * (F - 1/3*Ic*inv(F)')
-  end
-  ∂Ψ∂FF(F) = begin
-    μ = obj.μ
-    J = det(F)
-    Ic = F⊙F
-    invF = inv(F)
-    H = cof(F)
-    TensorValue(ForwardDiff.jacobian(∂Ψ∂F, get_array(F)))
-  end
-  return (Ψ, ∂Ψ∂F, ∂Ψ∂FF)
+  W(I) = obj.μ / 2 * (I - 3)
+  ∂W∂I(I) = obj.μ / 2
+  Ψ(F) = W(I1iso(F))
+  ∂Ψ∂F(F) = ∂W∂I(I1iso(F)) * ∂I1iso_∂Ftotal(F)
+  ∂∂Ψ∂FF(F) = ∂W∂I(I1iso(F)) * ∂I1iso_∂F∂Ftotal(F)
+  return Ψ, ∂Ψ∂F, ∂∂Ψ∂F
 end
 
 function SecondPiola(obj::IsochoricNeoHookean3D)
