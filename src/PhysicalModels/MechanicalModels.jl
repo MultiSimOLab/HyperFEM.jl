@@ -1026,6 +1026,13 @@ struct NonlinearARAP2D <: IsoElastic
 end
 
 
+"""
+Neo-Hooke hyperelastic model
+
+```math
+W = \\frac{1}{2}\\mu (I_1 - 3)
+```
+"""
 struct IsochoricNeoHookean3D <: IsoElastic
   μ::Float64
 end
