@@ -1064,3 +1064,10 @@ function SecondPiola(obj::IsochoricNeoHookean3D)
   end
   return (Ψ, S, ∂S∂C)
 end
+
+function compat_SecondPiola(obj::IncompressibleNeoHookean3D)
+  obj2 = IsochoricNeoHookean3D(obj.μ)
+  SecondPiola(obj2)
+end
+
+@deprecate SecondPiola compat_SecondPiola
