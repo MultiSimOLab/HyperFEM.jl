@@ -1047,7 +1047,7 @@ function (obj::IsochoricNeoHookean3D)(::Float64=1.0)
   Ψ(F) = W(I1iso(F))
   ∂Ψ∂F(F) = ∂W∂I(I1iso(F)) * ∂I1iso_∂Ftotal(F)
   ∂∂Ψ∂FF(F) = ∂W∂I(I1iso(F)) * ∂I1iso_∂F∂Ftotal(F)
-  return Ψ, ∂Ψ∂F, ∂∂Ψ∂F
+  return Ψ, ∂Ψ∂F, ∂∂Ψ∂FF
 end
 
 function SecondPiola(obj::IsochoricNeoHookean3D)
