@@ -3,7 +3,13 @@ using HyperFEM
 
 readme_path = joinpath(@__DIR__, "..", "README.md")
 index_path = joinpath(@__DIR__, "src", "index.md")
-cp(readme_path, index_path, force=true)
+
+readme_content = read(readme_path, String)
+readme_content = replace(
+    readme_content, 
+    r"(<p align=\"center\"><img.*?</p>)" => s"```@raw html\n\1\n```"
+)
+write(index_path, readme_content)
 
 makedocs(
   sitename = "HyperFEM.jl",
