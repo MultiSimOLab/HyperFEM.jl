@@ -1,4 +1,4 @@
-<p style="text-align: center"><img src="https://github.com/jmartfrut/HyperFEM/raw/main/docs/imgs/logo.png" width="30%"></p>
+<p align="center"><img src="https://github.com/jmartfrut/HyperFEM/raw/main/docs/imgs/logo.png" width="30%"></p>
 
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://jmartfrut.github.io/HyperFEM.jl/stable/)
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://jmartfrut.github.io/HyperFEM.jl/dev/)
