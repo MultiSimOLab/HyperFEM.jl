@@ -21,7 +21,6 @@ export IsochoricNeoHookean3D
 export IncompressibleNeoHookean3D
 export IncompressibleNeoHookean2D
 export IncompressibleNeoHookean2D_CV
-export IncompressibleNeoHookean3D_2dP
 export ARAP2D
 export ARAP2D_regularized
 export VolumetricEnergy

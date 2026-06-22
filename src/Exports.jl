@@ -33,7 +33,6 @@ end
 @publish PhysicalModels IncompressibleNeoHookean3D
 @publish PhysicalModels IncompressibleNeoHookean2D
 @publish PhysicalModels IncompressibleNeoHookean2D_CV
-@publish PhysicalModels IncompressibleNeoHookean3D_2dP
 @publish PhysicalModels VolumetricEnergy
 @publish PhysicalModels MooneyRivlin3D
 @publish PhysicalModels MooneyRivlin2D
