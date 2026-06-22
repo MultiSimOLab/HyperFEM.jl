@@ -23,6 +23,7 @@ export IncompressibleNeoHookean2D
 export IncompressibleNeoHookean2D_CV
 export ARAP2D
 export ARAP2D_regularized
+export NonlinearARAP2D
 export VolumetricEnergy
 export MooneyRivlin3D
 export MooneyRivlin2D

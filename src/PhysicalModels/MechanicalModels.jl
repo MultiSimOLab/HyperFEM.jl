@@ -988,17 +988,69 @@ struct ARAP2D <: IsoElastic
 end
 
 
-@kwdef struct IsochoricNeoHookean3D <: IsoElastic
+struct NonlinearARAP2D <: IsoElastic
+  μ::Float64
+  p::Float64
+  ρ::Float64
+  function NonlinearARAP2D(; μ::Float64, p::Float64, ρ::Float64=0.0)
+    new(μ, p, ρ)
+  end
+
+  function (obj::NonlinearARAP2D)(Λ::Float64=1.0)
+    μ = obj.μ
+    p = obj.p
+  
+    J(F) = det(F)
+    H(F) = det(F) * inv(F)'
+    f(F) = 0.5 * J(F)^(-1) * (tr((F)' * F)) - 1.0
+    g(x) = x^p
+    Ψ(F) = (μ/p) * g(f(F))
+
+    ∂f_∂F(F)   = F * J(F)^(-1)
+    ∂f_∂J(F)   = -1.0 / 2.0 * (tr((F)' * F)) * J(F)^(-2)
+    ∂2f_∂J2(F) = J(F)^(-3) * (tr((F)' * F))
+    ∂2f_∂FJ(F) = -J(F)^(-2) * F
+    ∂2f_∂FF(F) = J(F)^(-1) * I4
+
+    ∂g_∂x(x)   = p * x^(p-1)
+    ∂2g_∂x2(x) = p * (p-1) * x^(p-2)
+
+    ∂fu(F)  = ∂f_∂F(F) + ∂f_∂J(F) * H(F)
+    ∂fuu(F) = ∂2f_∂FF(F) + ∂2f_∂J2(F) * (H(F) ⊗ H(F)) + ∂2f_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂2f_∂FJ(F) + ∂f_∂J(F) * _∂H∂F_2D()
+
+    ∂Ψu(F)   =  (μ/p) * (∂g_∂x(f(F))* ∂fu(F))
+    ∂Ψuu(F)  =  (μ/p) * (∂g_∂x(f(F))* ∂fuu(F) + ∂2g_∂x2(f(F)) * (∂fu(F) ⊗ ∂fu(F)))
+
+    return (Ψ, ∂Ψu, ∂Ψuu)
+  end
+end
+
+
+struct IsochoricNeoHookean3D <: IsoElastic
   μ::Float64
 end
 
-function (obj::IsochoricNeoHookean3D)()
-  W(I) = obj.μ / 2 * (I - 3)
-  ∂W∂I(I) = obj.μ / 2
-  Ψ(F) = W(I1iso(F))
-  ∂Ψ∂F(F) = ∂W∂I(I1iso(F)) * ∂I1iso_∂Ftotal(F)
-  ∂∂Ψ∂FF(F) = ∂W∂I(I1iso(F)) * ∂I1iso_∂F∂Ftotal(F)
-  return Ψ, ∂Ψ∂F, ∂∂Ψ∂FF
+function IsochoricNeoHookean3D(; μ::Real)
+  IsochoricNeoHookean3D(float(μ))
+end
+
+function (obj::IsochoricNeoHookean3D)(::Float64=1.0)
+  Ψ(F) = obj.μ / 2 * (F⊙F * det(F)^(-2/3) - 3)
+  ∂Ψ∂F(F) = begin
+    μ = obj.μ
+    J = det(F)
+    Ic = F⊙F
+    obj.μ * J^(-2/3) * (F - 1/3*Ic*inv(F)')
+  end
+  ∂Ψ∂FF(F) = begin
+    μ = obj.μ
+    J = det(F)
+    Ic = F⊙F
+    invF = inv(F)
+    H = cof(F)
+    TensorValue(ForwardDiff.jacobian(∂Ψ∂F, get_array(F)))
+  end
+  return (Ψ, ∂Ψ∂F, ∂Ψ∂FF)
 end
 
 function SecondPiola(obj::IsochoricNeoHookean3D)

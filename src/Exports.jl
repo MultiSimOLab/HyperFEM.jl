@@ -67,6 +67,7 @@ end
 @publish PhysicalModels MagnetoMechModel
 @publish PhysicalModels ARAP2D
 @publish PhysicalModels ARAP2D_regularized
+@publish PhysicalModels NonlinearARAP2D
 @publish PhysicalModels HessianRegularization
 @publish PhysicalModels Hessian∇JRegularization
 @publish PhysicalModels ViscousIncompressible
