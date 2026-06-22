@@ -4,6 +4,13 @@
 # Coercive volumetric Mechanical models
 # ============================================
 
+"""
+Coercive volumetric energy term of the form:
+
+```math
+\\Psi = \\frac{1}{\\kappa} (J-1)^2
+```
+"""
 struct VolumetricEnergy <: Volumetric
   λ::Float64
   function VolumetricEnergy(; λ::Float64)
@@ -190,6 +197,13 @@ end
 # Mechanical models
 # ===================
 
+"""
+Yeoh constitutive model.
+
+```math
+\\Psi = \\sum_{i=1}^3 C_i (I_1 - 3)^i
+```
+"""
 struct Yeoh3D <: IsoElastic
   λ::Float64
   C10::Float64
@@ -625,6 +639,14 @@ I1iso(F) = det(F)^(-2 / 3) * F ⊙ F
 ∂I1iso_∂F∂Ftotal(F) = ∂I1iso_∂F∂F(F) + ∂I1iso_∂F∂J(F) ⊗ cof(F) + cof(F) ⊗ ∂I1iso_∂F∂J(F) + ∂I1iso_∂J∂J(F)*cof(F) ⊗ cof(F) + ∂I1iso_∂J(F)*×ᵢ⁴(F)
 
 
+"""
+Simplified eight-chain model by Arruda and Boyce.
+the implementation uses the first five terms of the inverse Langevin function.
+
+```math
+\\Psi = C_1 \\sum_{i=1}^{3} \\alpha_i \\beta^{i-1} (I_1^i - 3^i)
+```
+"""
 struct EightChain <: IsoElastic
   μ::Float64
   N::Float64
