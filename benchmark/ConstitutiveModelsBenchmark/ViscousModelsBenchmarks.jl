@@ -5,7 +5,7 @@ using BenchmarkTools
 
 function benchmark_viscous_model()
   elasto = NeoHookean3D(λ=1e6, μ=1e3)
-  visco = ViscousIncompressible(IncompressibleNeoHookean3D(λ=0., μ=1e3), τ=10.)
+  visco = ViscousIncompressible(IsochoricNeoHookean3D(μ=1e3), τ=10.)
   model = GeneralizedMaxwell(elasto, visco)
   update_time_step!(model, 1e-2)
   Ψ, ∂Ψu, ∂Ψuu = model()

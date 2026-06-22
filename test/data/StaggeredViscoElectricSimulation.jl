@@ -29,8 +29,8 @@ function staggered_visco_electric_simulation(; t_end=2, writevtk=true, verbose=t
 
   # Constitutive model
   hyper_elastic_model = NeoHookean3D(λ=1e6, μ=1.4e4)
-  viscous_branch_1 = ViscousIncompressible(IncompressibleNeoHookean3D(λ=0.0, μ=5.6e4); τ=0.82)
-  viscous_branch_2 = ViscousIncompressible(IncompressibleNeoHookean3D(λ=0.0, μ=3.4e4); τ=10.7)
+  viscous_branch_1 = ViscousIncompressible(IsochoricNeoHookean3D(μ=5.6e4); τ=0.82)
+  viscous_branch_2 = ViscousIncompressible(IsochoricNeoHookean3D(μ=3.4e4); τ=10.7)
   visco_elastic_model = GeneralizedMaxwell(hyper_elastic_model, viscous_branch_1, viscous_branch_2)
   elec_model = IdealDielectric(ε=1.0)
   cons_model = ElectroMechModel(mechano=visco_elastic_model, electro=elec_model)

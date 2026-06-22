@@ -227,25 +227,6 @@ end
 end
 
 
-@testset "IncompressibleNeoHookean3D_2dP" begin
-  #  Memory estimate: 0 bytes, allocs estimate: 0.
-  Ce = TensorValue(0.01 + 1.0, 0.02, 0.03, 0.04, 0.05 + 1.0, 0.06, 0.07, 0.08, 0.09 + 1.0)
-  model = IncompressibleNeoHookean3D_2dP(μ=1.0, τ=1.0, Δt=1.0)
-  Ψ, Se, ∂Se = model()
-
-
-  # Se_(Ce) =2*TensorValue(ForwardDiff.gradient(x -> Ψ(x), get_array(Ce)))
-  # ∂Se_(Ce) =2*TensorValue(ForwardDiff.hessian(x -> Ψ(x), get_array(Ce)))
-
-  #  norm(Se_(Ce)) -norm(Se(Ce))
-  #  norm(∂Se_(Ce)) -norm(∂Se(Ce))
-  @test (Ψ(Ce)) == 1.5040930711508358
-  @test norm(Se(Ce)) == 0.12632997589595116
-  @test norm(∂Se(Ce)) == 2.616897862779383
-
-end
-
-
 @testset "LinearElasticity2D" begin
   #  Memory estimate: 0 bytes, allocs estimate: 0.
   model = LinearElasticity2D(λ=3.0, μ=1.0)
