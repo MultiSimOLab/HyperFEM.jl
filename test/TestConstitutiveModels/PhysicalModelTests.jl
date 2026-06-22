@@ -956,6 +956,13 @@ end
   test_equilibrium_at_rest_2D(model)
 end
 
+@testset "NonlinearARAP2D" begin
+  #  Memory estimate: 0 bytes, allocs estimate: 0.
+  model = NonlinearARAP2D(μ=μParams[1], p=3.0)
+  test_derivatives_2D_(model, Kinematics(Mechano, Solid), rtol=1e-13)
+  test_equilibrium_at_rest_2D(model)
+end
+
 
 @testset "HessianRegularization" begin
   # 3.56 μs      Histogram: log(frequency) by time      9.21 μs <
