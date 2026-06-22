@@ -129,7 +129,7 @@ x = solve!(comp_model; stepping=(nsteps=5, maxbisec=5), post=post_model)
 
 ## HyperFEM Gallery
 
-<p style="text-align: center"><img src="https://github.com/MultiSimOLab/HyperFEM/raw/main/docs/imgs/sims_.png" width="110%"></p>
+<p align="center"><img src="https://github.com/MultiSimOLab/HyperFEM/raw/main/docs/imgs/sims_.png" width="110%"></p>
 
  
 
@@ -147,7 +147,7 @@ along with the required citations for [Gridap](https://github.com/gridap/Gridap.
  
 - Grants PID2022-141957OA-C22/PID2022-141957OB-C22  funded by MCIN/AEI/ 10.13039/501100011033  and by ''ERDF A way of making Europe''
 
-<p style="align: center"><img src="https://github.com/MultiSimOLab/HyperFEM/raw/main/docs/imgs/aei.png" width="70%"></p>
+<p align="center"><img src="https://github.com/MultiSimOLab/HyperFEM/raw/main/docs/imgs/aei.png" width="70%"></p>
 
 ##  Contact
 
