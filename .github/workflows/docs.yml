@@ -19,7 +19,7 @@ jobs:
       contents: write # write to gh-pages
       statuses: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v3
         with:
           version: '1' # latest stable Julia 1.x
