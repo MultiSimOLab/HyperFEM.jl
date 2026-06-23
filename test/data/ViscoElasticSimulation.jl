@@ -3,7 +3,6 @@ using Gridap.FESpaces
 using GridapSolvers
 using GridapSolvers.NonlinearSolvers
 using HyperFEM
-using HyperFEM.ComputationalModels.CartesianTags
 using HyperFEM.ComputationalModels.EvolutionFunctions
 using HyperFEM.ComputationalModels.PostMetrics
 
