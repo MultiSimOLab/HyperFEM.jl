@@ -23,17 +23,9 @@ makedocs(
     HyperFEM.ComputationalModels
   ],
   pages = [
-    "HyperFEM" => "index.md",   # Inject README.md (previously cloned into index.md)
+    "HyperFEM" => "index.md",       # Inject README.md (previously cloned into index.md)
     "Tutorials" => "tutorials.md",
-    "Modules" => [
-      "Overview"            => "api/overview.md",
-      "TensorAlgebra"       => "api/tensor_algebra.md",
-      "PhysicalModels"      => "api/physical_models.md",
-      "WeakForms"           => "api/weak_forms.md",
-      "Solvers"             => "api/solvers.md",
-      "DiscreteModeling"    => "api/discrete_modeling.md",
-      "ComputationalModels" => "api/computational_models.md",
-    ]
+    "API reference" => "api.md"     # Inject the docstrings from the code
   ],
   format = Documenter.HTML(
     prettyurls = get(ENV, "CI", "false") == "true",

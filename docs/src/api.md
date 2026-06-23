@@ -1,4 +1,4 @@
-# Modules
+# API reference
 
 ```@autodocs
 Modules = [
