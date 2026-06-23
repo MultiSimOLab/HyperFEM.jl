@@ -1,24 +1,20 @@
 
-# Tutorials
-
 The tutorials are designed to help users learn how to simulate hyperelastic materials and solve multiphysic problems using the Finite Element Method (FEM) in Julia with [HyperFEM.jl](https://github.com/MultiSimOLab/HyperFEM.jl).
 
 HyperFEM.jl is built on top of the [Gridap.jl](https://github.com/gridap/Gridap.jl) ecosystem, providing specialized tools for multiphysics hyperelastic simulations. The tutorials can be found in a dedicated [repository](https://github.com/MultiSimOLab/HyperFEM_tutorials) and demonstrate the core usage of HyperFEM, and these are recommended for new users.
 
 ## Get started
 
-1. Clone the repository:
+* Clone the repository:
 ```
 git clone https://github.com/MultiSimOLab/HyperFEM_tutorials.git
 cd HyperFEM_tutorials
 ```
-
-2. Open the Julia REPL, type `]` to enter package mode, and activate de environment:
+* Open the Julia REPL, type `]` to enter package mode, and activate de environment:
 ```julia
 pkg> activate .
 ```
-
-3. Install the dependencies:
+* Install the dependencies:
 ```julia
 pkg> instantiate
 ```
