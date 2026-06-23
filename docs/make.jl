@@ -24,7 +24,8 @@ makedocs(
   ],
   pages = [
     "HyperFEM" => "index.md",       # Inject README.md (previously cloned into index.md)
-    "API reference" => "api.md"  # Inject the docstrings from the code
+    "Tutorials" => "tutorials.md",  # Point to the tutorials repository
+    "API reference" => "api.md"     # Inject the docstrings from the code
   ],
   format = Documenter.HTML(
     prettyurls = get(ENV, "CI", "false") == "true",
