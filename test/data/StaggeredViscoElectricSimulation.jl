@@ -1,7 +1,6 @@
 using HyperFEM
 using HyperFEM: jacobian, solve!
 using HyperFEM.ComputationalModels.PostMetrics
-using HyperFEM.ComputationalModels.CartesianTags
 using HyperFEM.ComputationalModels.EvolutionFunctions
 using Gridap, GridapGmsh, GridapSolvers
 using GridapSolvers.NonlinearSolvers
@@ -25,7 +24,7 @@ function staggered_visco_electric_simulation(; t_end=2, writevtk=true, verbose=t
   add_tag_from_tags!(labels, "fixed", CartesianTags.face0YZ⁺)
   add_tag_from_tags!(labels, "bottom", CartesianTags.faceXY0⁺)
   add_tag_from_tags!(labels, "top", CartesianTags.faceZ1)
-  add_tag_from_vertex_filter!(labels, geometry, "mid", x -> x[3] ≈ 0.5thick)
+  add_tag_from_vertex_filter!(labels, "mid", geometry, x -> x[3] ≈ 0.5thick)
 
   # Constitutive model
   hyper_elastic_model = NeoHookean3D(λ=1e6, μ=1.4e4)

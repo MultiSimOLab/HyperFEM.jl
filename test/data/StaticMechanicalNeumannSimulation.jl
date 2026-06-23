@@ -4,7 +4,6 @@ using GridapSolvers.LinearSolvers
 using TimerOutputs
 using Gridap.FESpaces
 using HyperFEM
-using HyperFEM.ComputationalModels.CartesianTags
 using HyperFEM.ComputationalModels.EvolutionFunctions
 
 
