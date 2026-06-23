@@ -3,7 +3,7 @@
 
 ### Publishing a new release
 
-1. Update the project version in `Project.toml`. Make a PR and merge it once the tests have passed.
+1. Update the project version in `Project.toml`. Make a PR and merge it, once the tests have passed.
 2. Open an issue or go to the previous commit. Create a comment and type the following:
 ```
 @JuliaRegistrator register
@@ -28,7 +28,7 @@ Release notes:
 ### TagBot
 
 Thanks to this action, the changelog file is not required. However, the tag bot needs special write permisions, so make sure the `ssh-key` granting permissions to tag bot is valid within the repo settings.
-You may need tha package `DocumenterTools` to create the `sss-key` for the tag bot.
+You may need the package `DocumenterTools` to create the `sss-key` for the tag bot.
 
 
 ### Documentation
