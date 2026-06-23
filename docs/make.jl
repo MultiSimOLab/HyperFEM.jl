@@ -20,6 +20,8 @@ makedocs(
     HyperFEM.WeakForms,
     HyperFEM.Solvers,
     HyperFEM.DiscreteModeling,
+    HyperFEM.DiscreteModeling.EvolutionFunctions,
+    HyperFEM.DiscreteModeling.CartesianTags,
     HyperFEM.ComputationalModels
   ],
   pages = [
