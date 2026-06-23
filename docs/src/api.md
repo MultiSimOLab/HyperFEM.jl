@@ -10,7 +10,7 @@ Public  = true
 ## DiscreteModeling
 
 ```@autodocs
-Modules = [HyperFEM.DiscreteModeling]
+Modules = [HyperFEM.DiscreteModeling, HyperFEM.DiscreteModeling.CartesianTags, HyperFEM.DiscreteModeling.EvolutionFunctions]
 Order   = [:module, :type, :function, :macro]
 Public  = true
 ```
