@@ -89,6 +89,9 @@ struct Injectivity_Preserving_LS{A} <: AbstractLineSearch
     α = update_cellstate!(obj, xh, dxh)
     m = 0
     R₀ = sum(abs(b[r]' * dx[r]) for r in ranges)
+    @show norm(b[r])
+    @show norm(dx[r])
+    println("--------------")
 
     while α > αmin && m < maxiter
       residual!(b, op, x + α * dx)
