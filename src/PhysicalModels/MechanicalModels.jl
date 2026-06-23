@@ -1052,15 +1052,11 @@ end
 Neo-Hooke hyperelastic model
 
 ```math
-W = \\frac{1}{2}\\mu (I_1 - 3)
+\\Psi = \\frac{1}{2}\\mu (I_1 - 3)
 ```
 """
-struct IsochoricNeoHookean3D <: IsoElastic
+@kwdef struct IsochoricNeoHookean3D <: IsoElastic
   μ::Float64
-end
-
-function IsochoricNeoHookean3D(; μ::Real)
-  IsochoricNeoHookean3D(float(μ))
 end
 
 function (obj::IsochoricNeoHookean3D)(::Float64=1.0)
