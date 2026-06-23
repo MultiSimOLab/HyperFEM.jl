@@ -94,6 +94,7 @@ struct Injectivity_Preserving_LS{A} <: AbstractLineSearch
       residual!(b, op, x + α * dx)
       R = sum(abs(b[r]' * dx[r]) for r in ranges)
 
+      @show abs(R)-abs(c * R₀)
       if abs(R) <= abs(c * R₀)
         break
       end
