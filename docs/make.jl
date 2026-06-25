@@ -34,7 +34,7 @@ makedocs(
   ),
   checkdocs = :none,
   warnonly = false,
-  linkcheck = true,
+  linkcheck = get(ENV, "CI", "false") == "true", # check links only if running in ci
   linkcheck_ignore = [r"^mailto:"],
 )
 
