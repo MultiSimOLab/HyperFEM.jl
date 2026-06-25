@@ -129,7 +129,7 @@ x = solve!(comp_model; stepping=(nsteps=5, maxbisec=5), post=post_model)
 
 ## HyperFEM Gallery
 
-![img](https://github-does-not-exist.com/MultiSimOLab/HyperFEM.jl/raw/main/docs/img/sims__.png)
+![img](https://github.com/MultiSimOLab/HyperFEM.jl/raw/main/docs/img/sims.png)
 
  
 

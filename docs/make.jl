@@ -33,7 +33,7 @@ makedocs(
     canonical = "https://MultiSimOLab.github.io/HyperFEM.jl",
   ),
   checkdocs = :none,
-  warnonly = true,
+  warnonly = false,
   linkcheck = true,
   linkcheck_ignore = [r"^mailto:"],
 )
