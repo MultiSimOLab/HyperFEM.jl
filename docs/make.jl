@@ -5,10 +5,9 @@ readme_path = joinpath(@__DIR__, "..", "README.md")
 index_path = joinpath(@__DIR__, "src", "index.md")
 
 readme_content = read(readme_path, String)
-readme_content = replace(
-    readme_content, 
-    r"(<p align=\"center\"><img.*?</p>)" => s"```@raw html\n\1\n```"
-)
+header_start = findfirst("# Multiphysics", readme_content)
+readme_content = header_start !== nothing ? readme_content[header_start.start:end] : readme_content
+readme_content = replace(readme_content, r"(<p align=\"center\"><img.*?</p>)" => s"```@raw html\n\1\n```")
 write(index_path, readme_content)
 
 makedocs(
@@ -25,7 +24,7 @@ makedocs(
     HyperFEM.ComputationalModels
   ],
   pages = [
-    "HyperFEM" => "index.md",       # Inject README.md (previously cloned into index.md)
+    "Home" => "index.md",           # Inject README.md (previously cloned into index.md)
     "Tutorials" => "tutorials.md",  # Point to the tutorials repository
     "API reference" => "api.md"     # Inject the docstrings from the code
   ],
