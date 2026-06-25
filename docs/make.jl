@@ -33,7 +33,8 @@ makedocs(
     canonical = "https://MultiSimOLab.github.io/HyperFEM.jl",
   ),
   checkdocs = :none,
-  warnonly = true
+  warnonly = true,
+  linkcheck = true,
 )
 
 deploydocs(
