@@ -35,6 +35,7 @@ makedocs(
   checkdocs = :none,
   warnonly = true,
   linkcheck = true,
+  linkcheck_ignore = [r"^mailto:"],
 )
 
 deploydocs(
