@@ -23,7 +23,7 @@ end
 @publish TensorAlgebra I9
 @publish TensorAlgebra Tensorize
 
-
+@publish PhysicalModels PhysicalModel
 @publish PhysicalModels LinearElasticity3D
 @publish PhysicalModels LinearElasticity2D
 @publish PhysicalModels Yeoh3D
