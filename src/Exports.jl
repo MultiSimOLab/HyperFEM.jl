@@ -24,6 +24,9 @@ end
 @publish TensorAlgebra Tensorize
 
 @publish PhysicalModels PhysicalModel
+@publish PhysicalModels Elasto
+@publish PhysicalModels ViscoElastic
+
 @publish PhysicalModels LinearElasticity3D
 @publish PhysicalModels LinearElasticity2D
 @publish PhysicalModels Yeoh3D
