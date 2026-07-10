@@ -6,6 +6,8 @@ macro publish(mod, name)
   end
 end
 
+@publish TensorAlgebra TensorValue  # Reexport from Gridap for convenience
+@publish TensorAlgebra VectorValue  # Reexport from Gridap for convenience
 @publish TensorAlgebra (*)
 @publish TensorAlgebra (×ᵢ⁴)
 @publish TensorAlgebra (⊗₁₂³)
