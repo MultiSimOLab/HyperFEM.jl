@@ -27,6 +27,14 @@ function Gridap.TensorValues.outer(A::VectorValue{D,Float64}, B::VectorValue{D,F
   return (A ⊗₁² B)
 end
 
+function Gridap.TensorValues.outer(A::TensorValue{4,2,Float64}, B::VectorValue{2,Float64})
+  return (A ⊗₁₂₃⁴ B)
+end
+
+function Gridap.TensorValues.outer(A::TensorValue{9,3,Float64}, B::VectorValue{3,Float64})
+  return (A ⊗₁₂₃⁴ B)
+end
+
 
 """
     ⊗₁²(A::VectorValue{D}, B::VectorValue{D})::TensorValue{D,D}
@@ -121,7 +129,7 @@ end
 
 
 """
-    ⊗₁²³(A::TensorValue{D}, B::VectorValue{D})::TensorValue{D,D*D}
+    ⊗₁₂³(A::TensorValue{D}, B::VectorValue{D})::TensorValue{D,D*D}
 
 Outer product of a second-order and first-order tensors (matrix and vector),
 returning a third-order tensor represented in a `D x D²` flattened matrix using combined indices.
@@ -153,6 +161,29 @@ returning a third-order tensor represented in a `D x D²` flattened matrix using
     end
   end
   Meta.parse("TensorValue{D,D*D}($str)")
+end
+
+
+"""
+    ⊗₁₂₃⁴(A::TensorValue{D²,D}, B::TensorValue{D})::TensorValue{D,D*D}
+
+Outer product of a third-order and first-order tensors (tensor and vector),
+returning a fourth-order tensor represented in a `D² x D²` flattened matrix using combined indices.
+"""
+@generated function (⊗₁₂₃⁴)(A::TensorValue{D²,D}, V::VectorValue{D}) where {D,D²}
+  @assert D*D == D² "Third- and first-order tensors size mismatch with $D² × $D and $D"
+  str = ""
+  for l in 1:D
+    for k in 1:D
+      for j in 1:D
+        for i in 1:D
+          a = _flat_idx(i,j,D)
+          str *= "A[$a,$k]*V[$l],"
+        end
+      end
+    end
+  end
+  Meta.parse("TensorValue{D*D,D*D}($str)")
 end
 
 
@@ -516,3 +547,30 @@ The operation follows the **index contraction pattern**, where addition is perfo
   end
   Meta.parse("TensorValue{D²}($str)")
 end
+
+
+"""
+    contraction_IJKL_JL(A::TensorValue{D*D}, H::TensorValue{D})::TensorValue{D*D}
+
+Performs a tensor contraction between a fourth-order tensor (represented as a `D² × D²` matrix in flattened index notation)
+and a second-order tensor (of size `D × D`).
+The operation follows the **index contraction pattern**, where addition is performed for repeated indices.
+"""
+@generated function contraction_IJKL_JL(H::TensorValue{D²}, A::TensorValue{D}) where {D, D²}
+  @assert D*D == D² "Fourth- and Second-order tensors size mismatch"
+  str = ""
+  for i in 1:D
+    for k in 1:D
+      for j in 1:D
+        for l in 1:D
+          a = _flat_idx(i,j,k,l,D)
+          str *= "+H[$a]*A[$j,$l]"
+        end
+      end
+      str *= ","
+    end
+  end
+  Meta.parse("TensorValue{D}($str)")
+end
+
+(⊗₁₂₃₄²⁴) = contraction_IJKL_JL
