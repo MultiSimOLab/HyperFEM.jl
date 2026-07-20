@@ -170,7 +170,7 @@ end
 Outer product of a third-order and first-order tensors (tensor and vector),
 returning a fourth-order tensor represented in a `D² x D²` flattened matrix using combined indices.
 """
-@generated function (⊗₁₂₃⁴)(A::TensorValue{D²,D}, V::VectorValue{D}) where {D,D²}
+@generated function (⊗₁₂₃⁴)(A::TensorValue{D,D²}, V::VectorValue{D}) where {D,D²}
   @assert D*D == D² "Third- and first-order tensors size mismatch with $D² × $D and $D"
   str = ""
   for l in 1:D
@@ -178,7 +178,7 @@ returning a fourth-order tensor represented in a `D² x D²` flattened matrix us
       for j in 1:D
         for i in 1:D
           a = _flat_idx(i,j,D)
-          str *= "A[$a,$k]*V[$l],"
+          str *= "A[$k,$a]*V[$l],"
         end
       end
     end
