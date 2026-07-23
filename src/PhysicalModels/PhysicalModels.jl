@@ -60,6 +60,7 @@ export ThermoElectroMech_PINNs
 export MagnetoMechModel
 export GeneralizedMaxwell
 export ViscousIncompressible
+export ViscousPolyconvex
 export HGO_4Fibers
 export HGO_1Fiber
 

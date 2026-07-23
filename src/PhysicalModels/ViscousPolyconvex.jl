@@ -1,11 +1,10 @@
 
 """
-A fast implementation of a viscous constitutive model with three key points:
- - The computation of the intermediate state does not require factorization
- - The underlying equilibrium term is neohookean
- - Uses distortional invariants instead of deviatoric invariants
-
-The combination of the three features aims to provide a fast implementation.
+The underlying viscous constitutive model is polyconvex in the set of variables `{F,J,Cᵥ}`.
+It provides a fast implementation with three key points:
+ - The computation of the intermediate state does not require factorization.
+ - The underlying equilibrium term is a neo-Hookean expression.
+ - It uses distortional invariants instead of deviatoric invariants.
 """
 struct ViscousPolyconvex <: Visco
   μ::Float64
