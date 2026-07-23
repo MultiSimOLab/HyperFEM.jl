@@ -100,7 +100,7 @@ function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
   Cv = return_mapping(obj, C, Cn, Cvn)
   invC = inv(C)
   λ = 3 / (Cv ⊙ invC)
-  -0.5γ * (C -λ*Cv) ⊙ (invC - inv(Cv)/λ)
+  -0.5γ * (C -λ*Cv) ⊙ (invC - (1/λ)*inv(Cv))
 end
 
 function return_mapping(obj::ViscousPolyconvex, C, Cn, A)
