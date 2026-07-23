@@ -436,7 +436,7 @@ end
       str *= ","
     end
   end
-  Meta.Parse("TensorValue{$D}($str)")
+  Meta.parse("TensorValue{$D}($str)")
 end
 
 
@@ -452,7 +452,7 @@ end
     end
     str *= ","
   end
-  Meta.Parse("VectorValue{$D}($str)")
+  Meta.parse("VectorValue{$D}($str)")
 end
 
 
@@ -468,7 +468,7 @@ end
       str *= ","
     end
   end
-  "TensorValue{$D}($str)"
+  Meta.parse("TensorValue{$D}($str)")
 end
 
 
