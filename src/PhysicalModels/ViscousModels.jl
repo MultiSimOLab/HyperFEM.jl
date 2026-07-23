@@ -23,16 +23,16 @@ function (obj::ViscousIncompressible)()
   return Ψ, ∂Ψ∂F, ∂Ψ∂F∂F
 end
 
-function update_time_step!(obj::Visco, Δt::Float64)
+function update_time_step!(obj::ViscousIncompressible, Δt::Float64)
   obj.Δt[] = Δt
 end
 
-function Gridap.CellData.CellState(::Visco, F0::TensorValue, points::Measure)
+function Gridap.CellData.CellState(::ViscousIncompressible, F0::TensorValue, points::Measure)
   v = VectorValue(F0..., 0.0)
   CellState(v, points)
 end
 
-function Gridap.CellData.CellState(obj::Visco, points::Measure)
+function Gridap.CellData.CellState(obj::ViscousIncompressible, points::Measure)
   CellState(obj, I3, points)
 end
 
@@ -41,13 +41,13 @@ function initialize_state(obj::ViscousIncompressible, points::Measure)
   CellState(obj, points)
 end
 
-function update_state!(obj::Visco, state, F, Fn)
+function update_state!(obj::ViscousIncompressible, state, F, Fn)
   _, Se, ∂Se∂Ce = SecondPiola(obj.elasto)
   return_mapping(A, F, Fn) = ReturnMapping(obj, Se, ∂Se∂Ce, F, Fn, A)
   update_state!(return_mapping, state, F, Fn)
 end
 
-function Dissipation(obj::Visco)
+function Dissipation(obj::ViscousIncompressible)
   _, Se, ∂Se∂Ce = SecondPiola(obj.elasto)
   D(F, Fn, A) = ViscousDissipation(obj, Se, ∂Se∂Ce, F, Fn, A)
 end

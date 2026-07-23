@@ -27,6 +27,26 @@ function (obj::ViscousPolyconvex)(::Any)
   Ψ, ∂Ψ∂F, ∂Ψ∂F∂F
 end
 
+function update_time_step!(obj::ViscousPolyconvex, Δt::Float64)
+  obj.Δt[] = Δt
+end
+
+function Gridap.CellData.CellState(::Visco, Cv₀::TensorValue, points::Measure)
+  CellState(Cv₀, points)
+end
+
+function Gridap.CellData.CellState(obj::Visco, points::Measure)
+  CellState(I3, points)
+end
+
+function Gridap.CellData.update_state!(obj::ViscousIncompressible, A, F, Fn)
+  update_state!(return_mapping(obj), A, F, Fn)
+end
+
+function dissipation(obj::ViscousPolyconvex)
+  D(F, Fn, A) = dissipation(obj, F, Fn, A)
+end
+
 # --- Underlying neo-Hookean model in terms of viscous distortional invariants ---
 
 function Ψv(obj::ViscousPolyconvex, C, Cv)
@@ -50,24 +70,24 @@ end
 
 # --- Implementation of derivatives ---
 
-function energy(obj::ViscousPolyconvex, F, Fn, A)
+function energy(obj::ViscousPolyconvex, F, Fn, Cvn)
   C = Cauchy(F)
   Cn = Cauchy(Fn)
-  Cv = return_mapping(obj::ViscousPolyconvex, C, Cn, A)
+  Cv = return_mapping(obj, C, Cn, A)
   Ψv(obj, C, Cv)
 end
 
-function first_piola(obj::ViscousPolyconvex, F, Fn, A)
+function first_piola(obj::ViscousPolyconvex, F, Fn, Cvn)
   C = Cauchy(F)
   Cn = Cauchy(Fn)
-  Cv = return_mapping(obj::ViscousPolyconvex, C, Cn, A)
+  Cv = return_mapping(obj, C, Cn, Cvn)
   F * Sv(obj, C, Cv)
 end
 
-function tangent(obj::ViscousPolyconvex, F, Fn, A)
+function tangent(obj::ViscousPolyconvex, F, Fn, Cvn)
   C = Cauchy(F)
   Cn = Cauchy(Fn)
-  Cv = return_mapping(obj::ViscousPolyconvex, C, Cn, A)
+  Cv = return_mapping(obj, C, Cn, Cvn)
   H = Hv(obj, C, Cv)
   DCDF = F' ⊗₁₃²⁴ I3 + I3 ⊗₁₄²³ F'
   DCDF' · H · DCDF
@@ -76,10 +96,26 @@ end
 function return_mapping(obj::ViscousPolyconvex, C, Cn, A)
   τ = obj.τ
   Δt = obj.Δt[]
-  Cvn = TensorValue{3,3}(A[1:9]...)
+  Cvn = A
   invC = inv(C)
   B = Δt/τ * invC + inv(Cvn)
   invCv = det(B)^(1/3) * B
-  Cv = inv(Cv)
-  λv = 3 / Cv ⊙ invC
+  inv(invCv)
+end
+
+function return_mapping(obj::ViscousPolyconvex)
+  (A, F, Fn) -> begin
+    C = Cauchy(F)
+    Cn = Cauchy(Fn)
+    Cv = return_mapping(obj, C, Cn, A)
+    (true, Cv)
+  end
+end
+
+function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
+  μ = obj.μ
+  C = Cauchy(F)
+  Cn = Cauchy(Fn)
+  Cv = return_mapping(obj, C, Cn, Cvn)
+  throw(Exception("Not implemented"))
 end

@@ -78,7 +78,7 @@ end
 @publish PhysicalModels HessianRegularization
 @publish PhysicalModels Hessian∇JRegularization
 @publish PhysicalModels ViscousIncompressible
-@publish PhysicalModels ViscousPloyconvex
+@publish PhysicalModels ViscousPolyconvex
 @publish PhysicalModels GeneralizedMaxwell
 @publish PhysicalModels HGO_4Fibers
 @publish PhysicalModels HGO_1Fiber
