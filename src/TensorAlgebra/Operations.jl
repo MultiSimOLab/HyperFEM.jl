@@ -422,7 +422,7 @@ function Gridap.TensorValues.outer(A::SVector, B::SVector)
 end
 
 
-@generated function ⊙ᵢⱼₖₗᵏˡ(H::TensorValue{D²}, A::TensorValue{D}) where {D, D²}
+@generated function ⊙₁₂₃₄³⁴(H::TensorValue{D²}, A::TensorValue{D}) where {D, D²}
   @assert D*D == D² "Fourth- and second-order tensors size mismatch"
   str = ""
   for j in 1:D
@@ -440,7 +440,7 @@ end
 end
 
 
-@generated function ⊙ᵢⱼₖʲᵏ(H::TensorValue{D,D²}, A::TensorValue{D}) where {D, D²}
+@generated function ⊙₁₂₃²³(H::TensorValue{D,D²}, A::TensorValue{D}) where {D, D²}
   @assert D*D == D² "Fourth- and second-order tensors size mismatch"
   str = ""
   for i in 1:D
@@ -456,7 +456,7 @@ end
 end
 
 
-@generated function ⊙ᵢⱼₖᵏ(H::TensorValue{D,D²}, V::VectorValue{D}) where {D, D²}
+@generated function ⊙₁₂₃³(H::TensorValue{D,D²}, V::VectorValue{D}) where {D, D²}
   @assert D*D == D² "Fourth- and second-order tensors size mismatch"
   str = ""
   for j in 1:D
@@ -472,12 +472,12 @@ end
 end
 
 
-Gridap.TensorValues.inner(H::TensorValue{4,4}, A::TensorValue{2,2}) = H ⊙ᵢⱼₖₗᵏˡ A
-Gridap.TensorValues.inner(H::TensorValue{9,9}, A::TensorValue{3,3}) = H ⊙ᵢⱼₖₗᵏˡ A
-Gridap.TensorValues.inner(H::TensorValue{2,4}, A::TensorValue{2,2}) = H ⊙ᵢⱼₖʲᵏ A
-Gridap.TensorValues.inner(H::TensorValue{3,9}, A::TensorValue{3,3}) = H ⊙ᵢⱼₖʲᵏ A
-Gridap.TensorValues.inner(H::TensorValue{2,4}, V::VectorValue{2}) = H ⊙ᵢⱼₖᵏ V
-Gridap.TensorValues.inner(H::TensorValue{3,9}, V::VectorValue{3}) = H ⊙ᵢⱼₖᵏ V
+Gridap.TensorValues.inner(H::TensorValue{4,4}, A::TensorValue{2,2}) = H ⊙₁₂₃₄³⁴ A
+Gridap.TensorValues.inner(H::TensorValue{9,9}, A::TensorValue{3,3}) = H ⊙₁₂₃₄³⁴ A
+Gridap.TensorValues.inner(H::TensorValue{2,4}, A::TensorValue{2,2}) = H ⊙₁₂₃²³ A
+Gridap.TensorValues.inner(H::TensorValue{3,9}, A::TensorValue{3,3}) = H ⊙₁₂₃²³ A
+Gridap.TensorValues.inner(H::TensorValue{2,4}, V::VectorValue{2}) = H ⊙₁₂₃³ V
+Gridap.TensorValues.inner(H::TensorValue{3,9}, V::VectorValue{3}) = H ⊙₁₂₃³ V
 Gridap.TensorValues.inner(V::VectorValue, H::TensorValue) = TensorValue(V.data) ⊙ H
 
 
