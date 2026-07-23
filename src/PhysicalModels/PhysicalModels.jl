@@ -126,6 +126,8 @@ include("MechanicalModels.jl")
 
 include("ViscousModels.jl")
 
+include("ViscousPolyconvex.jl")
+
 include("MagneticModels.jl")
 
 include("ElectricalModels.jl")
