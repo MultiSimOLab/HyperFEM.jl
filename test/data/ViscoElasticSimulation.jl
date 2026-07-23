@@ -3,7 +3,7 @@ using Gridap.FESpaces
 using GridapSolvers
 using GridapSolvers.NonlinearSolvers
 using HyperFEM
-using HyperFEM.ComputationalModels.EvolutionFunctions
+using HyperFEM.DiscreteModeling.EvolutionFunctions
 using HyperFEM.ComputationalModels.PostMetrics
 
 function visco_elastic_simulation(;t_end=15, writevtk=true, verbose=true)

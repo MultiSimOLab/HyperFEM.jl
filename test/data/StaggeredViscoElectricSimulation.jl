@@ -1,7 +1,6 @@
 using HyperFEM
 using HyperFEM: jacobian, solve!
 using HyperFEM.ComputationalModels.PostMetrics
-using HyperFEM.ComputationalModels.EvolutionFunctions
 using Gridap, GridapGmsh, GridapSolvers
 using GridapSolvers.NonlinearSolvers
 using Gridap.FESpaces
@@ -48,12 +47,12 @@ function staggered_visco_electric_simulation(; t_end=2, writevtk=true, verbose=t
   # Dirichlet boundary conditions 
   dir_u_tags = ["fixed"]
   dir_u_values = [[0.0, 0.0, 0.0]]
-  dir_u_timesteps = [constant()]
+  dir_u_timesteps = [EvolutionFunctions.constant()]
   dirichlet_u = DirichletBC(dir_u_tags, dir_u_values, dir_u_timesteps)
 
   dir_φ_tags = ["bottom", "mid"]
   dir_φ_values = [0.0, 0.1]
-  dir_φ_timesteps = [constant(), ramp(1.0)]
+  dir_φ_timesteps = [EvolutionFunctions.constant(), EvolutionFunctions.ramp(1.0)]
   dirichlet_φ = DirichletBC(dir_φ_tags, dir_φ_values, dir_φ_timesteps)
 
   # Finite Elements
