@@ -39,7 +39,7 @@ function Gridap.CellData.CellState(obj::ViscousPolyconvex, points::Measure)
   CellState(I3, points)
 end
 
-function Gridap.CellData.update_state!(obj::ViscousIncompressible, A, F, Fn)
+function Gridap.CellData.update_state!(obj::ViscousPolyconvex, A, F, Fn)
   update_state!(return_mapping(obj), A, F, Fn)
 end
 
