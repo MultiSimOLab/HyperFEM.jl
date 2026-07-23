@@ -456,7 +456,7 @@ end
 end
 
 
-@generated function ⊙ᵢⱼₖᵏ(H::TensorValue{D,D²}, A::VectorValue{D}) where {D, D²}
+@generated function ⊙ᵢⱼₖᵏ(H::TensorValue{D,D²}, V::VectorValue{D}) where {D, D²}
   @assert D*D == D² "Fourth- and second-order tensors size mismatch"
   str = ""
   for j in 1:D
