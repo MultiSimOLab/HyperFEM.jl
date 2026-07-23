@@ -10,12 +10,14 @@ end
 @publish TensorAlgebra VectorValue  # Reexport from Gridap for convenience
 @publish TensorAlgebra (*)
 @publish TensorAlgebra (×ᵢ⁴)
+@publish TensorAlgebra (⊗₁²)
 @publish TensorAlgebra (⊗₁₂³)
 @publish TensorAlgebra (⊗₁₃²)
 @publish TensorAlgebra (⊗₁²³)
 @publish TensorAlgebra (⊗₁₃²⁴)
 @publish TensorAlgebra (⊗₁₂³⁴)
-@publish TensorAlgebra (⊗₁²)
+@publish TensorAlgebra (⊗₁₂₃⁴)
+@publish TensorAlgebra (⊗₁₂₃₄²⁴)
 @publish TensorAlgebra logreg
 @publish TensorAlgebra Box
 @publish TensorAlgebra Ellipsoid
