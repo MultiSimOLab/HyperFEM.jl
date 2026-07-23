@@ -94,11 +94,13 @@ function tangent(obj::ViscousPolyconvex, F, Fn, Cvn)
 end
 
 function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
-  μ = obj.μ
+  γ = obj.μ / obj.Δt[]
   C = Cauchy(F)
   Cn = Cauchy(Fn)
   Cv = return_mapping(obj, C, Cn, Cvn)
-  throw(Exception("Not implemented"))
+  invC = inv(C)
+  λ = 3 / (Cv ⊙ invC)
+  -0.5γ * (C -λ*Cv) ⊙ (invC - inv(Cv)/λ)
 end
 
 function return_mapping(obj::ViscousPolyconvex, C, Cn, A)
