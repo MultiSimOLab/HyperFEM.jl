@@ -31,11 +31,11 @@ function update_time_step!(obj::ViscousPolyconvex, Δt::Float64)
   obj.Δt[] = Δt
 end
 
-function Gridap.CellData.CellState(::Visco, Cv₀::TensorValue, points::Measure)
+function Gridap.CellData.CellState(::ViscousPolyconvex, Cv₀::TensorValue, points::Measure)
   CellState(Cv₀, points)
 end
 
-function Gridap.CellData.CellState(obj::Visco, points::Measure)
+function Gridap.CellData.CellState(obj::ViscousPolyconvex, points::Measure)
   CellState(I3, points)
 end
 
@@ -93,6 +93,14 @@ function tangent(obj::ViscousPolyconvex, F, Fn, Cvn)
   DCDF' · H · DCDF
 end
 
+function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
+  μ = obj.μ
+  C = Cauchy(F)
+  Cn = Cauchy(Fn)
+  Cv = return_mapping(obj, C, Cn, Cvn)
+  throw(Exception("Not implemented"))
+end
+
 function return_mapping(obj::ViscousPolyconvex, C, Cn, A)
   τ = obj.τ
   Δt = obj.Δt[]
@@ -110,12 +118,4 @@ function return_mapping(obj::ViscousPolyconvex)
     Cv = return_mapping(obj, C, Cn, A)
     (true, Cv)
   end
-end
-
-function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
-  μ = obj.μ
-  C = Cauchy(F)
-  Cn = Cauchy(Fn)
-  Cv = return_mapping(obj, C, Cn, Cvn)
-  throw(Exception("Not implemented"))
 end
