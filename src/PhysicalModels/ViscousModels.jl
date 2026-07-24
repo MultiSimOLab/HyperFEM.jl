@@ -13,13 +13,14 @@ struct ViscousIncompressible <: Visco
   function ViscousIncompressible(elasto; τ::Float64)
     new(elasto, τ, 0)
   end
-  function (obj::ViscousIncompressible)()
-    Ψe, Se, ∂Se∂Ce   = SecondPiola(obj.elasto)
-    Ψ(F, Fn, A)      = Energy(obj, Ψe, Se, ∂Se∂Ce, F, Fn, A)
-    ∂Ψ∂F(F, Fn, A)   = Piola(obj, Se, ∂Se∂Ce, F, Fn, A)
-    ∂Ψ∂F∂F(F, Fn, A) = Tangent(obj, Se, ∂Se∂Ce, F, Fn, A)
-    return Ψ, ∂Ψ∂F, ∂Ψ∂F∂F
-  end
+end
+
+function (obj::ViscousIncompressible)()
+  Ψe, Se, ∂Se∂Ce   = SecondPiola(obj.elasto)
+  Ψ(F, Fn, A)      = Energy(obj, Ψe, Se, ∂Se∂Ce, F, Fn, A)
+  ∂Ψ∂F(F, Fn, A)   = Piola(obj, Se, ∂Se∂Ce, F, Fn, A)
+  ∂Ψ∂F∂F(F, Fn, A) = Tangent(obj, Se, ∂Se∂Ce, F, Fn, A)
+  return Ψ, ∂Ψ∂F, ∂Ψ∂F∂F
 end
 
 function update_time_step!(obj::ViscousIncompressible, Δt::Float64)
@@ -172,7 +173,7 @@ end
 
 
 """Right Cauchy-Green deformation tensor."""
-function Cauchy(F::TensorValue)
+function Cauchy(F)
   F' · F
 end
 

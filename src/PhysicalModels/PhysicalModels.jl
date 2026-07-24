@@ -60,6 +60,7 @@ export ThermoElectroMech_PINNs
 export MagnetoMechModel
 export GeneralizedMaxwell
 export ViscousIncompressible
+export ViscousPolyconvex
 export HGO_4Fibers
 export HGO_1Fiber
 
@@ -125,6 +126,8 @@ include("KinematicModels.jl")
 include("MechanicalModels.jl")
 
 include("ViscousModels.jl")
+
+include("ViscousPolyconvex.jl")
 
 include("MagneticModels.jl")
 
