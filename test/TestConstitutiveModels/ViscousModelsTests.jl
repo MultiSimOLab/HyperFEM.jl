@@ -232,12 +232,14 @@ end
 end
 
 
-@testset "ViscousPolyconvex_Base" begin
+@testset "ViscousPolyconvex" begin
   model = ViscousPolyconvex(τ=1.15, μ=7e4)
+  Fn = I3
   F1 = I3 + 0.1*TensorValue(rand(9)...)
   C1 = F1' · F1
   Cv = I3
 
+  # --- Test neo-Hookean model ---
   Ψv          = HyperFEM.PhysicalModels.Ψv
   Sv          = HyperFEM.PhysicalModels.Sv
   ∂Sv∂C_Cᵥfix = HyperFEM.PhysicalModels.∂Sv∂C_Cᵥfix
@@ -245,26 +247,18 @@ end
   Sv_ref = 2*TensorValue(ForwardDiff.gradient(C -> Ψv(model, TensorValue(C), Cv), get_array(C1)))
   ∂Sv_ref = 2*TensorValue(ForwardDiff.hessian(C -> Ψv(model, TensorValue(C), Cv), get_array(C1)))
 
-  @test isapprox(Sv(model, C1, Cv), Sv_ref, rtol=1e-8)  # Pass
-  @test isapprox(∂Sv∂C_Cᵥfix(model, C1, Cv), ∂Sv_ref, rtol=1e-8) # Pass
-end
+  @test isapprox(Sv(model, C1, Cv), Sv_ref, rtol=1e-8)
+  @test isapprox(∂Sv∂C_Cᵥfix(model, C1, Cv), ∂Sv_ref, rtol=1e-8)
 
+  # --- Test return mapping ---
+  return_mapping = HyperFEM.PhysicalModels.return_mapping
+  ∂invCv∂C    = HyperFEM.PhysicalModels.∂invCv∂C
 
-@testset "ViscousPolyconvex" begin
-  long_term = NeoHookean3D(λ=1e7, μ=8e4)
-  branch_1 = ViscousPolyconvex(τ=1.15, μ=7e4)
-  model = GeneralizedMaxwell(long_term, branch_1)
-  update_time_step!(model, 0.01)
+  ∂invCv_ref = TensorValue(ForwardDiff.jacobian(C -> get_array(return_mapping(model, TensorValue(C), C1, Cv)), get_array(C1)))
+  @test isapprox(∂invCv∂C(model, C1, C1, Cv), ∂invCv_ref, rtol=1e-8)
+
+  # --- Test full model tangent operator ---
   Ψ, ∂Ψ∂F, ∂∂Ψ∂FF = model()
-  Fn = I3
-  A  = I3
-  F1 = I3 + 0.1*TensorValue(rand(9)...)
-
-  # ∂Ψ∂F_ref  = TensorValue(ForwardDiff.gradient(F -> Ψ(TensorValue(F), Fn, A), get_array(F1)))
-  # ∂∂Ψ∂FF_ref = TensorValue(ForwardDiff.hessian(F -> Ψ(TensorValue(F), Fn, A), get_array(F1)))
-  ∂∂Ψ∂FF_ref = TensorValue(ForwardDiff.jacobian(F -> get_array(∂Ψ∂F(TensorValue(F), Fn, A)), get_array(F1)))
-
-  @test isapprox(∂∂Ψ∂FF(F1, Fn, A), ∂∂Ψ∂FF_ref, rtol=1e-8)
-  # @test isapprox(∂Ψ∂F(F1, Fn, A), ∂Ψ∂F_ref, rtol=1e-8)  # Fail!!!
-  # @test isapprox(∂∂Ψ∂FF(F1, Fn, A), ∂∂Ψ∂FF_ref, rtol=1e-8)
+  ∂∂Ψ∂FF_ref = TensorValue(ForwardDiff.jacobian(F -> get_array(∂Ψ∂F(TensorValue(F), Fn, Cv)), get_array(F1)))
+  @test isapprox(∂∂Ψ∂FF(F1, Fn, Cv), ∂∂Ψ∂FF_ref, rtol=1e-8)
 end
