@@ -58,20 +58,26 @@ end
 function Sv(obj::ViscousPolyconvex, C, Cv)
   μ = obj.μ
   IIIc = det(C)
-  μ * (inv(Cv) -IIIc^(1/3) * inv(C))  #ADD TEST
+  μ * (inv(Cv) -IIIc^(1/3) * inv(C))
 end
 
-function ∂Sv∂C(obj::ViscousPolyconvex, C, Cv)
+function ∂Sv∂C_Cᵥfix(obj::ViscousPolyconvex, C, Cv)
   μ = obj.μ
   IIIc = det(C)
   G    = cof(C)
-  μ * IIIc^(-2/3) * (2/3 * (1/IIIc) * G ⊗ G - ×ᵢ⁴(C)) # Replace & test
+  μ * IIIc^(-2/3) * (2/3 * (1/IIIc) * G ⊗ G - ×ᵢ⁴(C))
 end
 
-function ∂Sv∂Cv(obj::ViscousPolyconvex, C, Cv)
-  μ = obj.μ
-  invCv = inv(Cv)
-  -μ * IIsym(invCv)
+function ∂invCv∂C(obj::ViscousPolyconvex, C, Cn, Cvn)
+  τ = obj.τ
+  Δt = obj.Δt[]
+  invC = inv(C)
+  invCvn = inv(Cvn)
+  B = Δt/τ * invC + invCvn
+  G = cof(C)
+  IIIb = det(B)
+  IIIc = det(C)
+  0.5*Δt * IIIb^(-1/3) * IIIc^(-1) * (IIsym(I3) -1/3*B⊗inv(B)) ⊙ (-IIIc^(-1) * G⊗G + ×ᵢ⁴(C))
 end
 
 # --- Implementation of derivatives ---
@@ -94,27 +100,27 @@ function tangent(obj::ViscousPolyconvex, F, Fn, Cvn)
   C = Cauchy(F)
   Cn = Cauchy(Fn)
   Cv = return_mapping(obj, C, Cn, Cvn)
-  H = ∂Sv∂C(obj, C, Cv)
+  H1 = ∂Sv∂C_Cᵥfix(obj, C, Cv)
+  H2 = obj.μ * ∂invCv∂C(obj, C, Cn, Cvn)
+  H3 = I3 ⊗₁₃²⁴ Sv(obj, C, Cv)
   DCDF = F' ⊗₁₃²⁴ I3 + I3 ⊗₁₄²³ F'
-  DCDF' · (H + XXX) · DCDF + (GEOM) # TODO
+  DCDF' · (H1 + H2) · DCDF + H3
 end
 
 function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
   γ = obj.μ / obj.τ
+  Τ = obj.τ / obj.Δt
   C = Cauchy(F)
   Cn = Cauchy(Fn)
   Cv = return_mapping(obj, C, Cn, Cvn)
   invC = inv(C)
-  λ = 3 / (Cv ⊙ invC) # TODO: Replace by algorithmic expression
-  -0.5γ * (C -λ*Cv) ⊙ (invC - (1/λ)*inv(Cv))
+  λ_algo = 1 / (det(invC + Τ*inv(Cvn))^(1/3) - Τ)  # λ = 3 / (Cv ⊙ invC)
+  -0.5γ * (C -λ_algo*Cv) ⊙ (invC - (1/λ_algo)*inv(Cv))
 end
 
-function return_mapping(obj::ViscousPolyconvex, C, Cn, A)
-  τ = obj.τ
-  Δt = obj.Δt[]
-  Cvn = A
-  invC = inv(C)
-  B = Δt/τ * invC + inv(Cvn)
+function return_mapping(obj::ViscousPolyconvex, C, Cn, Cvn)
+  Τ = obj.τ / obj.Δt[]
+  B = Τ * inv(C) + inv(Cvn)
   invCv = det(B)^(-1/3) * B
   inv(invCv)
 end
