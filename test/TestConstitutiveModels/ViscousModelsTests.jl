@@ -238,14 +238,18 @@ end
   C1 = F1' · F1
   Cv = I3
 
-  Ψv          = HyperFEM.PhysicalModels.Ψv
-  Sv          = HyperFEM.PhysicalModels.Sv
-  ∂Sv∂C_Cᵥfix = HyperFEM.PhysicalModels.∂Sv∂C_Cᵥfix
+  Ψv      = HyperFEM.PhysicalModels.Ψv
+  Sv      = HyperFEM.PhysicalModels.Sv
+  ∂Sv∂C   = HyperFEM.PhysicalModels.∂Sv∂C
+  ∂Sv∂Cv  = HyperFEM.PhysicalModels.∂Sv∂Cv
+
   Sv_ref = 2*TensorValue(ForwardDiff.gradient(C -> Ψv(model, TensorValue(C), Cv), get_array(C1)))
   ∂Sv_ref = 2*TensorValue(ForwardDiff.hessian(C -> Ψv(model, TensorValue(C), Cv), get_array(C1)))
+  ∂Svv_ref = TensorValue(ForwardDiff.jacobian(C -> get_array(Sv(model, C1, TensorValue(C))), get_array(Cv)))  # Implementation fails, good mathematical definition
 
   @test isapprox(Sv(model, C1, Cv), Sv_ref, rtol=1e-8)
-  @test isapprox(∂Sv∂C_Cᵥfix(model, C1, Cv), ∂Sv_ref, rtol=1e-8)
+  @test isapprox(∂Sv∂C(model, C1, Cv), ∂Sv_ref, rtol=1e-8)
+  @test isapprox(∂Sv∂Cv(model, C1, Cv), ∂Svv_ref, rtol=1e-8)
 end
 
 
@@ -259,8 +263,8 @@ end
   A  = I3
   F1 = I3 + 0.1*TensorValue(rand(9)...)
 
-  ∂Ψ∂F_ref  = TensorValue(ForwardDiff.gradient(F -> Ψ(F, Fn, A), get_array(F1)))
-  ∂∂Ψ∂FF_ref = TensorValue(ForwardDiff.hessian(F -> Ψ(F, Fn, A), get_array(F1)))
+  ∂Ψ∂F_ref  = TensorValue(ForwardDiff.gradient(F -> Ψ(TensorValue(F), Fn, A), get_array(F1)))
+  ∂∂Ψ∂FF_ref = TensorValue(ForwardDiff.hessian(F -> Ψ(TensorValue(F), Fn, A), get_array(F1)))
 
   @test isapprox(∂Ψ∂F(F1, Fn, A), ∂Ψ∂F_ref, rtol=1e-8)
   @test isapprox(∂∂Ψ∂FF(F1, Fn, A), ∂∂Ψ∂FF_ref, rtol=1e-8)

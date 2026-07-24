@@ -61,11 +61,17 @@ function Sv(obj::ViscousPolyconvex, C, Cv)
   μ * (inv(Cv) -IIIc^(1/3) * inv(C))  #ADD TEST
 end
 
-function ∂Sv∂C_Cᵥfix(obj::ViscousPolyconvex, C, Cv)
+function ∂Sv∂C(obj::ViscousPolyconvex, C, Cv)
   μ = obj.μ
   IIIc = det(C)
   G    = cof(C)
   μ * IIIc^(-2/3) * (2/3 * (1/IIIc) * G ⊗ G - ×ᵢ⁴(C)) # Replace & test
+end
+
+function ∂Sv∂Cv(obj::ViscousPolyconvex, C, Cv)
+  μ = obj.μ
+  invCv = inv(Cv)
+  -μ * IIsym(invCv)
 end
 
 # --- Implementation of derivatives ---
@@ -88,7 +94,7 @@ function tangent(obj::ViscousPolyconvex, F, Fn, Cvn)
   C = Cauchy(F)
   Cn = Cauchy(Fn)
   Cv = return_mapping(obj, C, Cn, Cvn)
-  H = ∂Sv∂C_Cᵥfix(obj, C, Cv)
+  H = ∂Sv∂C(obj, C, Cv)
   DCDF = F' ⊗₁₃²⁴ I3 + I3 ⊗₁₄²³ F'
   DCDF' · (H + XXX) · DCDF + (GEOM) # TODO
 end
