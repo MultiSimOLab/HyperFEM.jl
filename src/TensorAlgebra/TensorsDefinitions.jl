@@ -121,3 +121,9 @@ const δᵢₖδⱼₗ3D = _Kroneckerδδ((i,j,k,l) -> i==k && j==l, 3)
 
 Delta Kronecker outer product 3D"""
 const δᵢₗδⱼₖ3D = _Kroneckerδδ((i,j,k,l) -> i==l && j==k, 3)
+
+"""
+    δᵢₖδⱼₗ3D::TensorValue{9}
+
+Delta Kronecker outer product 3D"""
+const δⱼₖδᵢₗ3D = _Kroneckerδδ((i,j,k,l) -> j==k && i==l, 3)
