@@ -238,12 +238,14 @@ end
   C1 = F1' · F1
   Cv = I3
 
-  import HyperFEM.PhysicalModels: Ψv, Sv, ∂Sv∂C_Cᵥfixed
-  Sv_ref = TensorValue(ForwardDiff.gradient(C -> Ψv(model, C, Cv), get_array(C1)))
-  ∂Sv_ref = TensorValue(ForwardDiff.hessian(C -> Ψv(model, C, Cv), get_array(C1)))
+  Ψv          = HyperFEM.PhysicalModels.Ψv
+  Sv          = HyperFEM.PhysicalModels.Sv
+  ∂Sv∂C_Cᵥfix = HyperFEM.PhysicalModels.∂Sv∂C_Cᵥfix
+  Sv_ref = 2*TensorValue(ForwardDiff.gradient(C -> Ψv(model, TensorValue(C), Cv), get_array(C1)))
+  ∂Sv_ref = 2*TensorValue(ForwardDiff.hessian(C -> Ψv(model, TensorValue(C), Cv), get_array(C1)))
 
   @test isapprox(Sv(model, C1, Cv), Sv_ref, rtol=1e-8)
-  @test isapprox(∂Sv∂C_Cᵥfixed(model, C1, Cv), ∂Sv_ref, rtol=1e-8)
+  @test isapprox(∂Sv∂C_Cᵥfix(model, C1, Cv), ∂Sv_ref, rtol=1e-8)
 end
 
 

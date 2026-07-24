@@ -64,8 +64,8 @@ end
 function ∂Sv∂C_Cᵥfix(obj::ViscousPolyconvex, C, Cv)
   μ = obj.μ
   IIIc = det(C)
-  invC = inv(C)
-  -μ * IIIc^(1/3) * (1/3 * invC ⊗ invC - ×ᵢ⁴(invC)) # Replace & test
+  G    = cof(C)
+  μ * IIIc^(-2/3) * (2/3 * (1/IIIc) * G ⊗ G - ×ᵢ⁴(C)) # Replace & test
 end
 
 # --- Implementation of derivatives ---
