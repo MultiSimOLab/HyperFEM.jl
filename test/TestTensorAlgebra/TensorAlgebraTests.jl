@@ -125,4 +125,7 @@ end
 
   # 2. IIsym(A) : B yields 0.5 * (A * B * Aᵀ + A * Bᵀ * Aᵀ)
   @test IIsym(A) ⊙ B ≈ 0.5 * (A · B · A' + A · B' · A')
+
+  # 3. IIsym(I3) == 1/2 (δᵢₖδⱼₗ3D + δⱼₖδᵢₗ3D)
+  @test IIsym(I3) == 0.5 * (δᵢₖδⱼₗ3D + δⱼₖδᵢₗ3D)
 end

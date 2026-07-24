@@ -34,6 +34,7 @@ export δᵢₗδⱼₖ2D
 export δᵢⱼδₖₗ3D
 export δᵢₖδⱼₗ3D
 export δᵢₗδⱼₖ3D
+export δⱼₖδᵢₗ3D
 export cof
 export contraction_IP_JPKL
 export contraction_IP_PJKL
