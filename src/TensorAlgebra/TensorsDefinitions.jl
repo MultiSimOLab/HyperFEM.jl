@@ -5,7 +5,7 @@
 
 """The scaling N×N matrix"""
 const I_(N) = TensorValue{N,N,Float64}(ntuple(α -> begin
-  i,j = _full_idx2(α,N)
+  i,j = _ij(α,N)
   i==j ? 1.0 : 0.0
 end,N*N))
 
@@ -80,7 +80,7 @@ const zerotensor9 = TensorValue{9,9,Float64}(
 Delta Kronecker outer product according to the `δδ(i,j,k,l)` function"""
 function _Kroneckerδδ(δδ::Function, N::Int)
   TensorValue{N*N,N*N,Float64}(ntuple(α -> begin
-    i, j, k, l = _full_idx4(α,N)
+    i, j, k, l = _ijkl(α,N)
     δδ(i,j,k,l) ? 1.0 : 0.0
   end,
   N*N*N*N))

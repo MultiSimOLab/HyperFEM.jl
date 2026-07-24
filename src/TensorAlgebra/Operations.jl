@@ -186,9 +186,15 @@ returning a fourth-order tensor represented in a `D² x D²` flattened matrix us
   Meta.parse("TensorValue{D*D,D*D}($str)")
 end
 
+function IIsym(A::TensorValue{3,3})
+  vals = ntuple(Val(81)) do a
+    i, j, k, l = _ijkl(a, 3)
+    0.5 * (A[i, k] * A[j, l] + A[i, l] * A[j, k])
+  end
+  TensorValue{9,9}(vals)
+end
 
 function (×ᵢ⁴)(A::TensorValue{3,3})
-
   TensorValue{9,9}(0.0, 0.0, 0.0, 0.0, A[9], -A[8], 0.0, -A[6], A[5], 0.0, 0.0, 0.0, -A[9],
     0.0, A[7], A[6], 0.0, -A[4], 0.0, 0.0, 0.0, A[8], -A[7], 0.0, -A[5], A[4], 0.0, 0.0, -A[9],
     A[8], 0.0, 0.0, 0.0, 0.0, A[3], -A[2], A[9], 0.0, -A[7], 0.0, 0.0, 0.0, -A[3], 0.0,
