@@ -114,3 +114,15 @@ end
   cofA = det(A) * inv(A')
   @test isapprox(cof(A), cofA)
 end
+
+
+@testset "IIsym" begin
+  A  = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0)
+  B  = TensorValue(1.0, 4.0, 2.0, 5.0, 3.0, 6.0, 8.0, 7.0, 9.0)
+
+  # 1. IIsym(I3) : B yields the symmetric part 0.5 * (B + Bᵀ)
+  @test IIsym(I3) ⊙ B == 0.5 * (B + B')
+
+  # 2. IIsym(A) : B yields 0.5 * (A * B * Aᵀ + A * Bᵀ * Aᵀ)
+  @test IIsym(A) ⊙ B ≈ 0.5 * (A · B · A' + A · B' · A')
+end
