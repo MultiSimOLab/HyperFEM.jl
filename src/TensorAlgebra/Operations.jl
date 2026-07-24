@@ -10,28 +10,28 @@ function (*)(Ten1::TensorValue, Ten2::TensorValue)
 end
 
 
-@generated function (+)(A::TensorValue{D,D,Float64}, B::TensorValue{D,D,Float64}) where {D}
+@generated function (+)(A::TensorValue{D,D}, B::TensorValue{D,D}) where {D}
   str = ""
   for i in 1:D*D
     str *= "A.data[$i] + B.data[$i], "
   end
-  Meta.parse("TensorValue{D,D, Float64}($str)")
+  Meta.parse("TensorValue{D,D}($str)")
 end
 
 
-function Gridap.TensorValues.outer(A::TensorValue{D,D,Float64}, B::TensorValue{D,D,Float64}) where {D}
+function Gridap.TensorValues.outer(A::TensorValue{D,D}, B::TensorValue{D,D}) where {D}
   return (A ⊗₁₂³⁴ B)
 end
 
-function Gridap.TensorValues.outer(A::VectorValue{D,Float64}, B::VectorValue{D,Float64}) where {D}
+function Gridap.TensorValues.outer(A::VectorValue{D}, B::VectorValue{D}) where {D}
   return (A ⊗₁² B)
 end
 
-function Gridap.TensorValues.outer(A::TensorValue{4,2,Float64}, B::VectorValue{2,Float64})
+function Gridap.TensorValues.outer(A::TensorValue{4,2}, B::VectorValue{2})
   return (A ⊗₁₂₃⁴ B)
 end
 
-function Gridap.TensorValues.outer(A::TensorValue{9,3,Float64}, B::VectorValue{3,Float64})
+function Gridap.TensorValues.outer(A::TensorValue{9,3}, B::VectorValue{3})
   return (A ⊗₁₂₃⁴ B)
 end
 
@@ -41,14 +41,14 @@ end
 
 Outer product of two first-order tensors (vectors), returning a second-order tensor (matrix).
 """
-@generated function (⊗₁²)(A::VectorValue{D,Float64}, B::VectorValue{D,Float64}) where {D}
+@generated function (⊗₁²)(A::VectorValue{D}, B::VectorValue{D}) where {D}
   str = ""
   for iB in 1:D
     for iA in 1:D
       str *= "A.data[$iA] * B.data[$iB], "
     end
   end
-  Meta.parse("TensorValue{D,D, Float64}($str)")
+  Meta.parse("TensorValue{D,D}($str)")
 end
 
 
@@ -58,14 +58,14 @@ end
 Outer product of two second-order tensors (matrices), returning a fourth-order tensor 
 represented in a `D² x D²` flattened matrix using combined indices.
 """
-@generated function (⊗₁₂³⁴)(A::TensorValue{D,D,Float64}, B::TensorValue{D,D,Float64}) where {D}
+@generated function (⊗₁₂³⁴)(A::TensorValue{D,D}, B::TensorValue{D,D}) where {D}
   str = ""
   for iB in 1:D*D
     for iA in 1:D*D
       str *= "A.data[$iA] * B.data[$iB], "
     end
   end
-  Meta.parse("TensorValue{D*D,D*D, Float64}($str)")
+  Meta.parse("TensorValue{D*D,D*D}($str)")
 end
 
 
@@ -117,14 +117,14 @@ end
 Outer product of a first-order and second-order tensors (vector and matrix),
 returning a third-order tensor represented in a `D x D²` flattened matrix using combined indices.
 """
-@generated function (⊗₁²³)(V::VectorValue{D,Float64}, A::TensorValue{D,D,Float64}) where {D}
+@generated function (⊗₁²³)(V::VectorValue{D}, A::TensorValue{D,D}) where {D}
   str = ""
   for iA in 1:D*D
     for iV in 1:D
       str *= "A.data[$iA] * V.data[$iV], "
     end
   end
-  Meta.parse("TensorValue{D,D*D, Float64, D*D*D}($str)")
+  Meta.parse("TensorValue{D,D*D}($str)")
 end
 
 
@@ -134,14 +134,14 @@ end
 Outer product of a second-order and first-order tensors (matrix and vector),
 returning a third-order tensor represented in a `D x D²` flattened matrix using combined indices.
 """
-@generated function (⊗₁₂³)(A::TensorValue{D,D,Float64}, V::VectorValue{D,Float64}) where {D}
+@generated function (⊗₁₂³)(A::TensorValue{D,D}, V::VectorValue{D}) where {D}
   str = ""
   for iV in 1:D
     for iA in 1:D*D
       str *= "A.data[$iA] * V.data[$iV], "
     end
   end
-  Meta.parse("TensorValue{D,D*D, Float64,D*D*D}($str)")
+  Meta.parse("TensorValue{D,D*D}($str)")
 end
 
 
@@ -187,9 +187,9 @@ returning a fourth-order tensor represented in a `D² x D²` flattened matrix us
 end
 
 
-function (×ᵢ⁴)(A::TensorValue{3,3,Float64})
+function (×ᵢ⁴)(A::TensorValue{3,3})
 
-  TensorValue(0.0, 0.0, 0.0, 0.0, A[9], -A[8], 0.0, -A[6], A[5], 0.0, 0.0, 0.0, -A[9],
+  TensorValue{9,9}(0.0, 0.0, 0.0, 0.0, A[9], -A[8], 0.0, -A[6], A[5], 0.0, 0.0, 0.0, -A[9],
     0.0, A[7], A[6], 0.0, -A[4], 0.0, 0.0, 0.0, A[8], -A[7], 0.0, -A[5], A[4], 0.0, 0.0, -A[9],
     A[8], 0.0, 0.0, 0.0, 0.0, A[3], -A[2], A[9], 0.0, -A[7], 0.0, 0.0, 0.0, -A[3], 0.0,
     A[1], -A[8], A[7], 0.0, 0.0, 0.0, 0.0, A[2], -A[1], 0.0, 0.0, A[6], -A[5], 0.0,
@@ -200,7 +200,7 @@ end
 
 function Gridap.TensorValues.cross(A::TensorValue{3,3,T1}, B::TensorValue{3,3,T2}) where {T1,T2}
 
-  TensorValue(A[5] * B[9] - A[6] * B[8] - A[8] * B[6] + A[9] * B[5],
+  TensorValue{3,3}(A[5] * B[9] - A[6] * B[8] - A[8] * B[6] + A[9] * B[5],
     A[6] * B[7] - A[4] * B[9] + A[7] * B[6] - A[9] * B[4],
     A[4] * B[8] - A[5] * B[7] - A[7] * B[5] + A[8] * B[4],
     A[3] * B[8] - A[2] * B[9] + A[8] * B[3] - A[9] * B[2],
@@ -214,7 +214,7 @@ end
 
 function Gridap.TensorValues.cross(H::TensorValue{9,9,T1}, A::TensorValue{3,3,T2}) where {T1,T2}
 
-  TensorValue(A[9] * H[37] - A[8] * H[46] - A[6] * H[64] + A[5] * H[73],
+  TensorValue{9,9}(A[9] * H[37] - A[8] * H[46] - A[6] * H[64] + A[5] * H[73],
     A[9] * H[38] - A[8] * H[47] - A[6] * H[65] + A[5] * H[74],
     A[9] * H[39] - A[8] * H[48] - A[6] * H[66] + A[5] * H[75],
     A[9] * H[40] - A[8] * H[49] - A[6] * H[67] + A[5] * H[76],
@@ -299,7 +299,7 @@ end
 
 function Gridap.TensorValues.cross(A::TensorValue{3,3,T1}, H::TensorValue{9,9,T2}) where {T1,T2}
 
-  TensorValue(A[5] * H[9] - A[6] * H[8] - A[8] * H[6] + A[9] * H[5],
+  TensorValue{9,9}(A[5] * H[9] - A[6] * H[8] - A[8] * H[6] + A[9] * H[5],
     A[6] * H[7] - A[4] * H[9] + A[7] * H[6] - A[9] * H[4],
     A[4] * H[8] - A[5] * H[7] - A[7] * H[5] + A[8] * H[4],
     A[3] * H[8] - A[2] * H[9] + A[8] * H[3] - A[9] * H[2],
@@ -384,7 +384,7 @@ end
 
 function Gridap.TensorValues.cross(A::TensorValue{3,9,T1}, B::TensorValue{3,3,T2}) where {T1,T2}
 
-  TensorValue{3,9,Float64,27}(A[13] * B[9] - A[16] * B[8] - A[22] * B[6] + A[25] * B[5],
+  TensorValue{3,9}(A[13] * B[9] - A[16] * B[8] - A[22] * B[6] + A[25] * B[5],
     A[14] * B[9] - A[17] * B[8] - A[23] * B[6] + A[26] * B[5],
     A[15] * B[9] - A[18] * B[8] - A[24] * B[6] + A[27] * B[5],
     A[16] * B[7] - A[10] * B[9] + A[19] * B[6] - A[25] * B[4],
