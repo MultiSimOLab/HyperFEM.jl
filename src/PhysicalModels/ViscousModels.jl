@@ -173,7 +173,7 @@ end
 
 
 """Right Cauchy-Green deformation tensor."""
-function Cauchy(F::TensorValue)
+function Cauchy(F)
   F' · F
 end
 

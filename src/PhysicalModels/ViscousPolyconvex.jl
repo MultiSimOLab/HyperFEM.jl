@@ -20,7 +20,7 @@ struct ViscousPolyconvex <: Visco
   ViscousPolyconvex(; μ::Real, τ::Real) = new(Float64(μ), Float64(τ), 0.0)
 end
 
-function (obj::ViscousPolyconvex)(::Any)
+function (obj::ViscousPolyconvex)(_...)
   Ψ(F, Fn, A)      = energy(obj, F, Fn, A)
   ∂Ψ∂F(F, Fn, A)   = first_piola(obj, F, Fn, A)
   ∂Ψ∂F∂F(F, Fn, A) = tangent(obj, F, Fn, A)
@@ -52,20 +52,20 @@ end
 function Ψv(obj::ViscousPolyconvex, C, Cv)
   μ = obj.μ
   IIIc = det(C)
-  0.5μ * (C ⊗ inv(Cv) -3*IIIc^(1/3))
+  0.5μ * (C ⊙ inv(Cv) -3*IIIc^(1/3))
 end
 
 function Sv(obj::ViscousPolyconvex, C, Cv)
   μ = obj.μ
   IIIc = det(C)
-  μ * (inv(Cv) -IIIc^(1/3) * inv(C))
+  μ * (inv(Cv) -IIIc^(1/3) * inv(C))  #ADD TEST
 end
 
-function Hv(obj::ViscousPolyconvex, C, Cv)
+function ∂Sv∂C_Cᵥfix(obj::ViscousPolyconvex, C, Cv)
   μ = obj.μ
   IIIc = det(C)
   invC = inv(C)
-  -μ * IIIc^(1/3) * (1/3 * invC ⊗ invC - ×ᵢ⁴(invC))
+  -μ * IIIc^(1/3) * (1/3 * invC ⊗ invC - ×ᵢ⁴(invC)) # Replace & test
 end
 
 # --- Implementation of derivatives ---
@@ -73,7 +73,7 @@ end
 function energy(obj::ViscousPolyconvex, F, Fn, Cvn)
   C = Cauchy(F)
   Cn = Cauchy(Fn)
-  Cv = return_mapping(obj, C, Cn, A)
+  Cv = return_mapping(obj, C, Cn, Cvn)
   Ψv(obj, C, Cv)
 end
 
@@ -88,18 +88,18 @@ function tangent(obj::ViscousPolyconvex, F, Fn, Cvn)
   C = Cauchy(F)
   Cn = Cauchy(Fn)
   Cv = return_mapping(obj, C, Cn, Cvn)
-  H = Hv(obj, C, Cv)
+  H = ∂Sv∂C_Cᵥfix(obj, C, Cv)
   DCDF = F' ⊗₁₃²⁴ I3 + I3 ⊗₁₄²³ F'
-  DCDF' · H · DCDF
+  DCDF' · (H + XXX) · DCDF + (GEOM) # TODO
 end
 
 function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
-  γ = obj.μ / obj.Δt[]
+  γ = obj.μ / obj.τ
   C = Cauchy(F)
   Cn = Cauchy(Fn)
   Cv = return_mapping(obj, C, Cn, Cvn)
   invC = inv(C)
-  λ = 3 / (Cv ⊙ invC)
+  λ = 3 / (Cv ⊙ invC) # TODO: Replace by algorithmic expression
   -0.5γ * (C -λ*Cv) ⊙ (invC - (1/λ)*inv(Cv))
 end
 
@@ -109,7 +109,7 @@ function return_mapping(obj::ViscousPolyconvex, C, Cn, A)
   Cvn = A
   invC = inv(C)
   B = Δt/τ * invC + inv(Cvn)
-  invCv = det(B)^(1/3) * B
+  invCv = det(B)^(-1/3) * B
   inv(invCv)
 end
 

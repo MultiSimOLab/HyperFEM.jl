@@ -4,6 +4,7 @@ using Gridap.Arrays
 using HyperFEM, HyperFEM.TensorAlgebra
 using StaticArrays
 using Test
+using ForwardDiff
 
 
 μ      = 1.367e4  # Pa
@@ -228,4 +229,37 @@ end
   Ψe, Se, ∂Se∂Ce = SecondPiola(short_term)
   C = F1'·F1
   @test Ψe(C) == 0
+end
+
+
+@testset "ViscousPolyconvex_Base" begin
+  model = ViscousPolyconvex(τ=1.15, μ=7e4)
+  F1 = I3 + 0.1*TensorValue(rand(9)...)
+  C1 = F1' · F1
+  Cv = I3
+
+  import HyperFEM.PhysicalModels: Ψv, Sv, ∂Sv∂C_Cᵥfixed
+  Sv_ref = TensorValue(ForwardDiff.gradient(C -> Ψv(model, C, Cv), get_array(C1)))
+  ∂Sv_ref = TensorValue(ForwardDiff.hessian(C -> Ψv(model, C, Cv), get_array(C1)))
+
+  @test isapprox(Sv(model, C1, Cv), Sv_ref, rtol=1e-8)
+  @test isapprox(∂Sv∂C_Cᵥfixed(model, C1, Cv), ∂Sv_ref, rtol=1e-8)
+end
+
+
+@testset "ViscousPolyconvex" begin
+  long_term = NeoHookean3D(λ=1e7, μ=8e4)
+  branch_1 = ViscousPolyconvex(τ=1.15, μ=7e4)
+  model = GeneralizedMaxwell(long_term, branch_1)
+  update_time_step!(model, 0.1)
+  Ψ, ∂Ψ∂F, ∂∂Ψ∂FF = model()
+  Fn = I3
+  A  = I3
+  F1 = I3 + 0.1*TensorValue(rand(9)...)
+
+  ∂Ψ∂F_ref  = TensorValue(ForwardDiff.gradient(F -> Ψ(F, Fn, A), get_array(F1)))
+  ∂∂Ψ∂FF_ref = TensorValue(ForwardDiff.hessian(F -> Ψ(F, Fn, A), get_array(F1)))
+
+  @test isapprox(∂Ψ∂F(F1, Fn, A), ∂Ψ∂F_ref, rtol=1e-8)
+  @test isapprox(∂∂Ψ∂FF(F1, Fn, A), ∂∂Ψ∂FF_ref, rtol=1e-8)
 end
