@@ -8,7 +8,6 @@ import Base: *
 import Base: +
 
 export (*)
-export (×ᵢ⁴)
 export (+)
 export (⊗₁₂³)
 export (⊗₁₃²)
@@ -17,6 +16,8 @@ export (⊗₁₂³⁴)
 export (⊗₁₃²⁴)
 export (⊗₁₄²³)
 export (⊗₁²)
+export ×ᵢ⁴
+export IIsym
 export I3
 export I9
 export I2
