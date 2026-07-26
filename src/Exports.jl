@@ -33,6 +33,7 @@ end
 
 @publish PhysicalModels LinearElasticity3D
 @publish PhysicalModels LinearElasticity2D
+@publish PhysicalModels PlaneStressIncompressible_I1PD
 @publish PhysicalModels Yeoh3D
 @publish PhysicalModels Gent2D
 @publish PhysicalModels NeoHookean3D

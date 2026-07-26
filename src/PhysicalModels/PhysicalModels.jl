@@ -15,6 +15,7 @@ import Base: +
 import Gridap: update_state!
 
 export Yeoh3D
+export PlaneStressIncompressible_I1PD 
 export Gent2D
 export NeoHookean3D
 export IsochoricNeoHookean3D
