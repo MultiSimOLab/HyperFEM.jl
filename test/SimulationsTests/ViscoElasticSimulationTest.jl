@@ -7,6 +7,6 @@ include(projdir("test/data/ViscoElasticSimulation.jl"))
 @test σΓ[end] ≈ 21872.5028
 
 
-include(projdir("test/data/ViscoelasticFastSimulation.jl"))
+include(projdir("test/data/ViscoElasticFastSimulation.jl"))
 λx2, σΓ2 = visco_elastic_fast_simulation(t_end=2, writevtk=false, verbose=false)
 @test σΓ2[end] ≈ 22152.0463
