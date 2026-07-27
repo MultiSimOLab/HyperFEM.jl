@@ -178,5 +178,6 @@ end
 @publish IO setupfolder
 @publish IO projdir
 @publish IO stem
+@publish IO nosuffix
 @publish IO MockPVD
 @publish IO mockpvd
