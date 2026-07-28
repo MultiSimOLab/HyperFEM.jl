@@ -234,9 +234,11 @@ end
 
 @testset "ViscousPolyconvex" begin
   model = ViscousPolyconvex(τ=1.15, μ=7e4)
+  update_time_step!(model, 0.1)
   Fn = I3
   F1 = I3 + 0.1*TensorValue(rand(9)...)
   C1 = F1' · F1
+  Cn = I3
   Cv = I3
 
   # --- Test neo-Hookean model ---
@@ -254,8 +256,10 @@ end
   return_mapping = HyperFEM.PhysicalModels.return_mapping
   ∂invCv∂C    = HyperFEM.PhysicalModels.∂invCv∂C
 
-  ∂invCv_ref = TensorValue(ForwardDiff.jacobian(C -> get_array(return_mapping(model, TensorValue(C), C1, Cv)), get_array(C1)))
-  @test isapprox(∂invCv∂C(model, C1, C1, Cv), ∂invCv_ref, rtol=1e-8)
+  ∂invCv_ref = TensorValue(ForwardDiff.jacobian(
+    C -> get_array(inv(return_mapping(model, 0.5*TensorValue(C+C'), Cn, Cv))),  # Enforce symmetry of C within ForwardDiff
+    get_array(C1)))
+  @test isapprox(∂invCv∂C(model, C1, Cn, Cv), ∂invCv_ref, rtol=1e-8)
 
   # --- Test full model tangent operator ---
   Ψ, ∂Ψ∂F, ∂∂Ψ∂FF = model()

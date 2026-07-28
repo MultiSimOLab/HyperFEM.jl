@@ -94,7 +94,7 @@ end
 
 function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
   γ = obj.μ / obj.τ
-  Τ = obj.τ / obj.Δt
+  Τ = obj.τ / obj.Δt[]
   C, Cn = Cauchy.((F, Fn))
   Cv = return_mapping(obj, C, Cn, Cvn)
   invC = inv(C)
@@ -102,22 +102,21 @@ function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
   -0.5γ * (C -λ_algo*Cv) ⊙ (invC - (1/λ_algo)*inv(Cv))
 end
 
-# --- Return mapping and derivatives for underlying neo-Hookean ---
+# --- Return mapping and derivatives for the underlying neo-Hookean ---
 
 function return_mapping(obj::ViscousPolyconvex, C, Cn, Cvn)
   Τ = obj.Δt[] / obj.τ
   B = Τ * inv(C) + inv(Cvn)
-  invCv = det(B)^(-1/3) * B
-  inv(invCv)
+  Cv = det(B)^(1/3) * inv(B)
 end
 
 function ∂invCv∂C(obj::ViscousPolyconvex, C, Cn, Cvn)
   Τ = obj.Δt[] / obj.τ
-  B = Τ * inv(C) + inv(Cvn)
-  G = cof(C)
-  IIIb = det(B)
-  IIIc = det(C)
-  Τ * IIIb^(-1/3) * IIIc^(-1) * (IIsym(I3) -1/3*B⊗inv(B)) * (-IIIc^(-1) * G⊗G + ×ᵢ⁴(C))
+  invC = inv(C)
+  B = Τ * invC + inv(Cvn)
+  ∂invCv∂B = det(B)^(-1/3) * (IIsym(I3) - (1/3) * (B ⊗ inv(B)))
+  ∂B∂C = -Τ * IIsym(invC)
+  ∂invCv∂B · ∂B∂C
 end
 
 function return_mapping(obj::ViscousPolyconvex)
