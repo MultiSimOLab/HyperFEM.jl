@@ -107,16 +107,23 @@ end
 function return_mapping(obj::ViscousPolyconvex, C, Cn, Cvn)
   Τ = obj.Δt[] / obj.τ
   B = Τ * inv(C) + inv(Cvn)
-  Cv = det(B)^(1/3) * inv(B)
+  invCv = det(B)^(-1/3) * B
+  inv(invCv)
+  # Cv = det(B)^(1/3) * inv(B)
 end
 
 function ∂invCv∂C(obj::ViscousPolyconvex, C, Cn, Cvn)
   Τ = obj.Δt[] / obj.τ
-  invC = inv(C)
-  B = Τ * invC + inv(Cvn)
-  ∂invCv∂B = det(B)^(-1/3) * (IIsym(I3) - (1/3) * (B ⊗ inv(B)))
-  ∂B∂C = -Τ * IIsym(invC)
-  ∂invCv∂B · ∂B∂C
+  B = Τ * inv(C) + inv(Cvn)
+  G = cof(C)
+  IIIb = det(B)
+  IIIc = det(C)
+  Τ * IIIb^(-1/3) * IIIc^(-1) * (IIsym(I3) -1/3*B⊗inv(B)) * (-IIIc^(-1) * G⊗G + ×ᵢ⁴(C))
+  # invC = inv(C)
+  # B = Τ * invC + inv(Cvn)
+  # ∂invCv∂B = det(B)^(-1/3) * (IIsym(I3) - (1/3) * (B ⊗ inv(B)))
+  # ∂B∂C = -Τ * IIsym(invC)
+  # ∂invCv∂B · ∂B∂C
 end
 
 function return_mapping(obj::ViscousPolyconvex)
