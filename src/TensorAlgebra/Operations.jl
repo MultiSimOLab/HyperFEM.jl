@@ -188,8 +188,8 @@ end
 
 @generated function IIsym(A::TensorValue{D,D}) where {D}
   str = ""
-  for a in D^4
-    i, j, k, l = _ijkl(a, 3)
+  for a in 1:D^4
+    i, j, k, l = _ijkl(a, D)
     str *= "0.5 * (A[$i, $k] * A[$j, $l] + A[$i, $l] * A[$j, $k]),"
   end
   Meta.parse("TensorValue{D*D,D*D}($str)")
