@@ -43,7 +43,7 @@ function Gridap.CellData.update_state!(obj::ViscousPolyconvex, A, F, Fn)
   update_state!(return_mapping(obj), A, F, Fn)
 end
 
-function dissipation(obj::ViscousPolyconvex)
+function Dissipation(obj::ViscousPolyconvex)
   D(F, Fn, A) = dissipation(obj, F, Fn, A)
 end
 
