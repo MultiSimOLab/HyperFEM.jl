@@ -187,11 +187,11 @@ returning a fourth-order tensor represented in a `D² x D²` flattened matrix us
 end
 
 function IIsym(A::TensorValue{3,3})
-  vals = ntuple(Val(81)) do a
+  TensorValue{9,9}(ntuple(Val(81)) do a
     i, j, k, l = _ijkl(a, 3)
     0.5 * (A[i, k] * A[j, l] + A[i, l] * A[j, k])
   end
-  TensorValue{9,9}(vals)
+  )
 end
 
 function (×ᵢ⁴)(A::TensorValue{3,3})
