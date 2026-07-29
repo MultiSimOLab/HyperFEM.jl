@@ -96,6 +96,7 @@ function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
   γ = obj.μ / obj.τ
   Τ = obj.τ / obj.Δt[]
   C, Cn = Cauchy.((F, Fn))
+  invC = inv(C)
   invCv = Cv⁻¹(obj, C, Cn, Cvn)
   Cv = inv(invCv)
   λ_algo = 1 / (det(invC + Τ*inv(Cvn))^(1/3) - Τ)  # λ = 3 / (Cv ⊙ invC)
