@@ -21,4 +21,25 @@ function benchmark_viscous_model()
   SUITE["Constitutive models"]["Visco-elastic ∂Ψuu"] = @benchmarkable $∂Ψuu($F, $Fn, $Avn)
 end
 
+function benchmark_viscous_polyconvex_model()
+  elasto = NeoHookean3D(λ=1e6, μ=1e3)
+  visco = ViscousPolyconvex(μ=1e2, τ=10.)
+  visco = ViscousPolyconvex(μ=1e3, τ=1.)
+  visco = ViscousPolyconvex(μ=1e4, τ=.1)
+  visco = ViscousPolyconvex(μ=1e5, τ=.01)
+  model = GeneralizedMaxwell(elasto, visco)
+  update_time_step!(model, 1e-1)
+  Ψ, ∂Ψu, ∂Ψuu = model()
+  F = TensorValue(1.:9...) * 1e-2 + I3
+  Fn = TensorValue(1.:9...) * 5e-3 + I3
+  Cvn = 0.25 * (F+Fn) · (F+Fn)'
+  F /= det(F)
+  Fn /= det(Fn)
+  Cvn /= det(Cvn)
+  SUITE["Constitutive models"]["Visco-polyconvex Ψ"] = @benchmarkable $Ψ($F, $Fn, $Cvn)
+  SUITE["Constitutive models"]["Visco-polyconvex ∂Ψu"] = @benchmarkable $∂Ψu($F, $Fn, $Cvn)
+  SUITE["Constitutive models"]["Visco-polyconvex ∂Ψuu"] = @benchmarkable $∂Ψuu($F, $Fn, $Cvn)
+end
+
 benchmark_viscous_model()
+benchmark_viscous_polyconvex_model()
