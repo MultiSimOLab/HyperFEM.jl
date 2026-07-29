@@ -49,19 +49,19 @@ end
 
 # --- Underlying neo-Hookean model in terms of viscous distortional invariants ---
 
-function Ψv(obj::ViscousPolyconvex, C, Cv)
+function Ψv(obj::ViscousPolyconvex, C, invCv)
   μ = obj.μ
   IIIc = det(C)
-  0.5μ * (C ⊙ inv(Cv) -3*IIIc^(1/3))
+  0.5μ * (C ⊙ invCv -3*IIIc^(1/3))
 end
 
-function Sv(obj::ViscousPolyconvex, C, Cv)
+function Sv(obj::ViscousPolyconvex, C, invCv)
   μ = obj.μ
   IIIc = det(C)
-  μ * (inv(Cv) -IIIc^(1/3) * inv(C))
+  μ * (invCv -IIIc^(1/3) * inv(C))
 end
 
-function ∂Sv∂C_Cᵥfix(obj::ViscousPolyconvex, C, Cv)
+function ∂Sv∂C_Cᵥfix(obj::ViscousPolyconvex, C, invCv)
   μ = obj.μ
   IIIc = det(C)
   G    = cof(C)
@@ -72,22 +72,22 @@ end
 
 function energy(obj::ViscousPolyconvex, F, Fn, Cvn)
   C, Cn = Cauchy.((F, Fn))
-  Cv = return_mapping(obj, C, Cn, Cvn)
-  Ψv(obj, C, Cv)
+  invCv = Cv⁻¹(obj, C, Cn, Cvn)
+  Ψv(obj, C, invCv)
 end
 
 function first_piola(obj::ViscousPolyconvex, F, Fn, Cvn)
   C, Cn = Cauchy.((F, Fn))
-  Cv = return_mapping(obj, C, Cn, Cvn)
-  F * Sv(obj, C, Cv)
+  invCv = Cv⁻¹(obj, C, Cn, Cvn)
+  F * Sv(obj, C, invCv)
 end
 
 function tangent(obj::ViscousPolyconvex, F, Fn, Cvn)
   C, Cn = Cauchy.((F, Fn))
-  Cv = return_mapping(obj, C, Cn, Cvn)
-  H1 = obj.μ * ∂invCv∂C(obj, C, Cn, Cvn)
-  H2 = ∂Sv∂C_Cᵥfix(obj, C, Cv)
-  H3 = I3 ⊗₁₃²⁴ Sv(obj, C, Cv)
+  invCv = Cv⁻¹(obj, C, Cn, Cvn)
+  H1 = obj.μ * ∂Cv⁻¹∂C(obj, C, Cn, Cvn)
+  H2 = ∂Sv∂C_Cᵥfix(obj, C, invCv)
+  H3 = I3 ⊗₁₃²⁴ Sv(obj, C, invCv)
   DCDF = F' ⊗₁₃²⁴ I3 + I3 ⊗₁₄²³ F'
   0.5 * DCDF' · (H1 + H2) · DCDF + H3
 end
@@ -96,34 +96,32 @@ function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
   γ = obj.μ / obj.τ
   Τ = obj.τ / obj.Δt[]
   C, Cn = Cauchy.((F, Fn))
-  Cv = return_mapping(obj, C, Cn, Cvn)
-  invC = inv(C)
+  invCv = Cv⁻¹(obj, C, Cn, Cvn)
+  Cv = inv(Cv)
   λ_algo = 1 / (det(invC + Τ*inv(Cvn))^(1/3) - Τ)  # λ = 3 / (Cv ⊙ invC)
-  -0.5γ * (C -λ_algo*Cv) ⊙ (invC - (1/λ_algo)*inv(Cv))
+  -0.5γ * (C -λ_algo*Cv) ⊙ (invC - (1/λ_algo)*invCv)
 end
 
 # --- Return mapping and derivatives for the underlying neo-Hookean ---
 
-function return_mapping(obj::ViscousPolyconvex, C, Cn, Cvn)
+function Cv⁻¹(obj::ViscousPolyconvex, C, Cn, Cvn)
   Τ = obj.Δt[] / obj.τ
   B = Τ * inv(C) + inv(Cvn)
-  invCv = det(B)^(-1/3) * B
-  inv(invCv)
-  # Cv = det(B)^(1/3) * inv(B)
+  det(B)^(-1/3) * B
 end
 
-function ∂invCv∂C(obj::ViscousPolyconvex, C, Cn, Cvn)
+function ∂Cv⁻¹∂C(obj::ViscousPolyconvex, C, Cn, Cvn)
   Τ = obj.Δt[] / obj.τ
-  B = Τ * inv(C) + inv(Cvn)
-  G = cof(C)
-  IIIb = det(B)
-  IIIc = det(C)
-  Τ * IIIb^(-1/3) * IIIc^(-1) * (IIsym(I3) -1/3*B⊗inv(B)) * (-IIIc^(-1) * G⊗G + ×ᵢ⁴(C))
-  # invC = inv(C)
-  # B = Τ * invC + inv(Cvn)
-  # ∂invCv∂B = det(B)^(-1/3) * (IIsym(I3) - (1/3) * (B ⊗ inv(B)))
-  # ∂B∂C = -Τ * IIsym(invC)
-  # ∂invCv∂B · ∂B∂C
+  invC = inv(C)
+  B = Τ * invC + inv(Cvn)
+  ∂invCv∂B = det(B)^(-1/3) * (IIsym(I3) - (1/3) * (B ⊗ inv(B)))
+  ∂B∂C = -Τ * IIsym(invC)
+  ∂invCv∂B · ∂B∂C
+end
+
+function return_mapping(obj::ViscousPolyconvex, C, Cn, Cvn)
+  invCv = Cv⁻¹(obj, C, Cn, Cvn)
+  inv(invCv)
 end
 
 function return_mapping(obj::ViscousPolyconvex)

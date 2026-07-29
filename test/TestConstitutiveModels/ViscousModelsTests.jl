@@ -246,20 +246,18 @@ end
   Sv          = HyperFEM.PhysicalModels.Sv
   ∂Sv∂C_Cᵥfix = HyperFEM.PhysicalModels.∂Sv∂C_Cᵥfix
 
-  Sv_ref = 2*TensorValue(ForwardDiff.gradient(C -> Ψv(model, TensorValue(C), Cv), get_array(C1)))
-  ∂Sv_ref = 2*TensorValue(ForwardDiff.hessian(C -> Ψv(model, TensorValue(C), Cv), get_array(C1)))
+  Sv_ref = 2*TensorValue(ForwardDiff.gradient(C -> Ψv(model, TensorValue(C), inv(Cv)), get_array(C1)))
+  ∂Sv_ref = 2*TensorValue(ForwardDiff.hessian(C -> Ψv(model, TensorValue(C), inv(Cv)), get_array(C1)))
 
-  @test isapprox(Sv(model, C1, Cv), Sv_ref, rtol=1e-8)
-  @test isapprox(∂Sv∂C_Cᵥfix(model, C1, Cv), ∂Sv_ref, rtol=1e-8)
+  @test isapprox(Sv(model, C1, inv(Cv)), Sv_ref, rtol=1e-8)
+  @test isapprox(∂Sv∂C_Cᵥfix(model, C1, inv(Cv)), ∂Sv_ref, rtol=1e-8)
 
   # --- Test return mapping ---
-  return_mapping = HyperFEM.PhysicalModels.return_mapping
-  ∂invCv∂C    = HyperFEM.PhysicalModels.∂invCv∂C
+  Cv⁻¹    = HyperFEM.PhysicalModels.Cv⁻¹
+  ∂Cv⁻¹∂C = HyperFEM.PhysicalModels.∂Cv⁻¹∂C
 
-  ∂invCv_ref = TensorValue(ForwardDiff.jacobian(
-    C -> get_array(inv(return_mapping(model, 0.5*TensorValue(C+C'), Cn, Cv))),  # Enforce symmetry of C within ForwardDiff
-    get_array(C1)))
-  @test isapprox(∂invCv∂C(model, C1, Cn, Cv), ∂invCv_ref, rtol=1e-8)
+  ∂invCv_ref = TensorValue(ForwardDiff.jacobian(C -> get_array(Cv⁻¹(model, 0.5*TensorValue(C+C'), Cn, Cv)), get_array(C1)))  # Enforce symmetry of C within ForwardDiff
+  @test isapprox(∂Cv⁻¹∂C(model, C1, Cn, Cv), ∂invCv_ref, rtol=1e-8)
 
   # --- Test full model tangent operator ---
   Ψ, ∂Ψ∂F, ∂∂Ψ∂FF = model()
