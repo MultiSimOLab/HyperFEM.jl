@@ -11,12 +11,12 @@ where `F` is the deformation gradient, `J` is the jacobian and `Cᵥ` is the vis
 ### Fields
 - `μ::Float64`: Shear modulus.
 - `τ::Float64`: Relaxation time.
-- `Δt::Ref{Float64}`: `Reference` to the time step.
+- `Δt::Base.RefValue{Float64}`: `Reference` to the time step.
  """
 struct ViscousPolyconvex <: Visco
   μ::Float64
   τ::Float64
-  Δt::Ref{Float64}
+  Δt::Base.RefValue{Float64}
   ViscousPolyconvex(; μ::Real, τ::Real) = new(Float64(μ), Float64(τ), 0.0)
 end
 
@@ -71,21 +71,24 @@ end
 # --- Implementation of derivatives ---
 
 function energy(obj::ViscousPolyconvex, F, Fn, Cvn)
-  C, Cn = Cauchy.((F, Fn))
+  C = Cauchy(F)
+  Cn = Cauchy(Fn)
   invCv = Cv⁻¹(obj, C, Cn, Cvn)
   Ψv(obj, C, invCv)
 end
 
 function first_piola(obj::ViscousPolyconvex, F, Fn, Cvn)
-  C, Cn = Cauchy.((F, Fn))
+  C = Cauchy(F)
+  Cn = Cauchy(Fn)
   invCv = Cv⁻¹(obj, C, Cn, Cvn)
   F * Sv(obj, C, invCv)
 end
 
 function tangent(obj::ViscousPolyconvex, F, Fn, Cvn)
-  C, Cn = Cauchy.((F, Fn))
-  invCv = Cv⁻¹(obj, C, Cn, Cvn)
-  H1 = obj.μ * ∂Cv⁻¹∂C(obj, C, Cn, Cvn)
+  C = Cauchy(F)
+  Cn = Cauchy(Fn)
+  invCv, ∂invCv = ∂Cv⁻¹∂C(obj, C, Cn, Cvn)
+  H1 = obj.μ * ∂invCv
   H2 = ∂Sv∂C_Cᵥfix(obj, C, invCv)
   H3 = I3 ⊗₁₃²⁴ Sv(obj, C, invCv)
   push_forward_C_to_F(F, H1 + H2) + H3
@@ -94,7 +97,8 @@ end
 function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
   γ = obj.μ / obj.τ
   Τ = obj.τ / obj.Δt[]
-  C, Cn = Cauchy.((F, Fn))
+  C = Cauchy(F)
+  Cn = Cauchy(Fn)
   invC = inv(C)
   invCv = Cv⁻¹(obj, C, Cn, Cvn)
   Cv = inv(invCv)
@@ -117,7 +121,9 @@ function ∂Cv⁻¹∂C(obj::ViscousPolyconvex, C, Cn, Cvn)
   invB = inv(B)
   IIIb = det(B)
   M = invC * invB * invC
-  -Τ * IIIb^(-1/3) * (IIsym(invC) - (1/3) * (B ⊗ M))
+  invCv = IIIb^(-1/3) * B
+  ∂invCv = -Τ * IIIb^(-1/3) * (IIsym(invC) - (1/3) * (B ⊗ M))
+  (invCv, ∂invCv)
 end
 
 function return_mapping(obj::ViscousPolyconvex, C, Cn, Cvn)
@@ -127,7 +133,8 @@ end
 
 function return_mapping(obj::ViscousPolyconvex)
   (A, F, Fn) -> begin
-    C, Cn = Cauchy.((F, Fn))
+    C = Cauchy(F)
+    Cn = Cauchy(Fn)
     Cv = return_mapping(obj, C, Cn, A)
     (true, Cv)
   end
