@@ -257,7 +257,7 @@ end
   ∂Cv⁻¹∂C = HyperFEM.PhysicalModels.∂Cv⁻¹∂C
 
   ∂invCv_ref = TensorValue(ForwardDiff.jacobian(C -> get_array(Cv⁻¹(model, 0.5*TensorValue(C+C'), Cn, Cv)), get_array(C1)))  # Enforce symmetry of C within ForwardDiff
-  @test isapprox(∂Cv⁻¹∂C(model, C1, Cn, Cv), ∂invCv_ref, rtol=1e-8)
+  @test isapprox(∂Cv⁻¹∂C(model, C1, Cn, Cv)[2], ∂invCv_ref, rtol=1e-8)
 
   # --- Test full model tangent operator ---
   Ψ, ∂Ψ∂F, ∂∂Ψ∂FF = model()
