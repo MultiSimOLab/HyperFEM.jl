@@ -574,8 +574,6 @@ end
 
 Assumming `C` is symmetric, compute directly `0.5 * DCDF' · H · DCDF` without
 computing the 4th order tensor `DCDF`.
-Using the symmetries of `H`, the component (ij, kl) is computed as:
-    2 * ∑_{m=1}^D ∑_{n=1}^D F[i,m] * H[j,m, l,n] * F[k,n]
 """
 @generated function push_forward_C_to_F(F::TensorValue{D,D}, H::TensorValue{D²}) where {D, D²}
   @assert D*D == D² "Mismatch dimensions of F (D) and H (D²)."
@@ -587,8 +585,11 @@ Using the symmetries of `H`, the component (ij, kl) is computed as:
           term_str = ""
           for n in 1:D
             for m in 1:D
-              a = _flat_idx(j, m, l, n, D)
-              term_str *= "+ 2.0 * F[$i,$m] * H[$a] * F[$k,$n]"
+              a1 = _flat_idx(m, j, n, l, D)
+              a2 = _flat_idx(m, j, l, n, D)
+              a3 = _flat_idx(j, m, n, l, D)
+              a4 = _flat_idx(j, m, l, n, D)
+              term_str *= "+ 0.5 * F[$i,$m] * F[$k,$n] * (H[$a1] + H[$a2] + H[$a3] + H[$a4])"
             end
           end
           str *= "($term_str),"
