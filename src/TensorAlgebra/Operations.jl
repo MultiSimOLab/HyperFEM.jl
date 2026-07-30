@@ -575,7 +575,7 @@ end
 Assumming `C` is symmetric, compute directly `0.5 * DCDF' · H · DCDF` without
 computing the 4th order tensor `DCDF`.
 """
-@inline @generated function push_forward_C_to_F(F::TensorValue{D,D}, H::TensorValue{D²}) where {D, D²}
+@inline @generated function push_forward_C_to_F(F::TensorValue{D}, H::TensorValue{D²}) where {D, D²}
   @assert D*D == D² "Mismatch dimensions of F (D) and H (D²)."
   str = ""
   for l in 1:D

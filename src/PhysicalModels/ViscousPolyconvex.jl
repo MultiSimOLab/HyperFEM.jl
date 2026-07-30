@@ -70,21 +70,21 @@ end
 
 # --- Implementation of derivatives ---
 
-function energy(obj::ViscousPolyconvex, F, Fn, Cvn)
+@inline function energy(obj::ViscousPolyconvex, F, Fn, Cvn)
   C = Cauchy(F)
   Cn = Cauchy(Fn)
   invCv = Cv⁻¹(obj, C, Cn, Cvn)
   Ψv(obj, C, invCv)
 end
 
-function first_piola(obj::ViscousPolyconvex, F, Fn, Cvn)
+@inline function first_piola(obj::ViscousPolyconvex, F, Fn, Cvn)
   C = Cauchy(F)
   Cn = Cauchy(Fn)
   invCv = Cv⁻¹(obj, C, Cn, Cvn)
   F * Sv(obj, C, invCv)
 end
 
-function tangent(obj::ViscousPolyconvex, F, Fn, Cvn)
+@inline function tangent(obj::ViscousPolyconvex, F, Fn, Cvn)
   C = Cauchy(F)
   Cn = Cauchy(Fn)
   invCv, ∂invCv = ∂Cv⁻¹∂C(obj, C, Cn, Cvn)
@@ -94,7 +94,7 @@ function tangent(obj::ViscousPolyconvex, F, Fn, Cvn)
   push_forward_C_to_F(F, H1 + H2) + H3
 end
 
-function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
+@inline function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
   γ = obj.μ / obj.τ
   Τ = obj.τ / obj.Δt[]
   C = Cauchy(F)
@@ -127,7 +127,7 @@ end
   (invCv, ∂invCv)
 end
 
-function return_mapping(obj::ViscousPolyconvex, C, Cn, Cvn)
+@inline function return_mapping(obj::ViscousPolyconvex, C, Cn, Cvn)
   invCv = Cv⁻¹(obj, C, Cn, Cvn)
   inv(invCv)
 end
