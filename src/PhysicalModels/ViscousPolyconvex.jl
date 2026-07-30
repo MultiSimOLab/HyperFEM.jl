@@ -49,19 +49,19 @@ end
 
 # --- Underlying neo-Hookean model in terms of viscous distortional invariants ---
 
-function Ψv(obj::ViscousPolyconvex, C, invCv)
+@inline function Ψv(obj::ViscousPolyconvex, C, invCv)
   μ = obj.μ
   IIIc = det(C)
   0.5μ * (C ⊙ invCv -3*IIIc^(1/3))
 end
 
-function Sv(obj::ViscousPolyconvex, C, invCv)
+@inline function Sv(obj::ViscousPolyconvex, C, invCv)
   μ = obj.μ
   IIIc = det(C)
   μ * (invCv -IIIc^(1/3) * inv(C))
 end
 
-function ∂Sv∂C_Cᵥfix(obj::ViscousPolyconvex, C, invCv)
+@inline function ∂Sv∂C_Cᵥfix(obj::ViscousPolyconvex, C, invCv)
   μ = obj.μ
   IIIc = det(C)
   G    = cof(C)
