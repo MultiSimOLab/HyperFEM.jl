@@ -108,13 +108,13 @@ end
 
 # --- Return mapping and derivatives for the underlying neo-Hookean ---
 
-function Cv⁻¹(obj::ViscousPolyconvex, C, Cn, Cvn)
+@inline function Cv⁻¹(obj::ViscousPolyconvex, C, Cn, Cvn)
   Τ = obj.Δt[] / obj.τ
   B = Τ * inv(C) + inv(Cvn)
   det(B)^(-1/3) * B
 end
 
-function ∂Cv⁻¹∂C(obj::ViscousPolyconvex, C, Cn, Cvn)
+@inline function ∂Cv⁻¹∂C(obj::ViscousPolyconvex, C, Cn, Cvn)
   Τ = obj.Δt[] / obj.τ
   invC = inv(C)
   B = Τ * invC + inv(Cvn)

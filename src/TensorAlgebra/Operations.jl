@@ -186,7 +186,7 @@ returning a fourth-order tensor represented in a `D² x D²` flattened matrix us
   Meta.parse("TensorValue{D*D,D*D}($str)")
 end
 
-@generated function IIsym(A::TensorValue{D,D}) where {D}
+@inline @generated function IIsym(A::TensorValue{D,D}) where {D}
   str = ""
   for a in 1:D^4
     i, j, k, l = _ijkl(a, D)
@@ -575,7 +575,7 @@ end
 Assumming `C` is symmetric, compute directly `0.5 * DCDF' · H · DCDF` without
 computing the 4th order tensor `DCDF`.
 """
-@generated function push_forward_C_to_F(F::TensorValue{D,D}, H::TensorValue{D²}) where {D, D²}
+@inline @generated function push_forward_C_to_F(F::TensorValue{D,D}, H::TensorValue{D²}) where {D, D²}
   @assert D*D == D² "Mismatch dimensions of F (D) and H (D²)."
   str = ""
   for l in 1:D
