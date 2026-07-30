@@ -52,20 +52,20 @@ end
 @inline function Ψv(obj::ViscousPolyconvex, C, invCv)
   μ = obj.μ
   IIIc = det(C)
-  0.5μ * (C ⊙ invCv -3*IIIc^(1/3))
+  0.5μ * (C ⊙ invCv -3*∛(IIIc))
 end
 
 @inline function Sv(obj::ViscousPolyconvex, C, invCv)
   μ = obj.μ
   IIIc = det(C)
-  μ * (invCv -IIIc^(1/3) * inv(C))
+  μ * (invCv -∛(IIIc) * inv(C))
 end
 
 @inline function ∂Sv∂C_Cᵥfix(obj::ViscousPolyconvex, C, invCv)
   μ = obj.μ
   IIIc = det(C)
   G    = cof(C)
-  μ * IIIc^(-2/3) * (2/3 * (1/IIIc) * G ⊗ G - ×ᵢ⁴(C))
+  μ * (1/∛(IIIc)^2) * (2/3 * (1/IIIc) * G ⊗ G - ×ᵢ⁴(C))
 end
 
 # --- Implementation of derivatives ---
@@ -102,7 +102,7 @@ function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
   invC = inv(C)
   invCv = Cv⁻¹(obj, C, Cn, Cvn)
   Cv = inv(invCv)
-  λ_algo = 1 / (det(invC + Τ*inv(Cvn))^(1/3) - Τ)  # λ = 3 / (Cv ⊙ invC)
+  λ_algo = 1 / (∛(det(invC + Τ*inv(Cvn))) - Τ)  # λ = 3 / (Cv ⊙ invC)
   -0.5γ * (C -λ_algo*Cv) ⊙ (invC - (1/λ_algo)*invCv)
 end
 
@@ -111,7 +111,7 @@ end
 @inline function Cv⁻¹(obj::ViscousPolyconvex, C, Cn, Cvn)
   Τ = obj.Δt[] / obj.τ
   B = Τ * inv(C) + inv(Cvn)
-  det(B)^(-1/3) * B
+  1/∛(det(B)) * B
 end
 
 @inline function ∂Cv⁻¹∂C(obj::ViscousPolyconvex, C, Cn, Cvn)
@@ -120,9 +120,10 @@ end
   B = Τ * invC + inv(Cvn)
   invB = inv(B)
   IIIb = det(B)
+  IIIb⁻¹´³ = 1/∛(IIIb)
   M = invC * invB * invC
-  invCv = IIIb^(-1/3) * B
-  ∂invCv = -Τ * IIIb^(-1/3) * (IIsym(invC) - (1/3) * (B ⊗ M))
+  invCv = IIIb⁻¹´³ * B
+  ∂invCv = -Τ * IIIb⁻¹´³ * (IIsym(invC) - (1/3) * (B ⊗ M))
   (invCv, ∂invCv)
 end
 
