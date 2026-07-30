@@ -5,7 +5,7 @@
 
 Calculate the cofactor of a matrix.
 """
-function cof(A::TensorValue)
+@inline function cof(A::TensorValue)
   0.5A×A
 end
 

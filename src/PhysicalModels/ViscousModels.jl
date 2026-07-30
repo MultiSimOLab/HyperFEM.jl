@@ -173,13 +173,13 @@ end
 
 
 """Right Cauchy-Green deformation tensor."""
-function Cauchy(F)
+@inline function Cauchy(F)
   F' · F
 end
 
 
 """Elastic right Cauchy-Green deformation tensor."""
-function ElasticCauchy(C::TensorValue, Uv⁻¹::TensorValue)
+@inline function ElasticCauchy(C::TensorValue, Uv⁻¹::TensorValue)
   Uv⁻¹' · C · Uv⁻¹
 end
 

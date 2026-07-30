@@ -11,13 +11,13 @@ where `F` is the deformation gradient, `J` is the jacobian and `Cᵥ` is the vis
 ### Fields
 - `μ::Float64`: Shear modulus.
 - `τ::Float64`: Relaxation time.
-- `Δt::Ref{Float64}`: `Reference` to the time step.
+- `Δt::Base.RefValue{Float64}`: `Reference` to the time step.
  """
 struct ViscousPolyconvex <: Visco
   μ::Float64
   τ::Float64
-  Δt::Ref{Float64}
-  ViscousPolyconvex(; μ::Real, τ::Real) = new(Float64(μ), Float64(τ), 0.0)
+  Δt::Base.RefValue{Float64}
+  ViscousPolyconvex(; μ::Real, τ::Real) = new(Float64(μ), Float64(τ), Ref(0.0))
 end
 
 function (obj::ViscousPolyconvex)(_...)
@@ -43,92 +43,99 @@ function Gridap.CellData.update_state!(obj::ViscousPolyconvex, A, F, Fn)
   update_state!(return_mapping(obj), A, F, Fn)
 end
 
-function dissipation(obj::ViscousPolyconvex)
+function Dissipation(obj::ViscousPolyconvex)
   D(F, Fn, A) = dissipation(obj, F, Fn, A)
 end
 
 # --- Underlying neo-Hookean model in terms of viscous distortional invariants ---
 
-function Ψv(obj::ViscousPolyconvex, C, Cv)
+@inline function Ψv(obj::ViscousPolyconvex, C, invCv)
   μ = obj.μ
   IIIc = det(C)
-  0.5μ * (C ⊙ inv(Cv) -3*IIIc^(1/3))
+  0.5μ * (C ⊙ invCv -3*∛(IIIc))
 end
 
-function Sv(obj::ViscousPolyconvex, C, Cv)
+@inline function Sv(obj::ViscousPolyconvex, C, invCv)
   μ = obj.μ
   IIIc = det(C)
-  μ * (inv(Cv) -IIIc^(1/3) * inv(C))
+  μ * (invCv -∛(IIIc) * inv(C))
 end
 
-function ∂Sv∂C_Cᵥfix(obj::ViscousPolyconvex, C, Cv)
+@inline function ∂Sv∂C_Cᵥfix(obj::ViscousPolyconvex, C, invCv)
   μ = obj.μ
   IIIc = det(C)
   G    = cof(C)
-  μ * IIIc^(-2/3) * (2/3 * (1/IIIc) * G ⊗ G - ×ᵢ⁴(C))
+  μ * (1/∛(IIIc)^2) * (2/3 * (1/IIIc) * G ⊗ G - ×ᵢ⁴(C))
 end
 
 # --- Implementation of derivatives ---
 
-function energy(obj::ViscousPolyconvex, F, Fn, Cvn)
-  C, Cn = Cauchy.((F, Fn))
-  Cv = return_mapping(obj, C, Cn, Cvn)
-  Ψv(obj, C, Cv)
+@inline function energy(obj::ViscousPolyconvex, F, Fn, Cvn)
+  C = Cauchy(F)
+  Cn = Cauchy(Fn)
+  invCv = Cv⁻¹(obj, C, Cn, Cvn)
+  Ψv(obj, C, invCv)
 end
 
-function first_piola(obj::ViscousPolyconvex, F, Fn, Cvn)
-  C, Cn = Cauchy.((F, Fn))
-  Cv = return_mapping(obj, C, Cn, Cvn)
-  F * Sv(obj, C, Cv)
+@inline function first_piola(obj::ViscousPolyconvex, F, Fn, Cvn)
+  C = Cauchy(F)
+  Cn = Cauchy(Fn)
+  invCv = Cv⁻¹(obj, C, Cn, Cvn)
+  F * Sv(obj, C, invCv)
 end
 
-function tangent(obj::ViscousPolyconvex, F, Fn, Cvn)
-  C, Cn = Cauchy.((F, Fn))
-  Cv = return_mapping(obj, C, Cn, Cvn)
-  H1 = obj.μ * ∂invCv∂C(obj, C, Cn, Cvn)
-  H2 = ∂Sv∂C_Cᵥfix(obj, C, Cv)
-  H3 = I3 ⊗₁₃²⁴ Sv(obj, C, Cv)
-  DCDF = F' ⊗₁₃²⁴ I3 + I3 ⊗₁₄²³ F'
-  0.5 * DCDF' · (H1 + H2) · DCDF + H3
+@inline function tangent(obj::ViscousPolyconvex, F, Fn, Cvn)
+  C = Cauchy(F)
+  Cn = Cauchy(Fn)
+  invCv, ∂invCv = ∂Cv⁻¹∂C(obj, C, Cn, Cvn)
+  H1 = obj.μ * ∂invCv
+  H2 = ∂Sv∂C_Cᵥfix(obj, C, invCv)
+  H3 = I3 ⊗₁₃²⁴ Sv(obj, C, invCv)
+  push_forward_C_to_F(F, H1 + H2) + H3
 end
 
-function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
+@inline function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
   γ = obj.μ / obj.τ
   Τ = obj.τ / obj.Δt[]
-  C, Cn = Cauchy.((F, Fn))
-  Cv = return_mapping(obj, C, Cn, Cvn)
+  C = Cauchy(F)
+  Cn = Cauchy(Fn)
   invC = inv(C)
-  λ_algo = 1 / (det(invC + Τ*inv(Cvn))^(1/3) - Τ)  # λ = 3 / (Cv ⊙ invC)
-  -0.5γ * (C -λ_algo*Cv) ⊙ (invC - (1/λ_algo)*inv(Cv))
+  invCv = Cv⁻¹(obj, C, Cn, Cvn)
+  Cv = inv(invCv)
+  λ_algo = 1 / (∛(det(invC + Τ*inv(Cvn))) - Τ)  # λ = 3 / (Cv ⊙ invC)
+  -0.5γ * (C -λ_algo*Cv) ⊙ (invC - (1/λ_algo)*invCv)
 end
 
 # --- Return mapping and derivatives for the underlying neo-Hookean ---
 
-function return_mapping(obj::ViscousPolyconvex, C, Cn, Cvn)
+@inline function Cv⁻¹(obj::ViscousPolyconvex, C, Cn, Cvn)
   Τ = obj.Δt[] / obj.τ
   B = Τ * inv(C) + inv(Cvn)
-  invCv = det(B)^(-1/3) * B
-  inv(invCv)
-  # Cv = det(B)^(1/3) * inv(B)
+  1/∛(det(B)) * B
 end
 
-function ∂invCv∂C(obj::ViscousPolyconvex, C, Cn, Cvn)
+@inline function ∂Cv⁻¹∂C(obj::ViscousPolyconvex, C, Cn, Cvn)
   Τ = obj.Δt[] / obj.τ
-  B = Τ * inv(C) + inv(Cvn)
-  G = cof(C)
+  invC = inv(C)
+  B = Τ * invC + inv(Cvn)
+  invB = inv(B)
   IIIb = det(B)
-  IIIc = det(C)
-  Τ * IIIb^(-1/3) * IIIc^(-1) * (IIsym(I3) -1/3*B⊗inv(B)) * (-IIIc^(-1) * G⊗G + ×ᵢ⁴(C))
-  # invC = inv(C)
-  # B = Τ * invC + inv(Cvn)
-  # ∂invCv∂B = det(B)^(-1/3) * (IIsym(I3) - (1/3) * (B ⊗ inv(B)))
-  # ∂B∂C = -Τ * IIsym(invC)
-  # ∂invCv∂B · ∂B∂C
+  IIIb⁻¹´³ = 1/∛(IIIb)
+  M = invC * invB * invC
+  invCv = IIIb⁻¹´³ * B
+  ∂invCv = -Τ * IIIb⁻¹´³ * (IIsym(invC) - (1/3) * (B ⊗ M))
+  (invCv, ∂invCv)
+end
+
+@inline function return_mapping(obj::ViscousPolyconvex, C, Cn, Cvn)
+  invCv = Cv⁻¹(obj, C, Cn, Cvn)
+  inv(invCv)
 end
 
 function return_mapping(obj::ViscousPolyconvex)
   (A, F, Fn) -> begin
-    C, Cn = Cauchy.((F, Fn))
+    C = Cauchy(F)
+    Cn = Cauchy(Fn)
     Cv = return_mapping(obj, C, Cn, A)
     (true, Cv)
   end

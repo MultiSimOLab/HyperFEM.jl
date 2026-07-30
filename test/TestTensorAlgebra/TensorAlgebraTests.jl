@@ -129,3 +129,13 @@ end
   # 3. IIsym(I3) == 1/2 (δᵢₖδⱼₗ3D + δⱼₖδᵢₗ3D)
   @test IIsym(I3) == 0.5 * (δᵢₖδⱼₗ3D + δⱼₖδᵢₗ3D)
 end
+
+@testset "push_forward_C_to_F" begin
+  H = TensorValue(rand(81)...)
+  H = H'·H
+  F = TensorValue(rand(9)...) * 1e-2 + I3
+
+  DCDF = F' ⊗₁₃²⁴ I3 + I3 ⊗₁₄²³ F'
+  S_ref = 0.5 * DCDF' · H · DCDF
+  @test push_forward_C_to_F(F, H) ≈ S_ref
+end

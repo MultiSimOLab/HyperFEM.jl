@@ -10,7 +10,7 @@ function (*)(Ten1::TensorValue, Ten2::TensorValue)
 end
 
 
-@generated function (+)(A::TensorValue{D,D}, B::TensorValue{D,D}) where {D}
+@inline @generated function (+)(A::TensorValue{D,D}, B::TensorValue{D,D}) where {D}
   str = ""
   for i in 1:D*D
     str *= "A.data[$i] + B.data[$i], "
@@ -41,7 +41,7 @@ end
 
 Outer product of two first-order tensors (vectors), returning a second-order tensor (matrix).
 """
-@generated function (⊗₁²)(A::VectorValue{D}, B::VectorValue{D}) where {D}
+@inline @generated function (⊗₁²)(A::VectorValue{D}, B::VectorValue{D}) where {D}
   str = ""
   for iB in 1:D
     for iA in 1:D
@@ -58,7 +58,7 @@ end
 Outer product of two second-order tensors (matrices), returning a fourth-order tensor 
 represented in a `D² x D²` flattened matrix using combined indices.
 """
-@generated function (⊗₁₂³⁴)(A::TensorValue{D,D}, B::TensorValue{D,D}) where {D}
+@inline @generated function (⊗₁₂³⁴)(A::TensorValue{D,D}, B::TensorValue{D,D}) where {D}
   str = ""
   for iB in 1:D*D
     for iA in 1:D*D
@@ -75,7 +75,7 @@ end
 Outer product of two second-order tensors (matrices), returning a fourth-order tensor 
 represented in a `D² x D²` flattened matrix using combined indices.
 """
-@generated function (⊗₁₃²⁴)(A::TensorValue{D}, B::TensorValue{D}) where D
+@inline @generated function (⊗₁₃²⁴)(A::TensorValue{D}, B::TensorValue{D}) where D
   str = ""
   for l in 1:D
     for k in 1:D
@@ -96,7 +96,7 @@ end
 Outer product of two second-order tensors (matrices), returning a fourth-order tensor 
 represented in a `D² x D²` flattened matrix using combined indices.
 """
-@generated function (⊗₁₄²³)(A::TensorValue{D}, B::TensorValue{D}) where D
+@inline @generated function (⊗₁₄²³)(A::TensorValue{D}, B::TensorValue{D}) where D
   str = ""
   for l in 1:D
     for k in 1:D
@@ -117,7 +117,7 @@ end
 Outer product of a first-order and second-order tensors (vector and matrix),
 returning a third-order tensor represented in a `D x D²` flattened matrix using combined indices.
 """
-@generated function (⊗₁²³)(V::VectorValue{D}, A::TensorValue{D,D}) where {D}
+@inline @generated function (⊗₁²³)(V::VectorValue{D}, A::TensorValue{D,D}) where {D}
   str = ""
   for iA in 1:D*D
     for iV in 1:D
@@ -134,7 +134,7 @@ end
 Outer product of a second-order and first-order tensors (matrix and vector),
 returning a third-order tensor represented in a `D x D²` flattened matrix using combined indices.
 """
-@generated function (⊗₁₂³)(A::TensorValue{D,D}, V::VectorValue{D}) where {D}
+@inline @generated function (⊗₁₂³)(A::TensorValue{D,D}, V::VectorValue{D}) where {D}
   str = ""
   for iV in 1:D
     for iA in 1:D*D
@@ -151,7 +151,7 @@ end
 Outer product of a second-order and first-order tensors (matrix and vector),
 returning a third-order tensor represented in a `D x D²` flattened matrix using combined indices.
 """
-@generated function (⊗₁₃²)(A::TensorValue{D}, V::VectorValue{D}) where D
+@inline @generated function (⊗₁₃²)(A::TensorValue{D}, V::VectorValue{D}) where D
   str = ""
   for k in 1:D
     for j in 1:D
@@ -170,7 +170,7 @@ end
 Outer product of a third-order and first-order tensors (tensor and vector),
 returning a fourth-order tensor represented in a `D² x D²` flattened matrix using combined indices.
 """
-@generated function (⊗₁₂₃⁴)(A::TensorValue{D,D²}, V::VectorValue{D}) where {D,D²}
+@inline @generated function (⊗₁₂₃⁴)(A::TensorValue{D,D²}, V::VectorValue{D}) where {D,D²}
   @assert D*D == D² "Third- and first-order tensors size mismatch with $D² × $D and $D"
   str = ""
   for l in 1:D
@@ -186,7 +186,7 @@ returning a fourth-order tensor represented in a `D² x D²` flattened matrix us
   Meta.parse("TensorValue{D*D,D*D}($str)")
 end
 
-@generated function IIsym(A::TensorValue{D,D}) where {D}
+@inline @generated function IIsym(A::TensorValue{D,D}) where {D}
   str = ""
   for a in 1:D^4
     i, j, k, l = _ijkl(a, D)
@@ -195,7 +195,7 @@ end
   Meta.parse("TensorValue{D*D,D*D}($str)")
 end
 
-function (×ᵢ⁴)(A::TensorValue{3,3})
+@inline function (×ᵢ⁴)(A::TensorValue{3,3})
   TensorValue{9,9}(0.0, 0.0, 0.0, 0.0, A[9], -A[8], 0.0, -A[6], A[5], 0.0, 0.0, 0.0, -A[9],
     0.0, A[7], A[6], 0.0, -A[4], 0.0, 0.0, 0.0, A[8], -A[7], 0.0, -A[5], A[4], 0.0, 0.0, -A[9],
     A[8], 0.0, 0.0, 0.0, 0.0, A[3], -A[2], A[9], 0.0, -A[7], 0.0, 0.0, 0.0, -A[3], 0.0,
@@ -205,7 +205,7 @@ function (×ᵢ⁴)(A::TensorValue{3,3})
 end
 
 
-function Gridap.TensorValues.cross(A::TensorValue{3,3,T1}, B::TensorValue{3,3,T2}) where {T1,T2}
+@inline function Gridap.TensorValues.cross(A::TensorValue{3,3,T1}, B::TensorValue{3,3,T2}) where {T1,T2}
 
   TensorValue{3,3}(A[5] * B[9] - A[6] * B[8] - A[8] * B[6] + A[9] * B[5],
     A[6] * B[7] - A[4] * B[9] + A[7] * B[6] - A[9] * B[4],
@@ -219,7 +219,7 @@ function Gridap.TensorValues.cross(A::TensorValue{3,3,T1}, B::TensorValue{3,3,T2
 end
 
 
-function Gridap.TensorValues.cross(H::TensorValue{9,9,T1}, A::TensorValue{3,3,T2}) where {T1,T2}
+@inline function Gridap.TensorValues.cross(H::TensorValue{9,9,T1}, A::TensorValue{3,3,T2}) where {T1,T2}
 
   TensorValue{9,9}(A[9] * H[37] - A[8] * H[46] - A[6] * H[64] + A[5] * H[73],
     A[9] * H[38] - A[8] * H[47] - A[6] * H[65] + A[5] * H[74],
@@ -304,7 +304,7 @@ function Gridap.TensorValues.cross(H::TensorValue{9,9,T1}, A::TensorValue{3,3,T2
     A[5] * H[9] - A[4] * H[18] - A[2] * H[36] + A[1] * H[45])
 end
 
-function Gridap.TensorValues.cross(A::TensorValue{3,3,T1}, H::TensorValue{9,9,T2}) where {T1,T2}
+@inline function Gridap.TensorValues.cross(A::TensorValue{3,3,T1}, H::TensorValue{9,9,T2}) where {T1,T2}
 
   TensorValue{9,9}(A[5] * H[9] - A[6] * H[8] - A[8] * H[6] + A[9] * H[5],
     A[6] * H[7] - A[4] * H[9] + A[7] * H[6] - A[9] * H[4],
@@ -389,7 +389,7 @@ function Gridap.TensorValues.cross(A::TensorValue{3,3,T1}, H::TensorValue{9,9,T2
     A[1] * H[77] - A[2] * H[76] - A[4] * H[74] + A[5] * H[73])
 end
 
-function Gridap.TensorValues.cross(A::TensorValue{3,9,T1}, B::TensorValue{3,3,T2}) where {T1,T2}
+@inline function Gridap.TensorValues.cross(A::TensorValue{3,9,T1}, B::TensorValue{3,3,T2}) where {T1,T2}
 
   TensorValue{3,9}(A[13] * B[9] - A[16] * B[8] - A[22] * B[6] + A[25] * B[5],
     A[14] * B[9] - A[17] * B[8] - A[23] * B[6] + A[26] * B[5],
@@ -420,16 +420,16 @@ function Gridap.TensorValues.cross(A::TensorValue{3,9,T1}, B::TensorValue{3,3,T2
     A[3] * B[5] - A[6] * B[4] - A[12] * B[2] + A[15] * B[1])
 end
 
-function Gridap.TensorValues.cross(A::SMatrix, B::SMatrix)
+@inline function Gridap.TensorValues.cross(A::SMatrix, B::SMatrix)
   return get_array(TensorValue(A) × TensorValue(B))
 end
 
-function Gridap.TensorValues.outer(A::SVector, B::SVector)
+@inline function Gridap.TensorValues.outer(A::SVector, B::SVector)
   return get_array(VectorValue(A) ⊗ VectorValue(B))
 end
 
 
-@generated function ⊙₁₂₃₄³⁴(H::TensorValue{D²}, A::TensorValue{D}) where {D, D²}
+@inline @generated function ⊙₁₂₃₄³⁴(H::TensorValue{D²}, A::TensorValue{D}) where {D, D²}
   @assert D*D == D² "Fourth- and second-order tensors size mismatch"
   str = ""
   for j in 1:D
@@ -447,7 +447,7 @@ end
 end
 
 
-@generated function ⊙₁₂₃²³(H::TensorValue{D,D²}, A::TensorValue{D}) where {D, D²}
+@inline @generated function ⊙₁₂₃²³(H::TensorValue{D,D²}, A::TensorValue{D}) where {D, D²}
   @assert D*D == D² "Fourth- and second-order tensors size mismatch"
   str = ""
   for i in 1:D
@@ -463,7 +463,7 @@ end
 end
 
 
-@generated function ⊙₁₂₃³(H::TensorValue{D,D²}, V::VectorValue{D}) where {D, D²}
+@inline @generated function ⊙₁₂₃³(H::TensorValue{D,D²}, V::VectorValue{D}) where {D, D²}
   @assert D*D == D² "Fourth- and second-order tensors size mismatch"
   str = ""
   for j in 1:D
@@ -495,7 +495,7 @@ Performs a tensor contraction between a second-order tensor (of size `D × D`)
 and a fourth-order tensor (represented as a `D² × D²` matrix in flattened index notation).
 The operation follows the **index contraction pattern**, where addition is performed for repeated indices.
 """
-@generated function contraction_IP_PJKL(A::TensorValue{D}, H::TensorValue{D²}) where {D, D²}
+@inline @generated function contraction_IP_PJKL(A::TensorValue{D}, H::TensorValue{D²}) where {D, D²}
   @assert D*D == D² "Second and Fourth-order tensors size mismatch"
   str = ""
   for l in 1:D
@@ -522,7 +522,7 @@ Performs a tensor contraction between a second-order tensor (of size `D × D`)
 and a fourth-order tensor (represented as a `D² × D²` matrix in flattened index notation).
 The operation follows the **index contraction pattern**, where addition is performed for repeated indices.
 """
-@generated function contraction_IP_JPKL(A::TensorValue{D}, H::TensorValue{D²}) where {D, D²}
+@inline @generated function contraction_IP_JPKL(A::TensorValue{D}, H::TensorValue{D²}) where {D, D²}
   @assert D*D == D² "Second and Fourth-order tensors size mismatch"
   str = ""
   for l in 1:D
@@ -549,7 +549,7 @@ Performs a tensor contraction between a fourth-order tensor (represented as a `D
 and a second-order tensor (of size `D × D`).
 The operation follows the **index contraction pattern**, where addition is performed for repeated indices.
 """
-@generated function contraction_IJKL_JL(H::TensorValue{D²}, A::TensorValue{D}) where {D, D²}
+@inline @generated function contraction_IJKL_JL(H::TensorValue{D²}, A::TensorValue{D}) where {D, D²}
   @assert D*D == D² "Fourth- and Second-order tensors size mismatch"
   str = ""
   for i in 1:D
@@ -567,3 +567,35 @@ The operation follows the **index contraction pattern**, where addition is perfo
 end
 
 (⊗₁₂₃₄²⁴) = contraction_IJKL_JL
+
+
+"""
+    push_forward_C_to_F(F::TensorValue{D}, H::TensorValue{D²}) :: TensorValue
+
+Assumming `C` is symmetric, compute directly `0.5 * DCDF' · H · DCDF` without
+computing the 4th order tensor `DCDF`.
+"""
+@inline @generated function push_forward_C_to_F(F::TensorValue{D}, H::TensorValue{D²}) where {D, D²}
+  @assert D*D == D² "Mismatch dimensions of F (D) and H (D²)."
+  str = ""
+  for l in 1:D
+    for k in 1:D
+      for j in 1:D
+        for i in 1:D
+          term_str = ""
+          for n in 1:D
+            for m in 1:D
+              a1 = _flat_idx(m, j, n, l, D)
+              a2 = _flat_idx(m, j, l, n, D)
+              a3 = _flat_idx(j, m, n, l, D)
+              a4 = _flat_idx(j, m, l, n, D)
+              term_str *= "+ 0.5 * F[$i,$m] * F[$k,$n] * (H[$a1] + H[$a2] + H[$a3] + H[$a4])"
+            end
+          end
+          str *= "($term_str),"
+        end
+      end
+    end
+  end
+  Meta.parse("TensorValue{D²}($str)")
+end
