@@ -17,7 +17,7 @@ struct ViscousPolyconvex <: Visco
   μ::Float64
   τ::Float64
   Δt::Base.RefValue{Float64}
-  ViscousPolyconvex(; μ::Real, τ::Real) = new(Float64(μ), Float64(τ), 0.0)
+  ViscousPolyconvex(; μ::Real, τ::Real) = new(Float64(μ), Float64(τ), Ref(0.0))
 end
 
 function (obj::ViscousPolyconvex)(_...)
