@@ -38,6 +38,7 @@ export δⱼₖδᵢₗ3D
 export cof
 export contraction_IP_JPKL
 export contraction_IP_PJKL
+export push_forward_C_to_F
 
 export Box
 export Ellipsoid

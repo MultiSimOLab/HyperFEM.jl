@@ -567,3 +567,34 @@ The operation follows the **index contraction pattern**, where addition is perfo
 end
 
 (⊗₁₂₃₄²⁴) = contraction_IJKL_JL
+
+
+"""
+    push_forward_C_to_F(F::TensorValue{D}, H::TensorValue{D²}) :: TensorValue
+
+Assumming `C` is symmetric, compute directly `0.5 * DCDF' · H · DCDF` without
+computing the 4th order tensor `DCDF`.
+Using the symmetries of `H`, the component (ij, kl) is computed as:
+    2 * ∑_{m=1}^D ∑_{n=1}^D F[i,m] * H[j,m, l,n] * F[k,n]
+"""
+@generated function push_forward_C_to_F(F::TensorValue{D,D}, H::TensorValue{D²}) where {D, D²}
+  @assert D*D == D² "Mismatch dimensions of F (D) and H (D²)."
+  str = ""
+  for l in 1:D
+    for k in 1:D
+      for j in 1:D
+        for i in 1:D
+          term_str = ""
+          for n in 1:D
+            for m in 1:D
+              a = _flat_idx(j, m, l, n, D)
+              term_str *= "+ 2.0 * F[$i,$m] * H[$a] * F[$k,$n]"
+            end
+          end
+          str *= "($term_str),"
+        end
+      end
+    end
+  end
+  Meta.parse("TensorValue{D²}($str)")
+end

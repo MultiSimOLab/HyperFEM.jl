@@ -88,8 +88,7 @@ function tangent(obj::ViscousPolyconvex, F, Fn, Cvn)
   H1 = obj.μ * ∂Cv⁻¹∂C(obj, C, Cn, Cvn)
   H2 = ∂Sv∂C_Cᵥfix(obj, C, invCv)
   H3 = I3 ⊗₁₃²⁴ Sv(obj, C, invCv)
-  DCDF = F' ⊗₁₃²⁴ I3 + I3 ⊗₁₄²³ F'
-  0.5 * DCDF' · (H1 + H2) · DCDF + H3
+  push_forward_C_to_F(F, H1 + H2) + H3
 end
 
 function dissipation(obj::ViscousPolyconvex, F, Fn, Cvn)
