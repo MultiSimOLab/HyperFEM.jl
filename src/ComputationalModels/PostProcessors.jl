@@ -195,8 +195,8 @@ end
 
 
 function L2_Projection(u, dΩ, V)
-  a(w, v) = ∫(w · v) * dΩ
-  l(v)    = ∫(v · u) * dΩ
+  a(w, v) = ∫(w ⊙ v) * dΩ
+  l(v)    = ∫(v ⊙ u) * dΩ
   op      = AffineFEOperator(a, l, V, V)
   solve(op)
 end
