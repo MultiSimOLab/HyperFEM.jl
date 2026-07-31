@@ -20,7 +20,7 @@ struct ViscousPolyconvex <: Visco
   ViscousPolyconvex(; μ::Real, τ::Real) = new(Float64(μ), Float64(τ), Ref(0.0))
 end
 
-function (obj::ViscousPolyconvex)(_...)
+function (obj::ViscousPolyconvex)(::Float64=0.0)
   Ψ(F, Fn, A)      = energy(obj, F, Fn, A)
   ∂Ψ∂F(F, Fn, A)   = first_piola(obj, F, Fn, A)
   ∂Ψ∂F∂F(F, Fn, A) = tangent(obj, F, Fn, A)
