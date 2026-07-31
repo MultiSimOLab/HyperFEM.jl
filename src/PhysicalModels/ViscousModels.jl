@@ -68,9 +68,12 @@ function Base.getindex(obj::NVisco,i)
   obj.branches[i]
 end
 
-function Base.iterate(obj::NVisco, state=0)
-  state >= length(obj) && return
-  obj[state+1], state+1
+function Base.map(f, obj::NVisco, rest...)
+  map(f, obj.branches, rest...)
+end
+
+function Base.foreach(f, obj::NVisco, rest...)
+  foreach(f, obj.branches, rest...)
 end
 
 function (obj::NVisco)()
