@@ -9,7 +9,9 @@ using Test
   F = one(∇u) + ∇u
   J = det(F)
   @test J == 1.0149819999999996
-  @test logreg(J; Threshold=0.01) == 0.014870878346353422
+  @test logreg(J; threshold=0.01) == 0.014870878346353422
+  @test ForwardDiff.derivative(logreg, J) ≈ ∂log∂J(J)
+  @test ForwardDiff.derivative(∂log∂J, J) ≈ ∂∂log∂JJ(J)
 end
 
 
