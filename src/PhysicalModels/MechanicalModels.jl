@@ -1,14 +1,14 @@
 
 
 # ============================================
-# Coercive volumetric Mechanical models
+# Volumetric Mechanical models
 # ============================================
 
 """
-Coercive volumetric energy term of the form:
+Volumetric energy term of the form:
 
 ```math
-\\Psi = \\frac{1}{\\kappa} (J-1)^2
+\\Psi = \\frac{\\kappa}{2} (J-1)^2
 ```
 """
 struct VolumetricEnergy <: Volumetric
@@ -30,6 +30,33 @@ function (obj::VolumetricEnergy)(Λ::Float64=1.0)
   Ψ(F) = (λ / 2.0) * (J(F) - 1)^2
   ∂Ψ_∂J(F) = λ * (J(F) - 1)
   ∂Ψ2_∂J2(F) = λ
+  ∂Ψu(F) = ∂Ψ_∂J(F) * H(F)
+  ∂Ψuu(F) = ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ×ᵢ⁴(∂Ψ_∂J(F) * F)
+  return (Ψ, ∂Ψu, ∂Ψuu)
+end
+
+
+"""
+Coercive volumetric energy term of the form:
+
+```math
+\\Psi = \\frac{\\kappa}{4} (J^2-1+\\log(J))
+```
+"""
+struct CoerciveVolumetric <: Volumetric
+  κ::Float64
+  function CoerciveVolumetric(; κ::Float64)
+    new(κ)
+  end
+end
+
+function (obj::CoerciveVolumetric)(::Float64=1.0)
+  κ = obj.κ
+  J(F) = det(F)
+  H(F) = det(F) * inv(F)'
+  Ψ(F) = (κ / 4) * (J(F)^2 - 1 + 2log(J(F)))
+  ∂Ψ_∂J(F) = (κ / 2) * (J(F) + 1/J(F))
+  ∂Ψ2_∂J2(F) = (κ / 2) * (1 - 1/J(F)^2)
   ∂Ψu(F) = ∂Ψ_∂J(F) * H(F)
   ∂Ψuu(F) = ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ×ᵢ⁴(∂Ψ_∂J(F) * F)
   return (Ψ, ∂Ψu, ∂Ψuu)
