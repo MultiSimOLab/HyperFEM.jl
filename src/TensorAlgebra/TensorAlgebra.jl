@@ -27,6 +27,8 @@ export zerotensor3
 export zerotensor9
 
 export logreg
+export ∂log∂J
+export ∂∂log∂JJ
 export Tensorize
 export δᵢⱼδₖₗ2D
 export δᵢₖδⱼₗ2D

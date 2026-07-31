@@ -54,9 +54,9 @@ function (obj::CoerciveVolumetric)(::Float64=1.0)
   κ = obj.κ
   J(F) = det(F)
   H(F) = det(F) * inv(F)'
-  Ψ(F) = (κ / 4) * (J(F)^2 - 1 - 2log(J(F)))
-  ∂Ψ_∂J(F) = (κ / 2) * (J(F) - 1/J(F))
-  ∂Ψ2_∂J2(F) = (κ / 2) * (1 + 1/J(F)^2)
+  Ψ(F) = (κ / 4) * (J(F)^2 - 1 - 2logreg(J(F)))
+  ∂Ψ_∂J(F) = (κ / 2) * (J(F) - ∂log∂J(J(F)))
+  ∂Ψ2_∂J2(F) = (κ / 2) * (1 - ∂∂log∂JJ(J(F)))
   ∂Ψu(F) = ∂Ψ_∂J(F) * H(F)
   ∂Ψuu(F) = ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ×ᵢ⁴(∂Ψ_∂J(F) * F)
   return (Ψ, ∂Ψu, ∂Ψuu)
