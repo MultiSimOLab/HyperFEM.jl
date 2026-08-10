@@ -27,6 +27,14 @@ function Gridap.TensorValues.outer(A::VectorValue{D}, B::VectorValue{D}) where {
   return (A ⊗₁² B)
 end
 
+function Gridap.TensorValues.outer(A::VectorValue{D}, B::TensorValue{D,D}) where {D}
+  return (A ⊗₁²³ B)
+end
+
+function Gridap.TensorValues.outer(A::TensorValue{D,D}, B::VectorValue{D}) where {D}
+  return (A ⊗₁₂³ B)
+end
+
 function Gridap.TensorValues.outer(A::TensorValue{4,2}, B::VectorValue{2})
   return (A ⊗₁₂₃⁴ B)
 end
@@ -146,7 +154,7 @@ end
 
 
 """
-    ⊗₁²³(A::TensorValue{D}, B::TensorValue{D})::TensorValue{D,D*D}
+    ⊗₁₃²(A::TensorValue{D}, B::TensorValue{D})::TensorValue{D,D*D}
 
 Outer product of a second-order and first-order tensors (matrix and vector),
 returning a third-order tensor represented in a `D x D²` flattened matrix using combined indices.
