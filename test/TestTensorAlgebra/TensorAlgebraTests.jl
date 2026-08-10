@@ -4,6 +4,22 @@ using HyperFEM.TensorAlgebra
 using Test
 
 
+@testset "Flat indexing" begin
+  A = rand(3,3)
+  B = rand(3,3,3)
+  C = rand(3,3,3,3)
+  @test TensorValue{3,3}(ntuple(α -> A[_ij(α,3)...], 9)) == TensorValue{3,3}(A...)
+  @test TensorValue{3,9}(ntuple(α -> B[_ijk(α,3)...], 27)) == TensorValue{3,9}(B...)
+  @test TensorValue{9,9}(ntuple(α -> C[_ijkl(α,3)...], 81)) == TensorValue{9,9}(C...)
+  
+  for D in (2, 3)
+    @test all(_ij(_flat_idx(i, j, D), D) == (i, j) for i in 1:D, j in 1:D)
+    @test all(_ijk(_flat_idx(i, j, k, D), D) == (i, j, k) for i in 1:D, j in 1:D, k in 1:D)
+    @test all(_ijkl(_flat_idx(i, j, k, l, D), D) == (i, j, k, l) for i in 1:D, j in 1:D, k in 1:D, l in 1:D)
+  end
+end
+
+
 @testset "Jacobian regularization" begin
   ∇u = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0) * 1e-3
   F = one(∇u) + ∇u
@@ -100,6 +116,27 @@ end
   H = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0)
   @test contraction_IP_PJKL(A,H) == TensorValue(7.0, 10.0, 15.0, 22.0, 23.0, 34.0, 31.0, 46.0, 39.0, 58.0, 47.0, 70.0, 55.0, 82.0, 63.0, 94.0)
   @test contraction_IP_JPKL(A,H) == TensorValue(10.0, 14.0, 14.0, 20.0, 26.0, 38.0, 30.0, 44.0, 42.0, 62.0, 46.0, 68.0, 58.0, 86.0, 62.0, 92.0)
+
+  digits2(D) = [Float64(10i + 1j) for i in 1:D, j in 1:D]
+  digits3(D) = [Float64(100i + 10j + 1k) for i in 1:D, j in 1:D, k in 1:D]
+  digits4(D) = [Float64(1000i + 100j + 10k + 1l) for i in 1:D, j in 1:D, k in 1:D, l in 1:D]
+
+  function reference_IJK_KLP(A::TensorValue{3,9}, B::TensorValue{3,9})
+    D = size(A, 1)
+    C = zeros(Float64, D, D, D, D)
+    for i in 1:D, j in 1:D, l in 1:D, p in 1:D
+      s = zero(Float64)
+      for k in 1:D
+        s += A[i, _flat_idx(j, k, D)] * B[k, _flat_idx(l, p, 3)]
+      end
+      C[i, j, l, p] = s
+    end
+    TensorValue{D*D,D*D}(C...)
+  end
+
+  A = TensorValue{3,9}(digits3(3)...)
+  B = TensorValue{3,9}(reverse(digits3(3))...)
+  @test A · B == reference_IJK_KLP(A,B)
 end
 
 
