@@ -26,6 +26,11 @@ export Id
 export zerotensor3
 export zerotensor9
 
+export _flat_idx
+export _ij
+export _ijk
+export _ijkl
+
 export logreg
 export ∂log∂J
 export ∂∂log∂JJ
@@ -40,6 +45,7 @@ export δⱼₖδᵢₗ3D
 export cof
 export contraction_IP_JPKL
 export contraction_IP_PJKL
+export contraction_IJK_KLP
 export push_forward_C_to_F
 
 export Box

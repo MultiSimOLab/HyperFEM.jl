@@ -27,6 +27,14 @@ function Gridap.TensorValues.outer(A::VectorValue{D}, B::VectorValue{D}) where {
   return (A ⊗₁² B)
 end
 
+function Gridap.TensorValues.outer(A::VectorValue{D}, B::TensorValue{D,D}) where {D}
+  return (A ⊗₁²³ B)
+end
+
+function Gridap.TensorValues.outer(A::TensorValue{D,D}, B::VectorValue{D}) where {D}
+  return (A ⊗₁₂³ B)
+end
+
 function Gridap.TensorValues.outer(A::TensorValue{4,2}, B::VectorValue{2})
   return (A ⊗₁₂₃⁴ B)
 end
@@ -146,7 +154,7 @@ end
 
 
 """
-    ⊗₁²³(A::TensorValue{D}, B::TensorValue{D})::TensorValue{D,D*D}
+    ⊗₁₃²(A::TensorValue{D}, B::TensorValue{D})::TensorValue{D,D*D}
 
 Outer product of a second-order and first-order tensors (matrix and vector),
 returning a third-order tensor represented in a `D x D²` flattened matrix using combined indices.
@@ -567,6 +575,38 @@ The operation follows the **index contraction pattern**, where addition is perfo
 end
 
 (⊗₁₂₃₄²⁴) = contraction_IJKL_JL
+
+
+"""
+    contraction_IJK_KLP(A::TensorValue{D,D*D}, B::TensorValue{D,D*D})::TensorValue{D*D,D*D}
+
+Performs a tensor contraction between third-order tensors (represented as a `D × D²` matrix in flattened index notation).
+The operation follows the **index contraction pattern**, where addition is performed for repeated indices.
+"""
+@inline @generated function contraction_IJK_KLP(A::TensorValue{D,D²}, B::TensorValue{D,D²}) where {D, D²}
+  @assert D*D == D² "Third-order tensor sizes mismatch"
+  str = ""
+  for p in 1:D
+    for l in 1:D
+      for j in 1:D
+        for i in 1:D
+          for k in 1:D
+            a = _flat_idx(i,j,k,D)
+            b = _flat_idx(k,l,p,D)
+            str *= "+A[$a]*B[$b]"
+          end
+          str *= ","
+        end
+      end
+    end
+  end
+  Meta.parse("TensorValue{$D²,$D²}($str)")
+end
+
+Gridap.TensorValues.dot(A::TensorValue{2,2}, B::TensorValue{4,4}) = contraction_IP_PJKL(A,B)
+Gridap.TensorValues.dot(A::TensorValue{3,3}, B::TensorValue{9,9}) = contraction_IP_PJKL(A,B)
+Gridap.TensorValues.dot(A::TensorValue{2,4}, B::TensorValue{2,4}) = contraction_IJK_KLP(A,B)
+Gridap.TensorValues.dot(A::TensorValue{3,9}, B::TensorValue{3,9}) = contraction_IJK_KLP(A,B)
 
 
 """
