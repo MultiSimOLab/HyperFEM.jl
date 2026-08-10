@@ -477,13 +477,13 @@ end
   for j in 1:D
     for i in 1:D
       for k in 1:D
-        a = _flat_idx(j,k,D)
-        str *= "+H[$i,$a]*V[$k]"
+        a = _flat_idx(i,j,k,D)
+        str *= "+H[$a]*V[$k]"
       end
       str *= ","
     end
   end
-  Meta.parse("TensorValue{$D}($str)")
+  Meta.parse("TensorValue{$D,$D}($str)")
 end
 
 
@@ -494,7 +494,7 @@ end
     for j in 1:D
       for i in 1:D
         a = _flat_idx(i,j,k,D)
-        str *= "+V[$k]*H[$a]"
+        str *= "+V[$i]*H[$a]"
       end
       str *= ","
     end
