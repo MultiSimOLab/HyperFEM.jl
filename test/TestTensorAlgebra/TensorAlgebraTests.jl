@@ -137,7 +137,7 @@ end
 
   A = TensorValue{3,9}(digits3(3)...)
   B = TensorValue{3,9}(reverse(digits3(3))...)
-  @test A · B == reference_IJK_KLP(A,B)
+  @test A · B == reference_IJK_KLP(A, B)
 
   function reference_IJK_K(A::TensorValue{3,9}, B::VectorValue{3})
     D = size(A,1)
@@ -154,7 +154,7 @@ end
 
   A = TensorValue{3,9}(digits3(3)...)
   V = VectorValue{3}(digits1(3)...)
-  @test A · V == reference_IJK_K(A,B)
+  @test A · V == reference_IJK_K(A, V)
   
   function reference_I_IJK(A::VectorValue{3}, B::TensorValue{3,9})
     D = size(A,1)
