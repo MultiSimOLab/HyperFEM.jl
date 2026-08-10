@@ -488,7 +488,7 @@ end
 
 
 @inline @generated function ⊙₁¹²³(V::VectorValue{D}, H::TensorValue{D,D²}) where {D, D²}
-  @assert D*D == D² "Firts- and third-order tensors size mismatch"
+  @assert D*D == D² "First- and third-order tensors size mismatch"
   str = ""
   for k in 1:D
     for j in 1:D
