@@ -578,6 +578,38 @@ end
 
 
 """
+    contraction_IJK_KLP(A::TensorValue{D,D*D}, B::TensorValue{D,D*D})::TensorValue{D*D,D*D}
+
+Performs a tensor contraction between third-order tensors (represented as a `D × D²` matrix in flattened index notation).
+The operation follows the **index contraction pattern**, where addition is performed for repeated indices.
+"""
+@inline @generated function contraction_IJK_KLP(A::TensorValue{D,D²}, B::TensorValue{D,D²}) where {D, D²}
+  @assert D*D == D² "Third-order tensor sizes mismatch"
+  str = ""
+  for p in 1:D
+    for l in 1:D
+      for j in 1:D
+        for i in 1:D
+          for k in 1:D
+            a = _flat_idx(i,j,k,D)
+            b = _flat_idx(k,l,p,D)
+            str *= "+A[$a]*B[$b]"
+          end
+          str *= ","
+        end
+      end
+    end
+  end
+  Meta.parse("TensorValue{$D²,$D²}($str)")
+end
+
+Gridap.TensorValues.dot(A::TensorValue{2,2}, B::TensorValue{4,4}) = contraction_IP_PJKL(A,B)
+Gridap.TensorValues.dot(A::TensorValue{3,3}, B::TensorValue{9,9}) = contraction_IP_PJKL(A,B)
+Gridap.TensorValues.dot(A::TensorValue{2,4}, B::TensorValue{2,4}) = contraction_IJK_KLP(A,B)
+Gridap.TensorValues.dot(A::TensorValue{3,9}, B::TensorValue{3,9}) = contraction_IJK_KLP(A,B)
+
+
+"""
     push_forward_C_to_F(F::TensorValue{D}, H::TensorValue{D²}) :: TensorValue
 
 Assumming `C` is symmetric, compute directly `0.5 * DCDF' · H · DCDF` without
