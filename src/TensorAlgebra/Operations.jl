@@ -472,18 +472,34 @@ end
 
 
 @inline @generated function ⊙₁₂₃³(H::TensorValue{D,D²}, V::VectorValue{D}) where {D, D²}
-  @assert D*D == D² "Fourth- and second-order tensors size mismatch"
+  @assert D*D == D² "Third- and first-order tensors size mismatch"
   str = ""
   for j in 1:D
     for i in 1:D
       for k in 1:D
-        a = _flat_idx(j,k,D)
-        str *= "+H[$i,$a]*V[$k]"
+        a = _flat_idx(i,j,k,D)
+        str *= "+H[$a]*V[$k]"
       end
       str *= ","
     end
   end
-  Meta.parse("TensorValue{$D}($str)")
+  Meta.parse("TensorValue{$D,$D}($str)")
+end
+
+
+@inline @generated function ⊙₁¹²³(V::VectorValue{D}, H::TensorValue{D,D²}) where {D, D²}
+  @assert D*D == D² "First- and third-order tensors size mismatch"
+  str = ""
+  for k in 1:D
+    for j in 1:D
+      for i in 1:D
+        a = _flat_idx(i,j,k,D)
+        str *= "+V[$i]*H[$a]"
+      end
+      str *= ","
+    end
+  end
+  Meta.parse("TensorValue{$D,$D}($str)")
 end
 
 
@@ -493,6 +509,8 @@ Gridap.TensorValues.inner(H::TensorValue{2,4}, A::TensorValue{2,2}) = H ⊙₁�
 Gridap.TensorValues.inner(H::TensorValue{3,9}, A::TensorValue{3,3}) = H ⊙₁₂₃²³ A
 Gridap.TensorValues.inner(H::TensorValue{2,4}, V::VectorValue{2}) = H ⊙₁₂₃³ V
 Gridap.TensorValues.inner(H::TensorValue{3,9}, V::VectorValue{3}) = H ⊙₁₂₃³ V
+Gridap.TensorValues.inner(V::VectorValue{2}, H::TensorValue{2,4}) = V ⊙₁¹²³ H
+Gridap.TensorValues.inner(V::VectorValue{3}, H::TensorValue{3,9}) = V ⊙₁¹²³ H
 Gridap.TensorValues.inner(V::VectorValue, H::TensorValue) = TensorValue(V.data) ⊙ H
 
 
@@ -607,6 +625,10 @@ Gridap.TensorValues.dot(A::TensorValue{2,2}, B::TensorValue{4,4}) = contraction_
 Gridap.TensorValues.dot(A::TensorValue{3,3}, B::TensorValue{9,9}) = contraction_IP_PJKL(A,B)
 Gridap.TensorValues.dot(A::TensorValue{2,4}, B::TensorValue{2,4}) = contraction_IJK_KLP(A,B)
 Gridap.TensorValues.dot(A::TensorValue{3,9}, B::TensorValue{3,9}) = contraction_IJK_KLP(A,B)
+Gridap.TensorValues.dot(H::TensorValue{2,4}, V::VectorValue{2}) = H ⊙₁₂₃³ V
+Gridap.TensorValues.dot(H::TensorValue{3,9}, V::VectorValue{3}) = H ⊙₁₂₃³ V
+Gridap.TensorValues.dot(V::VectorValue{2}, H::TensorValue{2,4}) = V ⊙₁¹²³ H
+Gridap.TensorValues.dot(V::VectorValue{3}, H::TensorValue{3,9}) = V ⊙₁¹²³ H
 
 
 """
