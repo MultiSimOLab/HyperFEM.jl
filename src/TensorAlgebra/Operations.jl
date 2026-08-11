@@ -672,7 +672,7 @@ The operation follows the **index contraction pattern**, where addition is perfo
       end
     end
   end
-  Meta.parse("TensorValue{$D²,$D²}($str)")
+  Meta.parse("TensorValue{$D,$D²}($str)")
 end
 
 
