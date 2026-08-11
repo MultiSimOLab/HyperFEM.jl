@@ -16,6 +16,7 @@ export (⊗₁₂³⁴)
 export (⊗₁₃²⁴)
 export (⊗₁₄²³)
 export (⊗₁²)
+export (⊙₁₂₃₄²⁴)
 export ×ᵢ⁴
 export IIsym
 export I3

@@ -4,6 +4,12 @@ using HyperFEM.TensorAlgebra
 using Test
 
 
+digits1(D) = [Float64(i) for i in 1:D]
+digits2(D) = [Float64(10i + j) for i in 1:D, j in 1:D]
+digits3(D) = [Float64(100i + 10j + k) for i in 1:D, j in 1:D, k in 1:D]
+digits4(D) = [Float64(1000i + 100j + 10k + l) for i in 1:D, j in 1:D, k in 1:D, l in 1:D]
+
+
 @testset "Flat indexing" begin
   A = rand(3,3)
   B = rand(3,3,3)
@@ -17,6 +23,20 @@ using Test
     @test all(_ijk(_flat_idx(i, j, k, D), D) == (i, j, k) for i in 1:D, j in 1:D, k in 1:D)
     @test all(_ijkl(_flat_idx(i, j, k, l, D), D) == (i, j, k, l) for i in 1:D, j in 1:D, k in 1:D, l in 1:D)
   end
+end
+
+
+@testset "transpose" begin
+  function reference_transpose_IJK_KIJ(A::TensorValue{3,9})
+    D = size(A, 1)
+    C = zeros(Float64, D, D, D)
+    for i in 1:D, j in 1:D, k in 1:D
+      C[i, j, k] = A[_flat_idx(k, i, j, D)]
+    end
+    TensorValue{D,D*D}(C...)
+  end
+  A = TensorValue{3,9}(digits3(3)...)
+  @test A' == reference_transpose_IJK_KIJ(A)
 end
 
 
@@ -116,11 +136,6 @@ end
   H = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0)
   @test contraction_IP_PJKL(A,H) == TensorValue(7.0, 10.0, 15.0, 22.0, 23.0, 34.0, 31.0, 46.0, 39.0, 58.0, 47.0, 70.0, 55.0, 82.0, 63.0, 94.0)
   @test contraction_IP_JPKL(A,H) == TensorValue(10.0, 14.0, 14.0, 20.0, 26.0, 38.0, 30.0, 44.0, 42.0, 62.0, 46.0, 68.0, 58.0, 86.0, 62.0, 92.0)
-
-  digits1(D) = [Float64(i) for i in 1:D]
-  digits2(D) = [Float64(10i + j) for i in 1:D, j in 1:D]
-  digits3(D) = [Float64(100i + 10j + k) for i in 1:D, j in 1:D, k in 1:D]
-  digits4(D) = [Float64(1000i + 100j + 10k + l) for i in 1:D, j in 1:D, k in 1:D, l in 1:D]
 
   function reference_IJK_KLP(A::TensorValue{3,9}, B::TensorValue{3,9})
     D = size(A, 1)
