@@ -185,6 +185,23 @@ end
   end
 
   @test V · A == reference_I_IJK(V, A)
+
+  function reference_IJK_KL(A::TensorValue{3,9}, B::TensorValue{3,3})
+    D = size(A, 1)
+    C = zeros(Float64, D, D, D)
+    for i in 1:D, j in 1:D, l in 1:D
+      s = zero(Float64)
+      for k in 1:D
+        s += A[_flat_idx(i, j, k, D)] * B[k, l]
+      end
+      C[i, j, l] = s
+    end
+    TensorValue{D,D*D}(C...)
+  end
+
+  A = TensorValue{3,9}(digits3(3)...)
+  B = TensorValue{3,3}(digits2(3)...)
+  @test A · B == reference_IJK_KL(A, B)
 end
 
 
