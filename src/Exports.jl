@@ -17,7 +17,7 @@ end
 @publish TensorAlgebra (⊗₁₃²⁴)
 @publish TensorAlgebra (⊗₁₂³⁴)
 @publish TensorAlgebra (⊗₁₂₃⁴)
-@publish TensorAlgebra (⊗₁₂₃₄²⁴)
+@publish TensorAlgebra (⊙₁₂₃₄²⁴)
 @publish TensorAlgebra logreg
 @publish TensorAlgebra Box
 @publish TensorAlgebra Ellipsoid

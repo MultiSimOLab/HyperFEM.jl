@@ -19,6 +19,35 @@ end
 end
 
 
+"""
+    transpose_IJK_KIJ(A::TensorValue{D,D²})::TensorValue{D,D²}
+
+Transpose of a third-order tensor in the sense `x·A·y·z = y·Aᵀ·z·x` for all
+`x,y,z`, i.e. the cyclic index shift
+
+    Aᵀ[i,j,k] = A[k,i,j]
+
+This operation has order 3, not 2.  `transpose_IJK_KIJ` applied twice
+is not the identity.
+"""
+@inline @generated function transpose_IJK_KIJ(A::TensorValue{D,D²}) where {D, D²}
+  @assert D*D == D² "Third-order tensor sizes mismatch"
+  str = ""
+  for k in 1:D
+    for j in 1:D
+      for i in 1:D
+        a = _flat_idx(k,i,j,D)
+        str *= "A[$a],"
+      end
+    end
+  end
+  Meta.parse("TensorValue{$D,$D²}($str)")
+end
+
+Base.transpose(A::TensorValue{2,4}) = transpose_IJK_KIJ(A)
+Base.transpose(A::TensorValue{3,9}) = transpose_IJK_KIJ(A)
+
+
 function Gridap.TensorValues.outer(A::TensorValue{D,D}, B::TensorValue{D,D}) where {D}
   return (A ⊗₁₂³⁴ B)
 end
@@ -592,7 +621,7 @@ The operation follows the **index contraction pattern**, where addition is perfo
   Meta.parse("TensorValue{D}($str)")
 end
 
-(⊗₁₂₃₄²⁴) = contraction_IJKL_JL
+(⊙₁₂₃₄²⁴) = contraction_IJKL_JL
 
 
 """
