@@ -36,15 +36,18 @@ function Gridap.CellData.CellState(obj::ViscousIncompressible, points::Measure)
   CellState(obj, I3, points)
 end
 
-function initialize_state(obj::ViscousIncompressible, points::Measure)
-  @warn "The function 'initialize_state' is deprecated, use 'CellState' instead."
-  CellState(obj, points)
+function initialize_state(::ViscousIncompressible)
+  VectorValue(I3..., 0.0)
 end
 
-function update_state!(obj::ViscousIncompressible, state, F, Fn)
+function update_state!(obj::ViscousIncompressible, A, F, Fn)
+  state_updater(Aᵅ, Fᵅ, Fnᵅ) = (true, return_mapping(obj, Fᵅ, Fnᵅ, Aᵅ))
+  update_state!(state_updater, A, F, Fn)
+end
+
+function return_mapping(obj::ViscousIncompressible, F, Fn, A)
   _, Se, ∂Se∂Ce = SecondPiola(obj.elasto)
-  return_mapping(A, F, Fn) = ReturnMapping(obj, Se, ∂Se∂Ce, F, Fn, A)
-  update_state!(return_mapping, state, F, Fn)
+  ReturnMapping(obj, Se, ∂Se∂Ce, F, Fn, A)
 end
 
 function Dissipation(obj::ViscousIncompressible)
@@ -96,14 +99,17 @@ function Gridap.CellData.CellState(obj::NVisco, args...)
   map(b -> CellState(b, args...), obj)
 end
 
-function initialize_state(obj::NVisco, points::Measure)
-  @warn "The function 'initialize_state' is deprecated, use 'CellState' instead."
-  map(b -> CellState(b, points), obj)
+function initialize_state(obj::NVisco)
+  map(initialize_state, obj)
 end
 
 function update_state!(obj::NVisco, states, F, Fn)
   @assert length(obj) == length(states)
   map((b, s) -> update_state!(b, s, F, Fn), obj, states)
+end
+
+function return_mapping(obj::NVisco, F, Fn, A...)
+  map((b, Ai) -> return_mapping(b, F, Fn, Ai), obj, A)
 end
 
 function Dissipation(obj::NVisco)
@@ -147,9 +153,8 @@ function Gridap.CellData.CellState(obj::GeneralizedMaxwell, args...)
   CellState(obj.branches, args...)
 end
 
-function initialize_state(obj::GeneralizedMaxwell, points::Measure)
-  @warn "The function 'initialize_state' is deprecated, use 'CellState' instead."
-  CellState(obj.branches, points)
+function initialize_state(obj::GeneralizedMaxwell)
+  initialize_state(obj.branches)
 end
 
 function update_state!(obj::GeneralizedMaxwell{<:IsoElastic}, states, F, Fn)
@@ -158,6 +163,14 @@ end
 
 function update_state!(obj::GeneralizedMaxwell{<:AnisoElastic}, states, F, n, Fn)
   update_state!(obj.branches, states, F, Fn)
+end
+
+function return_mapping(obj::GeneralizedMaxwell{<:IsoElastic}, F, Fn, A...)
+  return_mapping(obj.branches, F, Fn, A...)
+end
+
+function return_mapping(obj::GeneralizedMaxwell{<:AnisoElastic}, F, n, Fn, A...)
+  return_mapping(obj.branches, F, Fn, A...)
 end
 
 function Dissipation(obj::GeneralizedMaxwell{<:IsoElastic})
@@ -572,8 +585,7 @@ function ReturnMapping(obj::ViscousIncompressible,
   # Get Uv and λα
   #------------------------------------------
   _, Uv, _ = ViscousStrain(Ce, C)
-  Cell_ = [get_array(Uv)[:]; λα]  # TODO: Another problem with TensorValue slice
-  return true, VectorValue(Cell_)
+  VectorValue(Uv..., λα)
 end
 
 

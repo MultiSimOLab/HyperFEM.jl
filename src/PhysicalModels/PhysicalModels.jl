@@ -86,6 +86,7 @@ export SecondPiola
 export Dissipation
 
 export initialize_state
+export return_mapping
 export update_time_step!
 
 export Kinematics
@@ -163,7 +164,11 @@ function Gridap.CellData.CellState(::PhysicalModel, args...)
   return nothing
 end
 
-function initialize_state(::PhysicalModel, points::Measure)
+
+"""
+Define the state variable at a Gauss point. Unlike the function 'CellState', the state variable is represented by a number or a tensor.
+"""
+function initialize_state(::PhysicalModel)
   return nothing
 end
 
@@ -172,6 +177,13 @@ end
 Update the state variables. The state variables must be initialized using the function 'CellState' with the constitutive model.
 """
 function update_state!(::PhysicalModel, vars...)
+end
+
+
+"""
+Update the state variables at a Gauss point. Unlike the function 'update_state!', the state variables are represented by a number or a tensor.
+"""
+function return_mapping(::PhysicalModel, vars...)
 end
 
 

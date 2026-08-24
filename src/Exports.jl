@@ -115,6 +115,7 @@ end
 @publish PhysicalModels SecondPiola
 @publish PhysicalModels Dissipation
 @publish PhysicalModels initialize_state
+@publish PhysicalModels return_mapping
 @publish PhysicalModels update_time_step!
 
 @publish WeakForms residual
