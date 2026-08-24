@@ -44,13 +44,14 @@ function Gridap.CellData.CellState(::ViscousPolyconvex, points::Measure)
 end
 
 function Gridap.CellData.update_state!(obj::ViscousPolyconvex, A, F, Fn)
-  update_state!(state_updater(obj), A, F, Fn)
+  state_updater(Aᵅ, Fᵅ, Fnᵅ) = (true, return_mapping(obj, Fᵅ, Fnᵅ, Aᵅ))
+  update_state!(state_updater, A, F, Fn)
 end
 
-function state_updater(obj::ViscousPolyconvex)
-  (A, F, Fn) -> let Cv = return_mapping(obj, F, Fn, A)
-    (true, Cv)
-  end
+function return_mapping(obj::ViscousPolyconvex, F, Fn, Cvn)
+  C = Cauchy(F)
+  Cn = Cauchy(Fn)
+  inv(Cv⁻¹(obj, C, Cn, Cvn))
 end
 
 function Dissipation(obj::ViscousPolyconvex)
@@ -135,11 +136,4 @@ end
   invCv = IIIb⁻¹´³ * B
   ∂invCv = -Τ * IIIb⁻¹´³ * (IIsym(invC) - (1/3) * (B ⊗ M))
   (invCv, ∂invCv)
-end
-
-@inline function return_mapping(obj::ViscousPolyconvex, F, Fn, Cvn)
-  C = Cauchy(F)
-  Cn = Cauchy(Fn)
-  invCv = Cv⁻¹(obj, C, Cn, Cvn)
-  inv(invCv)
 end
