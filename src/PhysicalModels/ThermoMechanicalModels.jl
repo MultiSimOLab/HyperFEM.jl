@@ -7,9 +7,8 @@ function Gridap.CellData.CellState(obj::ThermoMechano, args...)
   CellState(obj.mechano, args...)
 end
 
-function initialize_state(obj::TM, points::Measure) where {TM<:ThermoMechano}
-  @warn "The function 'initialize_state' is deprecated, use 'CellState' instead."
-  CellState(obj.mechano, points)
+function initialize_state(obj::TM) where {TM<:ThermoMechano}
+  initialize_state(obj.mechano)
 end
 
 function update_state!(obj::TM, state, F, θ, args...) where {TM<:ThermoMechano}

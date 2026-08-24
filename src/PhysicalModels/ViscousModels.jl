@@ -36,9 +36,8 @@ function Gridap.CellData.CellState(obj::ViscousIncompressible, points::Measure)
   CellState(obj, I3, points)
 end
 
-function initialize_state(obj::ViscousIncompressible, points::Measure)
-  @warn "The function 'initialize_state' is deprecated, use 'CellState' instead."
-  CellState(obj, points)
+function initialize_state(::ViscousIncompressible)
+  VectorValue(I3..., 0.0)
 end
 
 function update_state!(obj::ViscousIncompressible, state, F, Fn)
@@ -96,9 +95,8 @@ function Gridap.CellData.CellState(obj::NVisco, args...)
   map(b -> CellState(b, args...), obj)
 end
 
-function initialize_state(obj::NVisco, points::Measure)
-  @warn "The function 'initialize_state' is deprecated, use 'CellState' instead."
-  map(b -> CellState(b, points), obj)
+function initialize_state(obj::NVisco)
+  map(initialize_state, obj)
 end
 
 function update_state!(obj::NVisco, states, F, Fn)
@@ -147,9 +145,8 @@ function Gridap.CellData.CellState(obj::GeneralizedMaxwell, args...)
   CellState(obj.branches, args...)
 end
 
-function initialize_state(obj::GeneralizedMaxwell, points::Measure)
-  @warn "The function 'initialize_state' is deprecated, use 'CellState' instead."
-  CellState(obj.branches, points)
+function initialize_state(obj::GeneralizedMaxwell)
+  initialize_state(obj.branches)
 end
 
 function update_state!(obj::GeneralizedMaxwell{<:IsoElastic}, states, F, Fn)

@@ -163,7 +163,7 @@ function Gridap.CellData.CellState(::PhysicalModel, args...)
   return nothing
 end
 
-function initialize_state(::PhysicalModel, points::Measure)
+function initialize_state(::PhysicalModel)
   return nothing
 end
 
