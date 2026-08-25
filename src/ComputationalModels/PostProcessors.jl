@@ -72,11 +72,13 @@ function (obj::PostProcessor{<:DynamicNonlinearModel,<:Any,<:Any})(Λ)
 end
 
 function Jacobian(uh,km)
+  @warn "The function Jacobian is deprecated and it will be removed after release 0.0.7."
   F, _, J = get_Kinematics(km)
   J ∘ F ∘ ∇(uh)
 end
 
 function Piola(physmodel::ThermoElectroMechano, kine::NTuple{3,KinematicModel}, uh, φh, θh, Ω, dΩ, Λ=1.0)
+  @warn "The function Piola is deprecated and it will be removed after release 0.0.7."
   DΨ = physmodel()
   F, _, _ = get_Kinematics(kine[1])
   E = get_Kinematics(kine[2])
@@ -87,24 +89,27 @@ end
 
 
 function Cauchy(args...)
-  @warn "The function Cauchy is deprecated. Shortly it'll be J^-1*P*F^-T."
+  @warn "The function Cauchy is deprecated and it will be removed after release 0.0.7."
   Piola(args...)
 end
 
 
 function Piola(model::Elasto, km::KinematicModel, uh, unh, state_vars, Ω, dΩ, t=0)
+  @warn "The function Piola is deprecated and it will be removed after release 0.0.7."
   σh = Piola(model,km,uh)
   interpolate_L2_tensor(σh, Ω, dΩ)
 end
 
 
 function Piola(model::ViscoElastic, km::KinematicModel, uh, unh, state_vars, Ω, dΩ, t=0)
+  @warn "The function Piola is deprecated and it will be removed after release 0.0.7."
   σh = Piola(model, km, uh, unh, state_vars)
   interpolate_L2_tensor(σh, Ω, dΩ)
 end
 
 
 function Piola(model::Elasto, km::KinematicModel, uh, vars...)
+  @warn "The function Piola is deprecated and it will be removed after release 0.0.7."
   _, ∂Ψu, _ = model()
   F, _, _ = get_Kinematics(km)
   ∂Ψu ∘ (F∘∇(uh))
@@ -112,6 +117,7 @@ end
 
 
 function Piola(model::ViscoElastic,  km::KinematicModel, uh, unh, states)
+  @warn "The function Piola is deprecated and it will be removed after release 0.0.7."
   _, ∂Ψu, _ = model()
   F, _, _ = get_Kinematics(km)
   ∂Ψu ∘ (F∘∇(uh), F∘∇(unh), states...)
@@ -119,6 +125,7 @@ end
 
 
 function Entropy(physmodel::ThermoElectroMechano,  kine::NTuple{3,KinematicModel}, uh, φh, θh, Ω, dΩ, Λ=1.0)
+  @warn "The function Entropy is deprecated and it will be removed after release 0.0.7."
   DΨ = physmodel()
   F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
   E     = get_Kinematics(kine[2]; Λ=Λ)
@@ -133,6 +140,7 @@ end
 
 
 function D0(physmodel::ThermoElectroMechano,  kine::NTuple{3,KinematicModel}, uh, φh, θh, Ω, dΩ, Λ=1.0)
+  @warn "The function D0 is deprecated and it will be removed after release 0.0.7."
   DΨ = physmodel()
   F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
   E     = get_Kinematics(kine[2]; Λ=Λ)
@@ -152,6 +160,7 @@ end
 
 
 function interpolate_L2_tensor(A, Ω, dΩ, Γ=Ω)
+  @warn "The function interpolate_L2_tensor is deprecated and it will be removed after release 0.0.7. Use interpolate_L2_field."
   refL2 = ReferenceFE(lagrangian, Float64, 0)
   reffe = ReferenceFE(lagrangian, Float64, 1)
   VL2 = FESpace(Ω, refL2, conformity=:L2)
@@ -171,6 +180,7 @@ end
 
 
 function interpolate_L2_vector(b, Ω, dΩ, Γ=Ω)
+  @warn "The function interpolate_L2_vector is deprecated and it will be removed after release 0.0.7. Use interpolate_L2_field."
   refL2 = ReferenceFE(lagrangian, Float64, 0)
   reffe = ReferenceFE(lagrangian, Float64, 1)
   VL2 = FESpace(Ω, refL2, conformity=:L2)
@@ -179,13 +189,14 @@ function interpolate_L2_vector(b, Ω, dΩ, Γ=Ω)
   n2 = VectorValue(0.0, 1.0, 0.0)
   n3 = VectorValue(0.0, 0.0, 1.0)
   b1 = interpolate_everywhere(L2_Projection(n1 ⋅ b, dΩ, VL2), VH1)
-  b1 = interpolate_everywhere(L2_Projection(n2 ⋅ b, dΩ, VL2), VH1)
-  b1 = interpolate_everywhere(L2_Projection(n3 ⋅ b, dΩ, VL2), VH1)
+  b2 = interpolate_everywhere(L2_Projection(n2 ⋅ b, dΩ, VL2), VH1)
+  b3 = interpolate_everywhere(L2_Projection(n3 ⋅ b, dΩ, VL2), VH1)
   (b1, b2, b3)
 end
 
 
 function interpolate_L2_scalar(x, Ω, dΩ, Γ=Ω)
+  @warn "The function interpolate_L2_scalar is deprecated and it will be removed after release 0.0.7. Use interpolate_L2_field."
   refL2 = ReferenceFE(lagrangian, Float64, 0)
   reffe = ReferenceFE(lagrangian, Float64, 1)
   VL2 = FESpace(Ω, refL2, conformity=:L2)
@@ -226,4 +237,34 @@ function L2_projection(u, dΩ, V)
   solve(op)
 end
 
-L2_Projection = L2_projection
+function L2_Projection(u, dΩ, V)
+  @warn "The signature L2_Projection is deprecated and it will be removed after release 0.0.7. Use L2_projection with lowercase (more julianic)."
+  L2_projection(u, dΩ, V)
+end
+
+
+"""
+    component_LInf(::FEFunction, ::Symbol, ::Triangulation)::Float64
+
+Calculate the L-inf norm of a vector-valued finite element function.
+It could be useful to find the maximum displacement.
+
+# Example
+    x_max = component_LInf(uh, :x, Ω)
+"""
+function component_LInf(u, dir, Ω)
+  if     dir === :x
+    n = VectorValue(1.0, 0.0, 0.0)
+  elseif dir === :y
+    n = VectorValue(0.0, 1.0, 0.0)
+  elseif dir === :z
+    n = VectorValue(0.0, 0.0, 1.0)
+  else
+    throw("Direction must be either :x, :y or :z. Got $dir")
+  end
+  reffe = ReferenceFE(lagrangian, Float64, 1)
+  V = FESpace(Ω, reffe, conformity=:L2)
+  un = interpolate_everywhere(u⋅n, V)
+  uall = [un.free_values; un.dirichlet_values]
+  norm(uall, Inf)
+end
