@@ -85,5 +85,8 @@ export reset!
 export interpolate_L2_tensor
 export interpolate_L2_vector
 export interpolate_L2_scalar
+export interpolate_L2_field
+export L2_projection
 export L2_Projection
+
 end
