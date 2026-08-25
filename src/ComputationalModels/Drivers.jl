@@ -283,13 +283,31 @@ get_spaces(m::DynamicNonlinearModel) = m.spaces
 get_assemblers(m::DynamicNonlinearModel) = (m.caches[4])
 
 
+"""
+Update the velocity field `vh` based on the current displacement field `xh⁺`
+and the previous displacement `xh⁻` using a midpoint time-stepping scheme.
+The velocity is updated in place.
+"""
+function update_velocity!(vh, xh⁺, xh⁻, Δt)
+  v = get_free_dof_values(vh)
+  v .*= -1.0
+  v .-= (2.0 / Δt) * get_free_dof_values(xh⁻)
+  v .+= (2.0 / Δt) * get_free_dof_values(xh⁺)
+  return vh
+end
 
-function update_velocity!(vh, x, x⁻, Δt)
-    vh_ = get_free_dof_values(vh)
-    vh_ .*= -1.0
-    vh_ .-= (2.0 / Δt) .* x⁻
-    vh_ .+= (2.0 / Δt) .* x
-    return vh
+
+"""
+Update the old displacement field `xh⁻` with the new displacement field `xh⁺`.
+The update is performed in place, modifying `xh⁻` to match both the free dof values
+and the dirichlet dof values of `xh⁺`.
+"""
+function update_displacements!(xh⁻, xh⁺)
+  x = get_free_dof_values(xh⁻)
+  x .= get_free_dof_values(xh⁺)
+  x_dir = get_dirichlet_dof_values(get_fe_space(xh⁻))
+  x_dir .= get_dirichlet_dof_values(get_fe_space(xh⁺))
+  return xh⁻
 end
 
 

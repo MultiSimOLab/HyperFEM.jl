@@ -144,6 +144,8 @@ end
 @publish ComputationalModels  dirichlet_preconditioning!
 @publish ComputationalModels  GmshDiscreteModel
 @publish ComputationalModels  updateBC!
+@publish ComputationalModels update_velocity!
+@publish ComputationalModels update_displacements!
 @publish ComputationalModels  PostProcessor
 @publish ComputationalModels  vtk_save
 @publish ComputationalModels  get_pvd
