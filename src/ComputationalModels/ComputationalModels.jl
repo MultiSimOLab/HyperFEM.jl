@@ -69,6 +69,8 @@ export get_spaces
 export get_assemblers
 export get_trial_space
 export get_test_space
+export update_velocity!
+export update_displacements!
 
 include("PostProcessors.jl")
 export PostProcessor
