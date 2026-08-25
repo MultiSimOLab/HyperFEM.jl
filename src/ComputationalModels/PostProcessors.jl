@@ -194,9 +194,27 @@ function interpolate_L2_scalar(x, Ω, dΩ, Γ=Ω)
 end
 
 
-function L2_Projection(u, dΩ, V)
+"""
+Interpolate an L2 field into an H1 field.
+"""
+function interpolate_L2_field(x, Ω, dΩ, valuetype)
+  refL2 = ReferenceFE(lagrangian, valuetype, 0)
+  reffe = ReferenceFE(lagrangian, valuetype, 1)
+  VL2 = FESpace(Ω, refL2, conformity=:L2)
+  VH1 = FESpace(Ω, reffe, conformity=:H1)
+  interpolate_everywhere(L2_projection(x, dΩ, VL2), VH1)
+end
+
+
+"""
+Perform an L2 projection of a function `u` onto a finite element
+space `V` defined over the domain `Ω` with measure `dΩ`.
+"""
+function L2_projection(u, dΩ, V)
   a(w, v) = ∫(w ⊙ v) * dΩ
   l(v)    = ∫(v ⊙ u) * dΩ
   op      = AffineFEOperator(a, l, V, V)
   solve(op)
 end
+
+L2_Projection = L2_projection
