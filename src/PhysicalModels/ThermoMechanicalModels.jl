@@ -11,7 +11,7 @@ function initialize_state(obj::TM) where {TM<:ThermoMechano}
   initialize_state(obj.mechano)
 end
 
-function update_state!(obj::TM, state, F, θ, args...) where {TM<:ThermoMechano}
+function Gridap.CellData.update_state!(obj::TM, state, F, θ, args...) where {TM<:ThermoMechano}
   update_state!(obj.mechano, state, F, args...)
 end
 

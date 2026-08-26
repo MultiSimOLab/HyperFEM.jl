@@ -12,7 +12,7 @@ where `F` is the deformation gradient, `J` is the jacobian and `Cᵥ` is the vis
 - `μ::Float64`: Shear modulus.
 - `τ::Float64`: Relaxation time.
 - `Δt::Base.RefValue{Float64}`: `Reference` to the time step.
- """
+"""
 struct ViscousPolyconvex <: Visco
   μ::Float64
   τ::Float64

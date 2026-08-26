@@ -96,7 +96,6 @@ end
 @publish PhysicalModels FlexoElectro
 @publish PhysicalModels ThermoElectroMechano
 @publish PhysicalModels EnergyInterpolationScheme
-@publish PhysicalModels update_state!
 @publish PhysicalModels Kinematics
 @publish PhysicalModels Solid
 @publish PhysicalModels KinematicModel
@@ -114,6 +113,9 @@ end
 
 @publish PhysicalModels SecondPiola
 @publish PhysicalModels Dissipation
+
+@publish PhysicalModels CellState      # reexport form Gridap
+@publish PhysicalModels update_state!  # reexport from Gridap
 @publish PhysicalModels initialize_state
 @publish PhysicalModels return_mapping
 @publish PhysicalModels update_time_step!
