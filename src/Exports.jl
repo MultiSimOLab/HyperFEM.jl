@@ -96,7 +96,6 @@ end
 @publish PhysicalModels FlexoElectro
 @publish PhysicalModels ThermoElectroMechano
 @publish PhysicalModels EnergyInterpolationScheme
-@publish PhysicalModels update_state!
 @publish PhysicalModels Kinematics
 @publish PhysicalModels Solid
 @publish PhysicalModels KinematicModel

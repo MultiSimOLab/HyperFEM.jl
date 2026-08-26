@@ -12,7 +12,6 @@ using ..TensorAlgebra: _∂H∂F_2D
 using ..TensorAlgebra: trAA
 
 import Base: +
-import Gridap: update_state!
 
 export Yeoh3D
 export PlaneStressIncompressible_I1PD 
@@ -176,7 +175,7 @@ end
 """
 Update the state variables. The state variables must be initialized using the function 'CellState' with the constitutive model.
 """
-function update_state!(::PhysicalModel, vars...)
+function Gridap.CellData.update_state!(::PhysicalModel, vars...)
 end
 
 
