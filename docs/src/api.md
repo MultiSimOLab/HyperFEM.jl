@@ -5,6 +5,7 @@
 Modules = [HyperFEM.ComputationalModels]
 Order   = [:module, :type, :function, :macro]
 Public  = true
+Private = false
 ```
 
 ## DiscreteModeling
@@ -13,6 +14,7 @@ Public  = true
 Modules = [HyperFEM.DiscreteModeling, HyperFEM.DiscreteModeling.CartesianTags, HyperFEM.DiscreteModeling.EvolutionFunctions]
 Order   = [:module, :type, :function, :macro]
 Public  = true
+Private = false
 ```
 
 ## PhysicalModels
@@ -21,6 +23,7 @@ Public  = true
 Modules = [HyperFEM.PhysicalModels]
 Order   = [:module, :type, :function, :macro]
 Public  = true
+Private = false
 ```
 
 ## Solvers
@@ -29,6 +32,7 @@ Public  = true
 Modules = [HyperFEM.Solvers]
 Order   = [:module, :type, :function, :macro]
 Public  = true
+Private = false
 ```
 
 ## TensorAlgebra
@@ -37,6 +41,7 @@ Public  = true
 Modules = [HyperFEM.TensorAlgebra]
 Order   = [:module, :type, :function, :macro]
 Public  = true
+Private = false
 ```
 
 ## WeakForms
@@ -45,4 +50,5 @@ Public  = true
 Modules = [HyperFEM.WeakForms]
 Order   = [:module, :type, :function, :macro]
 Public  = true
+Private = false
 ```
