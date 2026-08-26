@@ -204,7 +204,11 @@ end
 
 
 """
+    update_time_step!(model, Δt)
+
 Set the time step to be used internally by the constitutive model.
+The time step is a reference, hence, the weak forms derived from the 
+constitutive model will be automatically updated with the new time step.
 """
 function update_time_step!(::PhysicalModel, Δt::Float64)
   Δt

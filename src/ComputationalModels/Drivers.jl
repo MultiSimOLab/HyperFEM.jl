@@ -284,6 +284,8 @@ get_assemblers(m::DynamicNonlinearModel) = (m.caches[4])
 
 
 """
+    update_velocity!
+
 Update the velocity field `vh` based on the current displacement field `xh⁺`
 and the previous displacement `xh⁻` using a midpoint time-stepping scheme.
 The velocity is updated in place.
@@ -298,6 +300,8 @@ end
 
 
 """
+    update_displacements!
+
 Update the old displacement field `xh⁻` with the new displacement field `xh⁺`.
 The update is performed in place, modifying `xh⁻` to match both the free dof values
 and the dirichlet dof values of `xh⁺`.
