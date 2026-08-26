@@ -157,6 +157,8 @@ include("PINNs.jl")
 Base.broadcastable(m::PhysicalModel) = Ref(m) # Allows to use the @. syntax for passing a single constitutive model into a vectorized function
 
 """
+    CellState(model, dΩ)
+
 Initialize the state variables for the given constitutive model and discretization.
 """
 function Gridap.CellData.CellState(::PhysicalModel, args...)
@@ -165,6 +167,8 @@ end
 
 
 """
+    initialize_state(model)
+
 Define the state variable at a Gauss point. Unlike the function 'CellState', the state variable is represented by a number or a tensor.
 """
 function initialize_state(::PhysicalModel)
@@ -173,6 +177,8 @@ end
 
 
 """
+    update_state!(model, A, F, Fn)
+
 Update the state variables. The state variables must be initialized using the function 'CellState' with the constitutive model.
 """
 function Gridap.CellData.update_state!(::PhysicalModel, vars...)
@@ -180,6 +186,8 @@ end
 
 
 """
+    return_mapping(model, F, Fn, A...)
+
 Update the state variables at a Gauss point. Unlike the function 'update_state!', the state variables are represented by a number or a tensor.
 """
 function return_mapping(::PhysicalModel, vars...)
@@ -187,6 +195,8 @@ end
 
 
 """
+    Dissipation(model)
+
 Return the dissipation and its derivatives if any.
 """
 function Dissipation(::PhysicalModel, args...)
@@ -195,6 +205,8 @@ end
 
 
 """
+    SecondPiola(model)
+
 Return the energy density and its derivatives as functions of C instead of F.
 """
 function SecondPiola(::T, args...) where {T<:PhysicalModel}
