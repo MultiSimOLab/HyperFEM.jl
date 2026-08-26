@@ -26,6 +26,11 @@ Public  = true
 Private = false
 ```
 
+```@docs
+Gridap.CellData.CellState(::PhysicalModel, args...)
+Gridap.CellData.update_state!(::PhysicalModel, vars...)
+```
+
 ## Solvers
 
 ```@autodocs

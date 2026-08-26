@@ -160,6 +160,8 @@ Base.broadcastable(m::PhysicalModel) = Ref(m) # Allows to use the @. syntax for 
     CellState(model, dΩ)
 
 Initialize the state variables for the given constitutive model and discretization.
+The constitutive model passed to the function will determine the type of the state variables,
+e.g., a vector, tensor, tuple of state variables...
 """
 function Gridap.CellData.CellState(::PhysicalModel, args...)
   return nothing
@@ -169,7 +171,8 @@ end
 """
     initialize_state(model)
 
-Define the state variable at a Gauss point. Unlike the function 'CellState', the state variable is represented by a number or a tensor.
+Define the state variable at a Gauss point. Unlike the function [`CellState`](@ref), the returned
+state variable is represented by a number or a tensor.
 """
 function initialize_state(::PhysicalModel)
   return nothing
@@ -179,7 +182,11 @@ end
 """
     update_state!(model, A, F, Fn)
 
-Update the state variables. The state variables must be initialized using the function 'CellState' with the constitutive model.
+Update the state variables. The state variables must be initialized using the function
+[`CellState`](@ref) with the constitutive model.
+
+NOTE: The Gridap function expects the following order of arguments: `update_state!(updater, cell_states, cell_fields)`,
+hence, the order of the arguments differ from the standar energy function, like `Ψ(F, Fn, A...)`
 """
 function Gridap.CellData.update_state!(::PhysicalModel, vars...)
 end
@@ -188,7 +195,7 @@ end
 """
     return_mapping(model, F, Fn, A...)
 
-Update the state variables at a Gauss point. Unlike the function 'update_state!', the state variables are represented by a number or a tensor.
+Update the state variables at a Gauss point. Unlike the function [`update_state!`](@ref), the state variables are represented by a number or a tensor.
 """
 function return_mapping(::PhysicalModel, vars...)
 end
