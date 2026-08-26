@@ -12,6 +12,7 @@ using ..TensorAlgebra: _∂H∂F_2D
 using ..TensorAlgebra: trAA
 
 import Base: +
+import Gridap.CellData: CellState, update_state!
 
 export Yeoh3D
 export PlaneStressIncompressible_I1PD 
