@@ -85,6 +85,8 @@ export EnergyInterpolationScheme
 export SecondPiola
 export Dissipation
 
+export CellState      # reexport from Gridap
+export update_state!  # reexport form Gridap
 export initialize_state
 export return_mapping
 export update_time_step!
