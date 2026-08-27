@@ -134,7 +134,7 @@ function Entropy(physmodel::ThermoElectroMechano,  kine::NTuple{3,KinematicModel
   ref = ReferenceFE(lagrangian, Float64, 1)
   VL2 = FESpace(Ω, refL2, conformity=:L2)
   V = FESpace(Ω, ref, conformity=:H1)
-  ηh = interpolate_everywhere(L2_Projection((η ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)), dΩ, VL2), V)
+  ηh = interpolate_everywhere(L2_projection((η ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)), dΩ, VL2), V)
   return ηh
 end
 
@@ -152,9 +152,9 @@ function D0(physmodel::ThermoElectroMechano,  kine::NTuple{3,KinematicModel}, uh
   n1 = VectorValue(-1.0, 0.0, 0.0)
   n2 = VectorValue(0.0, -1.0, 0.0)
   n3 = VectorValue(0.0, 0.0, -1.0)
-  D0_1h = interpolate_everywhere(L2_Projection(n1 ⋅(∂ΨE ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)), dΩ, VL2), V)
-  D0_2h = interpolate_everywhere(L2_Projection(n2 ⋅(∂ΨE ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)), dΩ, VL2), V)
-  D0_3h = interpolate_everywhere(L2_Projection(n3 ⋅(∂ΨE ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)), dΩ, VL2), V)
+  D0_1h = interpolate_everywhere(L2_projection(n1 ⋅(∂ΨE ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)), dΩ, VL2), V)
+  D0_2h = interpolate_everywhere(L2_projection(n2 ⋅(∂ΨE ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)), dΩ, VL2), V)
+  D0_3h = interpolate_everywhere(L2_projection(n3 ⋅(∂ΨE ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)), dΩ, VL2), V)
   return (D0_1h,D0_2h,D0_3h)
 end
 
@@ -168,13 +168,13 @@ function interpolate_L2_tensor(A, Ω, dΩ, Γ=Ω)
   n1 = VectorValue(1.0, 0.0, 0.0)
   n2 = VectorValue(0.0, 1.0, 0.0)
   n3 = VectorValue(0.0, 0.0, 1.0)
-  A11 = interpolate_everywhere(L2_Projection(n1 ⋅ A ⋅ n1, dΩ, VL2), VH1)
-  A12 = interpolate_everywhere(L2_Projection(n1 ⋅ A ⋅ n2, dΩ, VL2), VH1)
-  A13 = interpolate_everywhere(L2_Projection(n1 ⋅ A ⋅ n3, dΩ, VL2), VH1)
-  A22 = interpolate_everywhere(L2_Projection(n2 ⋅ A ⋅ n2, dΩ, VL2), VH1)
-  A23 = interpolate_everywhere(L2_Projection(n2 ⋅ A ⋅ n3, dΩ, VL2), VH1)
-  A33 = interpolate_everywhere(L2_Projection(n3 ⋅ A ⋅ n3, dΩ, VL2), VH1)
-  trA = interpolate_everywhere(L2_Projection(tr ∘ A,     dΩ, VL2), VH1)
+  A11 = interpolate_everywhere(L2_projection(n1 ⋅ A ⋅ n1, dΩ, VL2), VH1)
+  A12 = interpolate_everywhere(L2_projection(n1 ⋅ A ⋅ n2, dΩ, VL2), VH1)
+  A13 = interpolate_everywhere(L2_projection(n1 ⋅ A ⋅ n3, dΩ, VL2), VH1)
+  A22 = interpolate_everywhere(L2_projection(n2 ⋅ A ⋅ n2, dΩ, VL2), VH1)
+  A23 = interpolate_everywhere(L2_projection(n2 ⋅ A ⋅ n3, dΩ, VL2), VH1)
+  A33 = interpolate_everywhere(L2_projection(n3 ⋅ A ⋅ n3, dΩ, VL2), VH1)
+  trA = interpolate_everywhere(L2_projection(tr ∘ A,     dΩ, VL2), VH1)
   (A11, A12, A13, A22, A23, A33, trA)
 end
 
@@ -188,9 +188,9 @@ function interpolate_L2_vector(b, Ω, dΩ, Γ=Ω)
   n1 = VectorValue(1.0, 0.0, 0.0)
   n2 = VectorValue(0.0, 1.0, 0.0)
   n3 = VectorValue(0.0, 0.0, 1.0)
-  b1 = interpolate_everywhere(L2_Projection(n1 ⋅ b, dΩ, VL2), VH1)
-  b2 = interpolate_everywhere(L2_Projection(n2 ⋅ b, dΩ, VL2), VH1)
-  b3 = interpolate_everywhere(L2_Projection(n3 ⋅ b, dΩ, VL2), VH1)
+  b1 = interpolate_everywhere(L2_projection(n1 ⋅ b, dΩ, VL2), VH1)
+  b2 = interpolate_everywhere(L2_projection(n2 ⋅ b, dΩ, VL2), VH1)
+  b3 = interpolate_everywhere(L2_projection(n3 ⋅ b, dΩ, VL2), VH1)
   (b1, b2, b3)
 end
 
@@ -201,7 +201,7 @@ function interpolate_L2_scalar(x, Ω, dΩ, Γ=Ω)
   reffe = ReferenceFE(lagrangian, Float64, 1)
   VL2 = FESpace(Ω, refL2, conformity=:L2)
   VH1 = FESpace(Γ, reffe, conformity=:H1)
-  interpolate_everywhere(L2_Projection(x, dΩ, VL2), VH1)
+  interpolate_everywhere(L2_projection(x, dΩ, VL2), VH1)
 end
 
 
@@ -214,10 +214,24 @@ end
 
 
 """
+    interpolate_L2_field(σh, dΩ, [Ω₂], [T])
+
 Interpolate an L2 field into an H1 field.
 The type of the field is inferred from the cell field `x` and the measure `dΩ`.
+Optionally, a destination triangulation `Ω₂` can be specified, being different
+from the original triangulation where `x` is defined.
 """
+function interpolate_L2_field(x, dΩ, Ω₂::Triangulation=get_triangulation(x), T::Type=get_cell_field_type(x, dΩ))
+  Ω₁ = get_triangulation(x)
+  refL2 = ReferenceFE(lagrangian, T, 0)
+  reffe = ReferenceFE(lagrangian, T, 1)
+  VL2 = FESpace(Ω₁, refL2, conformity=:L2)
+  VH1 = FESpace(Ω₂, reffe, conformity=:H1)
+  interpolate_everywhere(L2_projection(x, dΩ, VL2), VH1)
+end
+
 function interpolate_L2_field(x, Ω, dΩ, T::Type=get_cell_field_type(x, dΩ))
+  @warn "This signature is kept for direct compatiblity with `interpolate_L2_scalar/vector/tensor`. The domain `Ω` can be removed from the list of arguments."
   refL2 = ReferenceFE(lagrangian, T, 0)
   reffe = ReferenceFE(lagrangian, T, 1)
   VL2 = FESpace(Ω, refL2, conformity=:L2)
@@ -227,17 +241,23 @@ end
 
 
 """
-Perform an L2 projection of a function `u` onto a finite element
+    L2_projection(u, dΩ, V)
+
+Perform an L2 projection of a field `u` onto a finite element
 space `V` defined over the domain `Ω` with measure `dΩ`.
 """
-function L2_projection(u, dΩ, V)
+function L2_projection(u, V, dΩ::Measure)
   a(w, v) = ∫(w ⊙ v) * dΩ
   l(v)    = ∫(v ⊙ u) * dΩ
   op      = AffineFEOperator(a, l, V, V)
   solve(op)
 end
 
-function L2_Projection(u, dΩ, V)
+function L2_projection(u, dΩ::Measure, V)
+  L2_projection(u, V, dΩ)
+end
+
+function L2_Projection(u, dΩ::Measure, V)
   @warn "The signature L2_Projection is deprecated and it will be removed after release 0.0.7. Use L2_projection with lowercase (more julianic)."
   L2_projection(u, dΩ, V)
 end
@@ -246,21 +266,22 @@ end
 """
     component_LInf(::FEFunction, ::Symbol, ::Triangulation)::Float64
 
-Calculate the L-inf norm of a vector-valued finite element function.
+Calculate the L-inf norm of a vector-valued finite element function over the domain Ω.
+By default, Ω is the triangulation where the function is defined.
 It could be useful to find the maximum displacement.
 
 # Example
     x_max = component_LInf(uh, :x, Ω)
 """
-function component_LInf(u, dir, Ω)
-  if     dir === :x
+function component_LInf(u, direction, Ω=get_triangulation(u))
+  if     direction === :x
     n = VectorValue(1.0, 0.0, 0.0)
-  elseif dir === :y
+  elseif direction === :y
     n = VectorValue(0.0, 1.0, 0.0)
-  elseif dir === :z
+  elseif direction === :z
     n = VectorValue(0.0, 0.0, 1.0)
   else
-    throw("Direction must be either :x, :y or :z. Got $dir")
+    throw("Direction must be either :x, :y or :z. Got $direction")
   end
   reffe = ReferenceFE(lagrangian, Float64, 1)
   V = FESpace(Ω, reffe, conformity=:L2)
