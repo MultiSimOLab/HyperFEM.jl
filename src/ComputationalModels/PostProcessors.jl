@@ -226,4 +226,4 @@ function L2_projection(u, dΩ, V)
   solve(op)
 end
 
-L2_Projection = L2_projection
+L2_Projection(u, dΩ, V) = L2_projection(u, dΩ, V)
