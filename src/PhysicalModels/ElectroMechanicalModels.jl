@@ -81,7 +81,7 @@ function initialize_state(obj::ElectroMechModel)
   initialize_state(obj.mechano)
 end
 
-function update_state!(obj::ElectroMechModel, state, F, E, args...)
+function Gridap.CellData.update_state!(obj::ElectroMechModel, state, F, E, args...)
   update_state!(obj.mechano, state, F, args...)
 end
 

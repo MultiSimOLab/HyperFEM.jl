@@ -40,7 +40,7 @@ function initialize_state(::ViscousIncompressible)
   VectorValue(I3..., 0.0)
 end
 
-function update_state!(obj::ViscousIncompressible, A, F, Fn)
+function Gridap.CellData.update_state!(obj::ViscousIncompressible, A, F, Fn)
   state_updater(Aᵅ, Fᵅ, Fnᵅ) = (true, return_mapping(obj, Fᵅ, Fnᵅ, Aᵅ))
   update_state!(state_updater, A, F, Fn)
 end
@@ -103,7 +103,7 @@ function initialize_state(obj::NVisco)
   map(initialize_state, obj)
 end
 
-function update_state!(obj::NVisco, states, F, Fn)
+function Gridap.CellData.update_state!(obj::NVisco, states, F, Fn)
   @assert length(obj) == length(states)
   map((b, s) -> update_state!(b, s, F, Fn), obj, states)
 end
@@ -157,11 +157,11 @@ function initialize_state(obj::GeneralizedMaxwell)
   initialize_state(obj.branches)
 end
 
-function update_state!(obj::GeneralizedMaxwell{<:IsoElastic}, states, F, Fn)
+function Gridap.CellData.update_state!(obj::GeneralizedMaxwell{<:IsoElastic}, states, F, Fn)
   update_state!(obj.branches, states, F, Fn)
 end
 
-function update_state!(obj::GeneralizedMaxwell{<:AnisoElastic}, states, F, n, Fn)
+function Gridap.CellData.update_state!(obj::GeneralizedMaxwell{<:AnisoElastic}, states, F, n, Fn)
   update_state!(obj.branches, states, F, Fn)
 end
 

@@ -7,7 +7,7 @@ function initialize_state(obj::ThermoElectroMechano)
   initialize_state(obj.mechano)
 end
 
-function update_state!(obj::ThermoElectroMechano, state, F, E, θ, args...)
+function Gridap.CellData.update_state!(obj::ThermoElectroMechano, state, F, E, θ, args...)
   update_state!(obj.mechano, state, F, args...)
 end
 
