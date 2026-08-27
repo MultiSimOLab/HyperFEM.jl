@@ -231,7 +231,7 @@ function interpolate_L2_field(x, dΩ, Ω₂::Triangulation=get_triangulation(x),
 end
 
 function interpolate_L2_field(x, Ω, dΩ, T::Type=get_cell_field_type(x, dΩ))
-  @warn "This signature is kept for direct compatiblity with `interpolate_L2_scalar/vector/tensor`. The domain `Ω` can be removed from the list of arguments."
+  @warn "This signature is kept for direct compatiblity with `interpolate_L2_scalar/vector/tensor` and it will be removed after release 0.0.7. The domain `Ω` can be removed from the list of arguments."
   refL2 = ReferenceFE(lagrangian, T, 0)
   reffe = ReferenceFE(lagrangian, T, 1)
   VL2 = FESpace(Ω, refL2, conformity=:L2)
@@ -264,14 +264,14 @@ end
 
 
 """
-    component_LInf(::FEFunction, ::Symbol, ::Triangulation)::Float64
+    component_LInf(::FEFunction, ::Symbol, [::Triangulation])::Float64
 
 Calculate the L-inf norm of a vector-valued finite element function over the domain Ω.
 By default, Ω is the triangulation where the function is defined.
 It could be useful to find the maximum displacement.
 
 # Example
-    x_max = component_LInf(uh, :x, Ω)
+    x_max = component_LInf(uh, :x)
 """
 function component_LInf(u, direction, Ω=get_triangulation(u))
   if     direction === :x
