@@ -55,9 +55,9 @@ function solve!(m::StaggeredModel;
     flagconv = 1 # convergence flag 0 (max bisections) 1 (max steps)
     ∆τ = 1.0 / nsteps
     for τ in 0:nsteps-1
-        println("*******************************************")
-        println("           Staggered Step: $τ              ")
-        println("*******************************************")
+        printstyled(@sprintf("*******************************************\n"), color=:green, bold=true)
+        printstyled(@sprintf("           Staggered Step: %i              \n", τ), color=:green, bold=true)
+        printstyled(@sprintf("*******************************************\n"), color=:green, bold=true)
         presolver(τ, ∆τ)
         τ⁻=evolτ(τ*∆τ)
         τ⁺=evolτ((τ+1)*∆τ)
@@ -177,7 +177,7 @@ function solve!(m::StaticNonlinearModel;
             nbisect += 1
             # @assert(nbisect <= stepping[:maxbisec], "Maximum number of bisections reached")
         else
-            print_message(nls.log, "\nSTEP: $Λ_, Λ: $Λ\n")
+            print_message(nls.log, sprint(io -> printstyled(io, @sprintf("\nSTEP: %i, Λ: %.3f\n", Λ_, Λ); color=:green, bold=true)))
             Λ_ += 1
             # Write to PVD
             post(Λ)
@@ -353,7 +353,7 @@ function solve!(m::DynamicNonlinearModel;
 
         update_velocity!(m.velocity.vh, x, x⁻, Δt)
         x⁻ .= x
-        print_message(nls.log, "\nStep: $itime, Time: $t\n")
+        print_message(nls.log, sprint(io -> printstyled(io, @sprintf("\nStep: %i, Time: %.3f s\n", itime, t); color=:green, bold=true)))
         post(t)
 
 
