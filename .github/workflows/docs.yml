@@ -6,6 +6,8 @@ on:
     tags: ['*']
   pull_request:
     branches: [ main ]
+    paths: [ "docs/**" ]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -19,11 +21,11 @@ jobs:
       contents: write # write to gh-pages
       statuses: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: julia-actions/setup-julia@v2
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
         with:
           version: '1' # latest stable Julia 1.x
-      - uses: julia-actions/cache@v1
+      - uses: julia-actions/cache@v3
       - name: Install dependencies
         run: |
           julia --project=docs -e '

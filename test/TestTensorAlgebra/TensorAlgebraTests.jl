@@ -4,12 +4,50 @@ using HyperFEM.TensorAlgebra
 using Test
 
 
+digits1(D) = [Float64(i) for i in 1:D]
+digits2(D) = [Float64(10i + j) for i in 1:D, j in 1:D]
+digits3(D) = [Float64(100i + 10j + k) for i in 1:D, j in 1:D, k in 1:D]
+digits4(D) = [Float64(1000i + 100j + 10k + l) for i in 1:D, j in 1:D, k in 1:D, l in 1:D]
+
+
+@testset "Flat indexing" begin
+  A = rand(3,3)
+  B = rand(3,3,3)
+  C = rand(3,3,3,3)
+  @test TensorValue{3,3}(ntuple(α -> A[_ij(α,3)...], 9)) == TensorValue{3,3}(A...)
+  @test TensorValue{3,9}(ntuple(α -> B[_ijk(α,3)...], 27)) == TensorValue{3,9}(B...)
+  @test TensorValue{9,9}(ntuple(α -> C[_ijkl(α,3)...], 81)) == TensorValue{9,9}(C...)
+  
+  for D in (2, 3)
+    @test all(_ij(_flat_idx(i, j, D), D) == (i, j) for i in 1:D, j in 1:D)
+    @test all(_ijk(_flat_idx(i, j, k, D), D) == (i, j, k) for i in 1:D, j in 1:D, k in 1:D)
+    @test all(_ijkl(_flat_idx(i, j, k, l, D), D) == (i, j, k, l) for i in 1:D, j in 1:D, k in 1:D, l in 1:D)
+  end
+end
+
+
+@testset "transpose" begin
+  function reference_transpose_IJK_KIJ(A::TensorValue{3,9})
+    D = size(A, 1)
+    C = zeros(Float64, D, D, D)
+    for i in 1:D, j in 1:D, k in 1:D
+      C[i, j, k] = A[_flat_idx(k, i, j, D)]
+    end
+    TensorValue{D,D*D}(C...)
+  end
+  A = TensorValue{3,9}(digits3(3)...)
+  @test A' == reference_transpose_IJK_KIJ(A)
+end
+
+
 @testset "Jacobian regularization" begin
   ∇u = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0) * 1e-3
   F = one(∇u) + ∇u
   J = det(F)
   @test J == 1.0149819999999996
-  @test logreg(J; Threshold=0.01) == 0.014870878346353422
+  @test logreg(J; threshold=0.01) == 0.014870878346353422
+  @test ForwardDiff.derivative(logreg, J) ≈ ∂log∂J(J)
+  @test ForwardDiff.derivative(∂log∂J, J) ≈ ∂∂log∂JJ(J)
 end
 
 
@@ -98,6 +136,72 @@ end
   H = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0)
   @test contraction_IP_PJKL(A,H) == TensorValue(7.0, 10.0, 15.0, 22.0, 23.0, 34.0, 31.0, 46.0, 39.0, 58.0, 47.0, 70.0, 55.0, 82.0, 63.0, 94.0)
   @test contraction_IP_JPKL(A,H) == TensorValue(10.0, 14.0, 14.0, 20.0, 26.0, 38.0, 30.0, 44.0, 42.0, 62.0, 46.0, 68.0, 58.0, 86.0, 62.0, 92.0)
+
+  function reference_IJK_KLP(A::TensorValue{3,9}, B::TensorValue{3,9})
+    D = size(A, 1)
+    C = zeros(Float64, D, D, D, D)
+    for i in 1:D, j in 1:D, l in 1:D, p in 1:D
+      s = zero(Float64)
+      for k in 1:D
+        s += A[i, _flat_idx(j, k, D)] * B[k, _flat_idx(l, p, 3)]
+      end
+      C[i, j, l, p] = s
+    end
+    TensorValue{D*D,D*D}(C...)
+  end
+
+  A = TensorValue{3,9}(digits3(3)...)
+  B = TensorValue{3,9}(reverse(digits3(3))...)
+  @test A · B == reference_IJK_KLP(A, B)
+
+  function reference_IJK_K(A::TensorValue{3,9}, B::VectorValue{3})
+    D = size(A,1)
+    C = zeros(Float64, D, D)
+    for i in 1:D, j in 1:D
+      s = zero(Float64)
+      for k in 1:D
+        s += A[_flat_idx(i, j, k, D)] * B[k]
+      end
+      C[i, j] = s
+    end
+    TensorValue{3,3}(C...)
+  end
+
+  A = TensorValue{3,9}(digits3(3)...)
+  V = VectorValue{3}(digits1(3)...)
+  @test A · V == reference_IJK_K(A, V)
+  
+  function reference_I_IJK(A::VectorValue{3}, B::TensorValue{3,9})
+    D = size(A,1)
+    C = zeros(Float64, D, D)
+    for j in 1:D, k in 1:D
+      s = zero(Float64)
+      for i in 1:D
+        s += A[i] * B[_flat_idx(i, j, k, D)]
+      end
+      C[j, k] = s
+    end
+    TensorValue{3,3}(C...)
+  end
+
+  @test V · A == reference_I_IJK(V, A)
+
+  function reference_IJK_KL(A::TensorValue{3,9}, B::TensorValue{3,3})
+    D = size(A, 1)
+    C = zeros(Float64, D, D, D)
+    for i in 1:D, j in 1:D, l in 1:D
+      s = zero(Float64)
+      for k in 1:D
+        s += A[_flat_idx(i, j, k, D)] * B[k, l]
+      end
+      C[i, j, l] = s
+    end
+    TensorValue{D,D*D}(C...)
+  end
+
+  A = TensorValue{3,9}(digits3(3)...)
+  B = TensorValue{3,3}(digits2(3)...)
+  @test A · B == reference_IJK_KL(A, B)
 end
 
 
@@ -113,4 +217,29 @@ end
   A = TensorValue(1.:9...) + I3
   cofA = det(A) * inv(A')
   @test isapprox(cof(A), cofA)
+end
+
+
+@testset "IIsym" begin
+  A  = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0)
+  B  = TensorValue(1.0, 4.0, 2.0, 5.0, 3.0, 6.0, 8.0, 7.0, 9.0)
+
+  # 1. IIsym(I3) : B yields the symmetric part 0.5 * (B + Bᵀ)
+  @test IIsym(I3) ⊙ B == 0.5 * (B + B')
+
+  # 2. IIsym(A) : B yields 0.5 * (A * B * Aᵀ + A * Bᵀ * Aᵀ)
+  @test IIsym(A) ⊙ B ≈ 0.5 * (A · B · A' + A · B' · A')
+
+  # 3. IIsym(I3) == 1/2 (δᵢₖδⱼₗ3D + δⱼₖδᵢₗ3D)
+  @test IIsym(I3) == 0.5 * (δᵢₖδⱼₗ3D + δⱼₖδᵢₗ3D)
+end
+
+@testset "push_forward_C_to_F" begin
+  H = TensorValue(rand(81)...)
+  H = H'·H
+  F = TensorValue(rand(9)...) * 1e-2 + I3
+
+  DCDF = F' ⊗₁₃²⁴ I3 + I3 ⊗₁₄²³ F'
+  S_ref = 0.5 * DCDF' · H · DCDF
+  @test push_forward_C_to_F(F, H) ≈ S_ref
 end

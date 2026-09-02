@@ -1,8 +1,6 @@
 using HyperFEM
 using HyperFEM: jacobian, solve!
 using HyperFEM.ComputationalModels.PostMetrics
-using HyperFEM.ComputationalModels.CartesianTags
-using HyperFEM.ComputationalModels.EvolutionFunctions
 using Gridap, GridapGmsh, GridapSolvers
 using GridapSolvers.NonlinearSolvers
 using Gridap.FESpaces
@@ -25,7 +23,7 @@ function staggered_visco_electric_simulation(; t_end=2, writevtk=true, verbose=t
   add_tag_from_tags!(labels, "fixed", CartesianTags.face0YZ⁺)
   add_tag_from_tags!(labels, "bottom", CartesianTags.faceXY0⁺)
   add_tag_from_tags!(labels, "top", CartesianTags.faceZ1)
-  add_tag_from_vertex_filter!(labels, geometry, "mid", x -> x[3] ≈ 0.5thick)
+  add_tag_from_vertex_filter!(labels, "mid", geometry, x -> x[3] ≈ 0.5thick)
 
   # Constitutive model
   hyper_elastic_model = NeoHookean3D(λ=1e6, μ=1.4e4)
@@ -49,12 +47,12 @@ function staggered_visco_electric_simulation(; t_end=2, writevtk=true, verbose=t
   # Dirichlet boundary conditions 
   dir_u_tags = ["fixed"]
   dir_u_values = [[0.0, 0.0, 0.0]]
-  dir_u_timesteps = [constant()]
+  dir_u_timesteps = [EvolutionFunctions.constant()]
   dirichlet_u = DirichletBC(dir_u_tags, dir_u_values, dir_u_timesteps)
 
   dir_φ_tags = ["bottom", "mid"]
   dir_φ_values = [0.0, 0.1]
-  dir_φ_timesteps = [constant(), ramp(1.0)]
+  dir_φ_timesteps = [EvolutionFunctions.constant(), EvolutionFunctions.ramp(1.0)]
   dirichlet_φ = DirichletBC(dir_φ_tags, dir_φ_values, dir_φ_timesteps)
 
   # Finite Elements

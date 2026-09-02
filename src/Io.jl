@@ -70,6 +70,23 @@ function stem(path::AbstractString)
 end
 
 """
+Return the full path without extension.
+
+# Examples
+    julia > nosuffix("home/user/example.jl")
+    "home/user/example"
+    
+    julia > nosuffix("home/user/example.a.jl")
+    "home/user/example.a"
+    
+    julia > nosuffix("home/user/example")
+    "home/user/example"
+"""
+function nosuffix(path::AbstractString)
+  splitext(path)[1]
+end
+
+"""
 Mock struct to emulate pvd files.
 """
 struct MockPVD end

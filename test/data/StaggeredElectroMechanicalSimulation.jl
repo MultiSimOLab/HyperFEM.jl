@@ -1,6 +1,5 @@
 using Gridap, Gridap.FESpaces, GridapSolvers, GridapSolvers.NonlinearSolvers
 using HyperFEM
-using HyperFEM.ComputationalModels.CartesianTags
 using HyperFEM: jacobian
 
 
@@ -19,7 +18,7 @@ function staggered_electro_mechanical_simulation(; is_vtk=true, verbose=true)
   labels = get_face_labeling(geometry)
   add_tag_from_tags!(labels, "fixedu", CartesianTags.face0YZ⁺)
   add_tag_from_tags!(labels, "topsuf", CartesianTags.faceXY1⁺)
-  add_tag_from_vertex_filter!(labels, geometry, "midsuf", x -> x[3] ≈ 0.001)
+  add_tag_from_vertex_filter!(labels, "midsuf", geometry, x -> x[3] ≈ 0.001)
 
   # Constitutive model
   physmodel_mec = NeoHookean3D(λ=10.0, μ=1.0)

@@ -12,9 +12,10 @@ using ..TensorAlgebra: _∂H∂F_2D
 using ..TensorAlgebra: trAA
 
 import Base: +
-import Gridap: update_state!
+import Gridap.CellData: CellState, update_state!
 
 export Yeoh3D
+export PlaneStressIncompressible_I1PD 
 export Gent2D
 export NeoHookean3D
 export IsochoricNeoHookean3D
@@ -25,6 +26,7 @@ export ARAP2D
 export ARAP2D_regularized
 export NonlinearARAP2D
 export VolumetricEnergy
+export CoerciveVolumetric
 export MooneyRivlin3D
 export MooneyRivlin2D
 export NonlinearMooneyRivlin3D
@@ -60,6 +62,7 @@ export ThermoElectroMech_PINNs
 export MagnetoMechModel
 export GeneralizedMaxwell
 export ViscousIncompressible
+export ViscousPolyconvex
 export HGO_4Fibers
 export HGO_1Fiber
 
@@ -82,7 +85,10 @@ export EnergyInterpolationScheme
 export SecondPiola
 export Dissipation
 
+export CellState      # reexport from Gridap
+export update_state!  # reexport form Gridap
 export initialize_state
+export return_mapping
 export update_time_step!
 
 export Kinematics
@@ -126,6 +132,8 @@ include("MechanicalModels.jl")
 
 include("ViscousModels.jl")
 
+include("ViscousPolyconvex.jl")
+
 include("MagneticModels.jl")
 
 include("ElectricalModels.jl")
@@ -152,25 +160,53 @@ include("PINNs.jl")
 Base.broadcastable(m::PhysicalModel) = Ref(m) # Allows to use the @. syntax for passing a single constitutive model into a vectorized function
 
 """
+    CellState(model, dΩ)
+
 Initialize the state variables for the given constitutive model and discretization.
+The constitutive model passed to the function will determine the type of the state variables,
+e.g., a vector, tensor, tuple of state variables...
 """
 function Gridap.CellData.CellState(::PhysicalModel, args...)
   return nothing
 end
 
-function initialize_state(::PhysicalModel, points::Measure)
+
+"""
+    initialize_state(model)
+
+Define the state variable at a Gauss point. Unlike the function [`CellState`](@ref), the returned
+state variable is represented by a number or a tensor.
+"""
+function initialize_state(::PhysicalModel)
   return nothing
 end
 
 
 """
-Update the state variables. The state variables must be initialized using the function 'CellState' with the constitutive model.
+    update_state!(model, A, F, Fn)
+
+Update the state variables. The state variables must be initialized using the function
+[`CellState`](@ref) with the constitutive model.
+
+NOTE: The Gridap function expects the following order of arguments: `update_state!(updater, cell_states, cell_fields)`,
+hence, the order of the arguments differ from the standar energy function, like `Ψ(F, Fn, A...)`
 """
-function update_state!(::PhysicalModel, vars...)
+function Gridap.CellData.update_state!(::PhysicalModel, vars...)
 end
 
 
 """
+    return_mapping(model, F, Fn, A...)
+
+Update the state variables at a Gauss point. Unlike the function [`update_state!`](@ref), the state variables are represented by a number or a tensor.
+"""
+function return_mapping(::PhysicalModel, vars...)
+end
+
+
+"""
+    Dissipation(model)
+
 Return the dissipation and its derivatives if any.
 """
 function Dissipation(::PhysicalModel, args...)
@@ -179,6 +215,8 @@ end
 
 
 """
+    SecondPiola(model)
+
 Return the energy density and its derivatives as functions of C instead of F.
 """
 function SecondPiola(::T, args...) where {T<:PhysicalModel}
@@ -187,7 +225,11 @@ end
 
 
 """
+    update_time_step!(model, Δt)
+
 Set the time step to be used internally by the constitutive model.
+The time step is a reference, hence, the weak forms derived from the 
+constitutive model will be automatically updated with the new time step.
 """
 function update_time_step!(::PhysicalModel, Δt::Float64)
   Δt

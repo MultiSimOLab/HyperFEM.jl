@@ -4,6 +4,7 @@ using Gridap.Arrays
 using HyperFEM, HyperFEM.TensorAlgebra
 using StaticArrays
 using Test
+using ForwardDiff
 
 
 μ      = 1.367e4  # Pa
@@ -228,4 +229,38 @@ end
   Ψe, Se, ∂Se∂Ce = SecondPiola(short_term)
   C = F1'·F1
   @test Ψe(C) == 0
+end
+
+
+@testset "ViscousPolyconvex" begin
+  model = ViscousPolyconvex(τ=1.15, μ=7e4)
+  update_time_step!(model, 0.1)
+  Fn = I3
+  F1 = I3 + 0.1*TensorValue(rand(9)...)
+  C1 = F1' · F1
+  Cn = I3
+  Cv = I3
+
+  # --- Test neo-Hookean model ---
+  Ψv          = HyperFEM.PhysicalModels.Ψv
+  Sv          = HyperFEM.PhysicalModels.Sv
+  ∂Sv∂C_Cᵥfix = HyperFEM.PhysicalModels.∂Sv∂C_Cᵥfix
+
+  Sv_ref = 2*TensorValue(ForwardDiff.gradient(C -> Ψv(model, TensorValue(C), inv(Cv)), get_array(C1)))
+  ∂Sv_ref = 2*TensorValue(ForwardDiff.hessian(C -> Ψv(model, TensorValue(C), inv(Cv)), get_array(C1)))
+
+  @test isapprox(Sv(model, C1, inv(Cv)), Sv_ref, rtol=1e-8)
+  @test isapprox(∂Sv∂C_Cᵥfix(model, C1, inv(Cv)), ∂Sv_ref, rtol=1e-8)
+
+  # --- Test return mapping ---
+  Cv⁻¹    = HyperFEM.PhysicalModels.Cv⁻¹
+  ∂Cv⁻¹∂C = HyperFEM.PhysicalModels.∂Cv⁻¹∂C
+
+  ∂invCv_ref = TensorValue(ForwardDiff.jacobian(C -> get_array(Cv⁻¹(model, 0.5*TensorValue(C+C'), Cn, Cv)), get_array(C1)))  # Enforce symmetry of C within ForwardDiff
+  @test isapprox(∂Cv⁻¹∂C(model, C1, Cn, Cv)[2], ∂invCv_ref, rtol=1e-8)
+
+  # --- Test full model tangent operator ---
+  Ψ, ∂Ψ∂F, ∂∂Ψ∂FF = model()
+  ∂∂Ψ∂FF_ref = TensorValue(ForwardDiff.jacobian(F -> get_array(∂Ψ∂F(TensorValue(F), Fn, Cv)), get_array(F1)))
+  @test isapprox(∂∂Ψ∂FF(F1, Fn, Cv), ∂∂Ψ∂FF_ref, rtol=1e-8)
 end

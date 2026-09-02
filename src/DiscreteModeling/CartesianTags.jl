@@ -1,5 +1,14 @@
 
-"Shortcuts for the tags of cartesian discrete models."
+"""Shortcuts for the tags of cartesian discrete models.
+
+# Example
+    geometry = CartesianDiscreteModel(domain, partition)
+    labels = get_face_labeling(geometry)
+    add_tag_from_tags!(labels, "top",    CartesianTags.faceXY1)  # Edges and vertices are excluded
+    add_tag_from_tags!(labels, "bottom", CartesianTags.faceXY0⁺) # Edges and vertices are included
+    add_tag_from_tags!(labels, "x_sym", [CartesianTags.face0YZ; CartesianTags.edge0Y0; CartesianTags.edge0Y1])
+    add_tag_from_tags!(labels, "center_axis", CartesianTags.edge00Z⁺)
+"""
 module CartesianTags
 
 export face0YZ, face1YZ, faceX0Z, faceX1Z, faceXY0, faceXY1

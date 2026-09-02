@@ -6,7 +6,7 @@ using HyperFEM
 using HyperFEM.DiscreteModeling.EvolutionFunctions
 using HyperFEM.ComputationalModels.PostMetrics
 
-function visco_elastic_simulation(;t_end=15, writevtk=true, verbose=true)
+function visco_elastic_fast_simulation(;t_end=15, writevtk=true, verbose=true)
   # Domain and tessellation
   long   = 0.05   # m
   width  = 0.005  # m
@@ -30,9 +30,9 @@ function visco_elastic_simulation(;t_end=15, writevtk=true, verbose=true)
   μ₃ = 1.98e4  # Pa
   τ₃ = 500.0   # s
   hyper_elastic_model = NeoHookean3D(λ=λ, μ=μ)
-  viscous_branch_1 = ViscousIncompressible(IsochoricNeoHookean3D(μ=μ₁), τ=τ₁)
-  viscous_branch_2 = ViscousIncompressible(IsochoricNeoHookean3D(μ=μ₂), τ=τ₂)
-  viscous_branch_3 = ViscousIncompressible(IsochoricNeoHookean3D(μ=μ₃), τ=τ₃)
+  viscous_branch_1 = ViscousPolyconvex(μ=μ₁, τ=τ₁)
+  viscous_branch_2 = ViscousPolyconvex(μ=μ₂, τ=τ₂)
+  viscous_branch_3 = ViscousPolyconvex(μ=μ₃, τ=τ₃)
   cons_model = GeneralizedMaxwell(hyper_elastic_model, viscous_branch_1, viscous_branch_2, viscous_branch_3)
   k=Kinematics(Mechano,Solid)
 
@@ -95,6 +95,6 @@ end
 
 if abspath(PROGRAM_FILE) == @__FILE__
   using Plots
-  @time  λx, σΓ = visco_elastic_simulation()
+  @time λx, σΓ = visco_elastic_fast_simulation()
   plot(λx, σΓ)
 end

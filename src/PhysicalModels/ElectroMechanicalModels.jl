@@ -77,12 +77,11 @@ function Gridap.CellData.CellState(obj::ElectroMechModel, args...)
   CellState(obj.mechano, args...)
 end
 
-function initialize_state(obj::ElectroMechModel, points::Measure)
-  @warn "The function 'initialize_state' is deprecated, use 'CellState' instead."
-  CellState(obj.mechano, points)
+function initialize_state(obj::ElectroMechModel)
+  initialize_state(obj.mechano)
 end
 
-function update_state!(obj::ElectroMechModel, state, F, E, args...)
+function Gridap.CellData.update_state!(obj::ElectroMechModel, state, F, E, args...)
   update_state!(obj.mechano, state, F, args...)
 end
 

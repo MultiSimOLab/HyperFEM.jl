@@ -1,11 +1,11 @@
 using Gridap
 using ForwardDiff
-using JSON
 using StaticArrays
 using Test
 using HyperFEM.PhysicalModels
 using HyperFEM.TensorAlgebra
 using HyperFEM.IO
+using JSON
 
 
 import Base: +,-
@@ -257,6 +257,16 @@ end
   test_equilibrium_at_rest_2D(model)
 end
 
+@testset "PlaneStressIncompressible_I1PD" begin
+  #  Memory estimate: 0 bytes, allocs estimate: 0.
+  model = PlaneStressIncompressible_I1PD(μ=1.0)
+  Ψ, ∂Ψu , ∂Ψuu = model()
+  ∂Ψuu_(F) = TensorValue(ForwardDiff.jacobian(∂Ψu, get_array(F)))
+  K = Kinematics(Mechano, Solid)
+  F, _, _ = get_Kinematics(K)
+  @test isapprox(∂Ψuu(F(∇u2)), ∂Ψuu_(F(∇u2)),rtol=1e-14)
+  test_equilibrium_at_rest_2D(model)
+end
 
 @testset "MooneyRivlin2D" begin
   #  Memory estimate: 0 bytes, allocs estimate: 0.
@@ -522,11 +532,19 @@ end
 @testset "VolumetricEnergy" begin
   #  Memory estimate: 0 bytes, allocs estimate: 0.
   ∇u = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0) * 1e-3
-  model = VolumetricEnergy(λ=0.0)
-  test_derivatives_3D_(model, Kinematics(Mechano, Solid))
+  model = VolumetricEnergy(λ=1.0)
+  test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-12)
   test_equilibrium_at_rest_3D(model)
 end
 
+
+@testset "CoerciveVolumetric" begin
+  #  Memory estimate: 0 bytes, allocs estimate: 0.
+  ∇u = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0) * 1e-3
+  model = CoerciveVolumetric(κ=1.0)
+  test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-12)
+  test_equilibrium_at_rest_3D(model)
+end
 
 
 

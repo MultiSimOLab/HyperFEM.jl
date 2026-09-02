@@ -194,9 +194,36 @@ function interpolate_L2_scalar(x, Ω, dΩ, Γ=Ω)
 end
 
 
-function L2_Projection(u, dΩ, V)
-  a(w, v) = ∫(w * v) * dΩ
-  l(v)    = ∫(v * u) * dΩ
+function get_cell_field_type(f::CellField, dΩ::Measure)
+  pts = get_cell_points(dΩ)
+  f_x = f(pts)
+  T = eltype(Gridap.Arrays.testitem(f_x))
+  return T
+end
+
+
+"""
+Interpolate an L2 field into an H1 field.
+The type of the field is inferred from the cell field `x` and the measure `dΩ`.
+"""
+function interpolate_L2_field(x, Ω, dΩ, T::Type=get_cell_field_type(x, dΩ))
+  refL2 = ReferenceFE(lagrangian, T, 0)
+  reffe = ReferenceFE(lagrangian, T, 1)
+  VL2 = FESpace(Ω, refL2, conformity=:L2)
+  VH1 = FESpace(Ω, reffe, conformity=:H1)
+  interpolate_everywhere(L2_projection(x, dΩ, VL2), VH1)
+end
+
+
+"""
+Perform an L2 projection of a function `u` onto a finite element
+space `V` defined over the domain `Ω` with measure `dΩ`.
+"""
+function L2_projection(u, dΩ, V)
+  a(w, v) = ∫(w ⊙ v) * dΩ
+  l(v)    = ∫(v ⊙ u) * dΩ
   op      = AffineFEOperator(a, l, V, V)
   solve(op)
 end
+
+L2_Projection(u, dΩ, V) = L2_projection(u, dΩ, V)

@@ -1,14 +1,14 @@
 
 
 # ============================================
-# Coercive volumetric Mechanical models
+# Volumetric Mechanical models
 # ============================================
 
 """
-Coercive volumetric energy term of the form:
+Volumetric energy term of the form:
 
 ```math
-\\Psi = \\frac{1}{\\kappa} (J-1)^2
+\\Psi = \\frac{\\kappa}{2} (J-1)^2
 ```
 """
 struct VolumetricEnergy <: Volumetric
@@ -30,6 +30,33 @@ function (obj::VolumetricEnergy)(Λ::Float64=1.0)
   Ψ(F) = (λ / 2.0) * (J(F) - 1)^2
   ∂Ψ_∂J(F) = λ * (J(F) - 1)
   ∂Ψ2_∂J2(F) = λ
+  ∂Ψu(F) = ∂Ψ_∂J(F) * H(F)
+  ∂Ψuu(F) = ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ×ᵢ⁴(∂Ψ_∂J(F) * F)
+  return (Ψ, ∂Ψu, ∂Ψuu)
+end
+
+
+"""
+Coercive volumetric energy term of the form:
+
+```math
+\\Psi = \\frac{\\kappa}{4} (J^2-1+\\log(J))
+```
+"""
+struct CoerciveVolumetric <: Volumetric
+  κ::Float64
+  function CoerciveVolumetric(; κ::Float64)
+    new(κ)
+  end
+end
+
+function (obj::CoerciveVolumetric)(::Float64=1.0)
+  κ = obj.κ
+  J(F) = det(F)
+  H(F) = det(F) * inv(F)'
+  Ψ(F) = (κ / 4) * (J(F)^2 - 1 - 2logreg(J(F)))
+  ∂Ψ_∂J(F) = (κ / 2) * (J(F) - ∂log∂J(J(F)))
+  ∂Ψ2_∂J2(F) = (κ / 2) * (1 - ∂∂log∂JJ(J(F)))
   ∂Ψu(F) = ∂Ψ_∂J(F) * H(F)
   ∂Ψuu(F) = ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ×ᵢ⁴(∂Ψ_∂J(F) * F)
   return (Ψ, ∂Ψu, ∂Ψuu)
@@ -182,9 +209,9 @@ Base.hcat(a::AnisoElastic...) = MultiAnisoElastic(a)
 
 
 function (obj::MultiAnisoElastic)(args...)
-  DΨ     = map(a -> a(args...), obj.Models)
-  Ψα     = getindex.(DΨ, 1)
-  ∂Ψα∂F  = getindex.(DΨ, 2)
+  DΨ = map(a -> a(args...), obj.Models)
+  Ψα = getindex.(DΨ, 1)
+  ∂Ψα∂F = getindex.(DΨ, 2)
   ∂Ψα∂FF = getindex.(DΨ, 3)
   Ψ(F, N) = mapreduce((Ψi, Ni) -> Ψi(F, Ni), +, Ψα, N)
   ∂Ψ∂F(F, N) = mapreduce((∂Ψi∂F, Ni) -> ∂Ψi∂F(F, Ni), +, ∂Ψα∂F, N)
@@ -196,6 +223,57 @@ end
 # ===================
 # Mechanical models
 # ===================
+
+"""
+Plane stress incompressible linear I1 pressure distorsion
+```math
+\\Psi  =  F ⊙ F + λ_{33}^2 - 3*(J(F)*λ_{33})^(2/3)
+```
+"""
+struct PlaneStressIncompressible_I1PD <: IsoElastic
+  μ::Float64
+  ρ::Float64
+  function PlaneStressIncompressible_I1PD(; μ::Float64, ρ::Float64=0.0)
+    new(μ, ρ)
+  end
+
+  function (obj::PlaneStressIncompressible_I1PD)(Λ::Float64=1.0; Threshold=0.01)
+    μ = obj.μ
+    J(F) = det(F)   #  F  =  F₂d
+    H(F) = det(F) * inv(F)'
+    ∂Ψ∂F(F, λ₃₃) = μ*F
+    ∂Ψ∂λ₃₃(F, λ₃₃) = μ*λ₃₃
+    ∂Ψ∂F∂F(F, λ₃₃) = μ*I4
+    ∂Ψ∂F∂λ₃₃(F, λ₃₃) = 0.0*F
+    ∂Ψ∂λ₃₃∂λ₃₃(F, λ₃₃) = μ
+
+    Ψ(F) = begin
+      J_ = J(F)
+      λ₃₃ = 1/J_
+      F ⊙ F + λ₃₃^2 - 3*(J(F)*λ₃₃)^(2/3)
+    end
+
+
+    ∂Ψu(F) = begin
+      J_ = J(F)
+      λ₃₃ = 1/J_
+      ∂Ψ∂F(F, λ₃₃) - (λ₃₃)^2 * ∂Ψ∂λ₃₃(F, λ₃₃) * H(F)
+    end
+
+    ∂Ψuu(F) = begin
+      J_ = J(F)
+      λ₃₃ = 1/J_
+      H_ = H(F)
+      ∂Ψ∂F∂F(F, λ₃₃) +
+      ((2*λ₃₃^3) * ∂Ψ∂λ₃₃(F, λ₃₃) + (λ₃₃)^4 * ∂Ψ∂λ₃₃∂λ₃₃(F, λ₃₃)) * (H_ ⊗ H_) -
+      (λ₃₃^2) * (∂Ψ∂F∂λ₃₃(F, λ₃₃) ⊗ H_ + H_ ⊗ ∂Ψ∂F∂λ₃₃(F, λ₃₃)) -
+      (λ₃₃)^2*∂Ψ∂λ₃₃(F, λ₃₃)*_∂H∂F_2D()
+    end
+
+    return (Ψ, ∂Ψu, ∂Ψuu)
+  end
+end
+
 
 """
 Yeoh constitutive model.
@@ -695,8 +773,8 @@ struct TransverseIsotropy3D <: AnisoElastic
 
     ∂Ψu(F, N) = ∂Ψ_∂F(F, N) + ∂Ψ_∂H(F, N) × F + ∂Ψ_∂J(F, N) * H(F)
 
-    ∂ΨFF(F, N) = μ * (I4(F, N)^(α1 - 1)) * (I3 ⊗₁₃²⁴ (N ⊗ N)) + 2μ * (α1 - 1) * I4(F, N)^(α1 - 2) * (((F * N) ⊗ N) ⊗ ((F * N) ⊗ N))
-    ∂ΨHH(F, N) = μ * (I5(F, N)^(α2 - 1)) * (I3 ⊗₁₃²⁴ (N ⊗ N)) + 2μ * (α2 - 1) * I5(F, N)^(α2 - 2) * (((H(F) * N) ⊗ N) ⊗ ((H(F) * N) ⊗ N))
+    ∂ΨFF(F, N) = μ * (I4(F, N)^(α1 - 1)) * (I3⊗₁₃²⁴(N ⊗ N)) + 2μ * (α1 - 1) * I4(F, N)^(α1 - 2) * (((F * N) ⊗ N) ⊗ ((F * N) ⊗ N))
+    ∂ΨHH(F, N) = μ * (I5(F, N)^(α2 - 1)) * (I3⊗₁₃²⁴(N ⊗ N)) + 2μ * (α2 - 1) * I5(F, N)^(α2 - 2) * (((H(F) * N) ⊗ N) ⊗ ((H(F) * N) ⊗ N))
     ∂Ψuu(F, N) = ∂ΨFF(F, N) + (F × (∂ΨHH(F, N) × F)) + ∂Ψ2_∂J2(F, N) * (H(F) ⊗ H(F)) + ×ᵢ⁴(∂Ψ_∂H(F, N) + ∂Ψ_∂J(F, N) * F)
     return (Ψ, ∂Ψu, ∂Ψuu)
   end
@@ -721,8 +799,8 @@ struct TransverseIsotropy2D <: AnisoElastic
     Ψ(F, N) = μ / (2.0 * α1) * (I4(F, N)^α1 - 1) + μ / (2.0 * α2) * (I5(F, N)^α2 - 1) - μ * logreg(J(F))
 
     ∂I4∂F(F, N) = 2 * ((F * N) ⊗ N)
-    ∂I4∂F∂F(F, N) = 2 * (I2 ⊗₁₃²⁴ (N ⊗ N))
-    ∂I5∂F∂F(F, N) = 2 * (I2 ⊗ I2) - 2 * (I2 ⊗ (N ⊗ N) + (N ⊗ N) ⊗ I2) + 2 * ((N ⊗ N) ⊗₁₃²⁴ I2)
+    ∂I4∂F∂F(F, N) = 2 * (I2⊗₁₃²⁴(N ⊗ N))
+    ∂I5∂F∂F(F, N) = 2 * (I2 ⊗ I2) - 2 * (I2 ⊗ (N ⊗ N) + (N ⊗ N) ⊗ I2) + 2 * ((N ⊗ N)⊗₁₃²⁴I2)
     ∂I5∂F(F, N) = 2 * tr(F) * I2 - 2 * (N ⋅ (F * N)) * I2 - 2 * tr(F) * (N ⊗ N) + 2 * (N ⊗ (F' * N))
 
     ∂log∂J(J) = J >= Threshold ? 1 / J : (2 / Threshold - J / (Threshold^2))
@@ -783,10 +861,10 @@ struct HGO_4Fibers <: AnisoElastic
       M2 = N2 / norm(N2)
       M3 = N3 / norm(N3)
       M4 = N4 / norm(N4)
-      c1[1] * exp(c2[1] * ((F * M1) ⋅ (F * M1) - 1.0)^2.0) * ((4 * c2[1] * (((F * M1) ⋅ (F * M1) - 1.0)^2.0) + 2.0) * (((F * M1) ⊗ M1) ⊗ ((F * M1) ⊗ M1)) + ((F * M1) ⋅ (F * M1) - 1.0) * (I3 ⊗₁₃²⁴ (M1 ⊗ M1))) +
-      c1[2] * exp(c2[2] * ((F * M2) ⋅ (F * M2) - 1.0)^2.0) * ((4 * c2[2] * (((F * M2) ⋅ (F * M2) - 1.0)^2.0) + 2.0) * (((F * M2) ⊗ M2) ⊗ ((F * M2) ⊗ M2)) + ((F * M2) ⋅ (F * M2) - 1.0) * (I3 ⊗₁₃²⁴ (M2 ⊗ M2))) +
-      c1[3] * exp(c2[3] * ((F * M3) ⋅ (F * M3) - 1.0)^2.0) * ((4 * c2[3] * (((F * M3) ⋅ (F * M3) - 1.0)^2.0) + 2.0) * (((F * M3) ⊗ M3) ⊗ ((F * M3) ⊗ M3)) + ((F * M3) ⋅ (F * M3) - 1.0) * (I3 ⊗₁₃²⁴ (M3 ⊗ M3))) +
-      c1[4] * exp(c2[4] * ((F * M4) ⋅ (F * M4) - 1.0)^2.0) * ((4 * c2[4] * (((F * M4) ⋅ (F * M4) - 1.0)^2.0) + 2.0) * (((F * M4) ⊗ M4) ⊗ ((F * M4) ⊗ M4)) + ((F * M4) ⋅ (F * M4) - 1.0) * (I3 ⊗₁₃²⁴ (M4 ⊗ M4)))
+      c1[1] * exp(c2[1] * ((F * M1) ⋅ (F * M1) - 1.0)^2.0) * ((4 * c2[1] * (((F * M1) ⋅ (F * M1) - 1.0)^2.0) + 2.0) * (((F * M1) ⊗ M1) ⊗ ((F * M1) ⊗ M1)) + ((F * M1) ⋅ (F * M1) - 1.0) * (I3⊗₁₃²⁴(M1 ⊗ M1))) +
+      c1[2] * exp(c2[2] * ((F * M2) ⋅ (F * M2) - 1.0)^2.0) * ((4 * c2[2] * (((F * M2) ⋅ (F * M2) - 1.0)^2.0) + 2.0) * (((F * M2) ⊗ M2) ⊗ ((F * M2) ⊗ M2)) + ((F * M2) ⋅ (F * M2) - 1.0) * (I3⊗₁₃²⁴(M2 ⊗ M2))) +
+      c1[3] * exp(c2[3] * ((F * M3) ⋅ (F * M3) - 1.0)^2.0) * ((4 * c2[3] * (((F * M3) ⋅ (F * M3) - 1.0)^2.0) + 2.0) * (((F * M3) ⊗ M3) ⊗ ((F * M3) ⊗ M3)) + ((F * M3) ⋅ (F * M3) - 1.0) * (I3⊗₁₃²⁴(M3 ⊗ M3))) +
+      c1[4] * exp(c2[4] * ((F * M4) ⋅ (F * M4) - 1.0)^2.0) * ((4 * c2[4] * (((F * M4) ⋅ (F * M4) - 1.0)^2.0) + 2.0) * (((F * M4) ⊗ M4) ⊗ ((F * M4) ⊗ M4)) + ((F * M4) ⋅ (F * M4) - 1.0) * (I3⊗₁₃²⁴(M4 ⊗ M4)))
     end
 
     return (Ψ, ∂Ψ∂F, ∂Ψ2∂F∂F)
@@ -817,7 +895,7 @@ struct HGO_1Fiber <: AnisoElastic
 
     ∂Ψ2∂F∂F(F, N1) = begin
       M1 = N1 / norm(N1)
-      c1 * exp(c2 * ((F * M1) ⋅ (F * M1) - 1.0)^2.0) * ((4 * c2 * (((F * M1) ⋅ (F * M1) - 1.0)^2.0) + 2.0) * (((F * M1) ⊗ M1) ⊗ ((F * M1) ⊗ M1)) + ((F * M1) ⋅ (F * M1) - 1.0) * (I3 ⊗₁₃²⁴ (M1 ⊗ M1)))
+      c1 * exp(c2 * ((F * M1) ⋅ (F * M1) - 1.0)^2.0) * ((4 * c2 * (((F * M1) ⋅ (F * M1) - 1.0)^2.0) + 2.0) * (((F * M1) ⊗ M1) ⊗ ((F * M1) ⊗ M1)) + ((F * M1) ⋅ (F * M1) - 1.0) * (I3⊗₁₃²⁴(M1 ⊗ M1)))
     end
 
     return (Ψ, ∂Ψ∂F, ∂Ψ2∂F∂F)
@@ -1021,27 +1099,27 @@ struct NonlinearARAP2D <: IsoElastic
   function (obj::NonlinearARAP2D)(Λ::Float64=1.0)
     μ = obj.μ
     p = obj.p
-  
+
     J(F) = det(F)
     H(F) = det(F) * inv(F)'
     f(F) = 0.5 * J(F)^(-1) * (tr((F)' * F)) - 1.0
     g(x) = x^p
     Ψ(F) = (μ/p) * g(f(F))
 
-    ∂f_∂F(F)   = F * J(F)^(-1)
-    ∂f_∂J(F)   = -1.0 / 2.0 * (tr((F)' * F)) * J(F)^(-2)
+    ∂f_∂F(F) = F * J(F)^(-1)
+    ∂f_∂J(F) = -1.0 / 2.0 * (tr((F)' * F)) * J(F)^(-2)
     ∂2f_∂J2(F) = J(F)^(-3) * (tr((F)' * F))
     ∂2f_∂FJ(F) = -J(F)^(-2) * F
     ∂2f_∂FF(F) = J(F)^(-1) * I4
 
-    ∂g_∂x(x)   = p * x^(p-1)
+    ∂g_∂x(x) = p * x^(p-1)
     ∂2g_∂x2(x) = p * (p-1) * x^(p-2)
 
-    ∂fu(F)  = ∂f_∂F(F) + ∂f_∂J(F) * H(F)
+    ∂fu(F) = ∂f_∂F(F) + ∂f_∂J(F) * H(F)
     ∂fuu(F) = ∂2f_∂FF(F) + ∂2f_∂J2(F) * (H(F) ⊗ H(F)) + ∂2f_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂2f_∂FJ(F) + ∂f_∂J(F) * _∂H∂F_2D()
 
-    ∂Ψu(F)   =  (μ/p) * (∂g_∂x(f(F))* ∂fu(F))
-    ∂Ψuu(F)  =  (μ/p) * (∂g_∂x(f(F))* ∂fuu(F) + ∂2g_∂x2(f(F)) * (∂fu(F) ⊗ ∂fu(F)))
+    ∂Ψu(F) = (μ/p) * (∂g_∂x(f(F)) * ∂fu(F))
+    ∂Ψuu(F) = (μ/p) * (∂g_∂x(f(F)) * ∂fuu(F) + ∂2g_∂x2(f(F)) * (∂fu(F) ⊗ ∂fu(F)))
 
     return (Ψ, ∂Ψu, ∂Ψuu)
   end
@@ -1052,15 +1130,11 @@ end
 Neo-Hooke hyperelastic model
 
 ```math
-W = \\frac{1}{2}\\mu (I_1 - 3)
+\\Psi = \\frac{1}{2}\\mu (I_1 - 3)
 ```
 """
-struct IsochoricNeoHookean3D <: IsoElastic
+@kwdef struct IsochoricNeoHookean3D <: IsoElastic
   μ::Float64
-end
-
-function IsochoricNeoHookean3D(; μ::Real)
-  IsochoricNeoHookean3D(float(μ))
 end
 
 function (obj::IsochoricNeoHookean3D)(::Float64=1.0)
@@ -1075,15 +1149,16 @@ end
 function SecondPiola(obj::IsochoricNeoHookean3D)
   μ = obj.μ
   H(F) = cof(F)
-  Ψ(C) = μ / 2 * tr(C) * (det(C))^(-1 / 3) -3*μ/2
+  Ψ(C) = μ / 2 * tr(C) * (det(C))^(-1 / 3) - 3*μ/2
   ∂Ψ∂C(C) = μ / 2 * I3 * (det(C))^(-1 / 3)
   ∂Ψ∂dC(C) = -μ / 6 * tr(C) * (det(C))^(-4 / 3)
   S(C) = 2 * (∂Ψ∂C(C) + ∂Ψ∂dC(C) * H(C))
   ∂2Ψ∂CdC(C) = -μ / 6 * I3 * (det(C))^(-4 / 3)
   ∂2Ψ∂2dC(C) = 2 * μ / 9 * tr(C) * (det(C))^(-7 / 3)
-  ∂S∂C(C) = let HC = H(C)
-    2 * (∂2Ψ∂2dC(C) * (HC ⊗ HC) + ∂2Ψ∂CdC(C) ⊗ HC + HC ⊗ ∂2Ψ∂CdC(C) + ∂Ψ∂dC(C) * ×ᵢ⁴(C))
-  end
+  ∂S∂C(C) =
+    let HC = H(C)
+      2 * (∂2Ψ∂2dC(C) * (HC ⊗ HC) + ∂2Ψ∂CdC(C) ⊗ HC + HC ⊗ ∂2Ψ∂CdC(C) + ∂Ψ∂dC(C) * ×ᵢ⁴(C))
+    end
   return (Ψ, S, ∂S∂C)
 end
 

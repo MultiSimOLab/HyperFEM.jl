@@ -4,8 +4,6 @@ using GridapSolvers.LinearSolvers
 using TimerOutputs
 using Gridap.FESpaces
 using HyperFEM
-using HyperFEM.ComputationalModels.CartesianTags
-using HyperFEM.ComputationalModels.EvolutionFunctions
 
 
 function static_mechanical_dirichlet_simulation(;writevtk=true, verbose=true)
@@ -33,7 +31,7 @@ function static_mechanical_dirichlet_simulation(;writevtk=true, verbose=true)
   # Dirichlet boundary conditions
   dir_u_tags = ["fixed", "moving"]
   dir_u_values = [[0.0, 0.0, 0.0], [0.08, 0.0, 0.0]]
-  dir_u_timesteps = [constant(), ramp()]
+  dir_u_timesteps = [EvolutionFunctions.constant(), EvolutionFunctions.ramp()]
   D_bc = DirichletBC(dir_u_tags, dir_u_values, dir_u_timesteps)
 
   #  FE spaces

@@ -6,14 +6,18 @@ macro publish(mod, name)
   end
 end
 
+@publish TensorAlgebra TensorValue  # Reexport from Gridap for convenience
+@publish TensorAlgebra VectorValue  # Reexport from Gridap for convenience
 @publish TensorAlgebra (*)
 @publish TensorAlgebra (×ᵢ⁴)
+@publish TensorAlgebra (⊗₁²)
 @publish TensorAlgebra (⊗₁₂³)
 @publish TensorAlgebra (⊗₁₃²)
 @publish TensorAlgebra (⊗₁²³)
 @publish TensorAlgebra (⊗₁₃²⁴)
 @publish TensorAlgebra (⊗₁₂³⁴)
-@publish TensorAlgebra (⊗₁²)
+@publish TensorAlgebra (⊗₁₂₃⁴)
+@publish TensorAlgebra (⊙₁₂₃₄²⁴)
 @publish TensorAlgebra logreg
 @publish TensorAlgebra Box
 @publish TensorAlgebra Ellipsoid
@@ -23,9 +27,13 @@ end
 @publish TensorAlgebra I9
 @publish TensorAlgebra Tensorize
 
+@publish PhysicalModels PhysicalModel
+@publish PhysicalModels Elasto
+@publish PhysicalModels ViscoElastic
 
 @publish PhysicalModels LinearElasticity3D
 @publish PhysicalModels LinearElasticity2D
+@publish PhysicalModels PlaneStressIncompressible_I1PD
 @publish PhysicalModels Yeoh3D
 @publish PhysicalModels Gent2D
 @publish PhysicalModels NeoHookean3D
@@ -34,6 +42,7 @@ end
 @publish PhysicalModels IncompressibleNeoHookean2D
 @publish PhysicalModels IncompressibleNeoHookean2D_CV
 @publish PhysicalModels VolumetricEnergy
+@publish PhysicalModels CoerciveVolumetric
 @publish PhysicalModels MooneyRivlin3D
 @publish PhysicalModels MooneyRivlin2D
 @publish PhysicalModels NonlinearMooneyRivlin3D
@@ -71,6 +80,7 @@ end
 @publish PhysicalModels HessianRegularization
 @publish PhysicalModels Hessian∇JRegularization
 @publish PhysicalModels ViscousIncompressible
+@publish PhysicalModels ViscousPolyconvex
 @publish PhysicalModels GeneralizedMaxwell
 @publish PhysicalModels HGO_4Fibers
 @publish PhysicalModels HGO_1Fiber
@@ -86,7 +96,6 @@ end
 @publish PhysicalModels FlexoElectro
 @publish PhysicalModels ThermoElectroMechano
 @publish PhysicalModels EnergyInterpolationScheme
-@publish PhysicalModels update_state!
 @publish PhysicalModels Kinematics
 @publish PhysicalModels Solid
 @publish PhysicalModels KinematicModel
@@ -104,7 +113,11 @@ end
 
 @publish PhysicalModels SecondPiola
 @publish PhysicalModels Dissipation
+
+@publish PhysicalModels CellState      # reexport form Gridap
+@publish PhysicalModels update_state!  # reexport from Gridap
 @publish PhysicalModels initialize_state
+@publish PhysicalModels return_mapping
 @publish PhysicalModels update_time_step!
 
 @publish WeakForms residual
@@ -133,6 +146,8 @@ end
 @publish ComputationalModels  dirichlet_preconditioning!
 @publish ComputationalModels  GmshDiscreteModel
 @publish ComputationalModels  updateBC!
+@publish ComputationalModels update_velocity!
+@publish ComputationalModels update_displacements!
 @publish ComputationalModels  PostProcessor
 @publish ComputationalModels  vtk_save
 @publish ComputationalModels  get_pvd
@@ -152,6 +167,8 @@ end
 @publish ComputationalModels  InterpolableBC
 @publish ComputationalModels  InterpolableBC!
 @publish ComputationalModels  TrialFESpace! # Exporting internal function of Gridap
+@publish ComputationalModels interpolate_L2_field
+@publish ComputationalModels L2_projection
 @publish ComputationalModels  L2_Projection
 
 @publish DiscreteModeling CartesianTags
@@ -169,5 +186,6 @@ end
 @publish IO setupfolder
 @publish IO projdir
 @publish IO stem
+@publish IO nosuffix
 @publish IO MockPVD
 @publish IO mockpvd
