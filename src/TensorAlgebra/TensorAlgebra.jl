@@ -6,9 +6,11 @@ using StaticArrays
 using LinearAlgebra
 import Base: *
 import Base: +
+import Base: -
 
 export (*)
 export (+)
+export (-)
 export (⊗₁₂³)
 export (⊗₁₃²)
 export (⊗₁²³)

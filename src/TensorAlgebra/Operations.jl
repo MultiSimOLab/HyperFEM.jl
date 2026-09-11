@@ -10,12 +10,30 @@ function (*)(Ten1::TensorValue, Ten2::TensorValue)
 end
 
 
-@inline @generated function (+)(A::TensorValue{D,D}, B::TensorValue{D,D}) where {D}
+@inline @generated function (+)(A::TensorValue{D1,D2}, B::TensorValue{D1,D2}) where {D1,D2}
   str = ""
-  for i in 1:D*D
+  for i in 1:D1*D2
     str *= "A.data[$i] + B.data[$i], "
   end
-  Meta.parse("TensorValue{D,D}($str)")
+  Meta.parse("TensorValue{D1,D2}($str)")
+end
+
+
+@inline @generated function (-)(A::TensorValue{D1,D2}, B::TensorValue{D1,D2}) where {D1,D2}
+  str = ""
+  for i in 1:D1*D2
+    str *= "A.data[$i] - B.data[$i], "
+  end
+  Meta.parse("TensorValue{D1,D2}($str)")
+end
+
+
+@inline @generated function (-)(A::TensorValue{D1,D2}) where {D1,D2}
+  str = ""
+  for i in 1:D1*D2
+    str *= "-A.data[$i], "
+  end
+  Meta.parse("TensorValue{D1,D2}($str)")
 end
 
 
