@@ -10,12 +10,26 @@ function (*)(Ten1::TensorValue, Ten2::TensorValue)
 end
 
 
-@inline @generated function (+)(A::TensorValue{D,D}, B::TensorValue{D,D}) where {D}
-  str = ""
-  for i in 1:D*D
-    str *= "A.data[$i] + B.data[$i], "
-  end
-  Meta.parse("TensorValue{D,D}($str)")
+# The element type is explicit so that empty tensors (e.g. `TensorValue{0,3}`,
+# built by Gridap for vertex grids) are also supported.
+@inline @generated function (+)(A::TensorValue{D1,D2}, B::TensorValue{D1,D2}) where {D1,D2}
+  T = promote_type(eltype(A), eltype(B))
+  data = [:(A.data[$i] + B.data[$i]) for i in 1:D1*D2]
+  :(TensorValue{D1,D2,$T}($(Expr(:tuple, data...))))
+end
+
+
+@inline @generated function (-)(A::TensorValue{D1,D2}, B::TensorValue{D1,D2}) where {D1,D2}
+  T = promote_type(eltype(A), eltype(B))
+  data = [:(A.data[$i] - B.data[$i]) for i in 1:D1*D2]
+  :(TensorValue{D1,D2,$T}($(Expr(:tuple, data...))))
+end
+
+
+@inline @generated function (-)(A::TensorValue{D1,D2}) where {D1,D2}
+  T = eltype(A)
+  data = [:(-A.data[$i]) for i in 1:D1*D2]
+  :(TensorValue{D1,D2,$T}($(Expr(:tuple, data...))))
 end
 
 
