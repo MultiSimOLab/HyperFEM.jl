@@ -88,5 +88,6 @@ export interpolate_L2_scalar
 export interpolate_L2_field
 export L2_projection
 export L2_Projection
+export component_LInf
 
 end

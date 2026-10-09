@@ -169,6 +169,7 @@ end
 @publish ComputationalModels  TrialFESpace! # Exporting internal function of Gridap
 @publish ComputationalModels interpolate_L2_field
 @publish ComputationalModels L2_projection
+@publish ComputationalModels component_LInf
 @publish ComputationalModels  L2_Projection
 
 @publish DiscreteModeling CartesianTags
