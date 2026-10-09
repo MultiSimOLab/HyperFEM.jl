@@ -63,10 +63,11 @@ function solve!(m::StaggeredModel;
         τ⁺=evolτ((τ+1)*∆τ)
         stevol(Λ) = τ⁻+ (τ⁺-τ⁻)*Λ
         # stevol(Λ) = ∆τ * (Λ + τ)
+        map(x -> updateBC!(x.dirichlet, x.dirichlet.caches, [stevol for _ in 1:length(x.dirichlet.caches)]), m.compmodels)
         for τ_inner in 1:nsubsteps
-            map((x) -> TrialFESpace!(x.spaces[1], x.dirichlet, stevol(1.0)), m.compmodels)
-            _, flagconv = map((x, y) -> solve!(x; y..., Λmap=stevol), m.compmodels, kargsolve)
-            map((x, y) -> TrialFESpace!(x.fe_space, y.dirichlet, stevol(1.0)), m.state⁻, m.compmodels)
+            map((x) -> TrialFESpace!(x.spaces[1], x.dirichlet, 1.0), m.compmodels)
+            _, flagconv = map((x, y) -> solve!(x; y...), m.compmodels, kargsolve)
+            map((x, y) -> TrialFESpace!(x.fe_space, y.dirichlet, 1.0), m.state⁻, m.compmodels)
             map((x, y) -> x .= y, x⁻, x⁺)
         end
     end
@@ -123,20 +124,14 @@ get_assemblers(m::StaticNonlinearModel) = (m.caches[4])
 #   filePath=datadir("sims", "Temp"),
 #   vtk::WriteVTK.CollectionFile=paraview_collection(datadir("sims", "Temp") * "/Results", append=false)
 
-"""
-    solve!(m::StaticNonlinearModel; stepping, RestartState, ProjectDirichlet, post, Λmap)
-
-`Λmap` reparametrizes the load parameter seen by the Dirichlet conditions, e.g. the
-load interval of a staggered step. The residual and jacobian receive the unmapped `Λ`.
-"""
 function solve!(m::StaticNonlinearModel;
     stepping=(nsteps=20, maxbisec=15), RestartState::Bool=false, ProjectDirichlet::Bool=false,
-    post=PostProcessor(), Λmap=identity)
+    post=PostProcessor())
 
     reset!(post)
     flagconv = 1 # convergence flag 0 (max bisections) 1 (max steps)
     U, V, ∆U, Un = m.spaces
-    TrialFESpace!(U, m.dirichlet, Λmap(0.0))
+    TrialFESpace!(U, m.dirichlet, 0.0)
     nls, nls_cache, x, x⁻, assem_U = m.caches
 
     Λ = 0.0
@@ -156,17 +151,17 @@ function solve!(m::StaticNonlinearModel;
             Λ = min(1.0, Λ)
         end
         if ProjectDirichlet
-            α = dirichlet_preconditioning!(x, m, Λ, ∆Λ, nls; Λmap)
+            α = dirichlet_preconditioning!(x, m, Λ, ∆Λ, nls)
         end
         #@show α
         Λ -= ∆Λ
         ∆Λ = α * ∆Λ
-        TrialFESpace!(Un, m.dirichlet, Λmap(Λ))
+        TrialFESpace!(Un, m.dirichlet, Λ)
         Λ += ∆Λ
 
         # U.dirichlet_values .+= α*∆U.dirichlet_values
 
-        TrialFESpace!(U, m.dirichlet, Λmap(Λ))
+        TrialFESpace!(U, m.dirichlet, Λ)
 
         res = m.res(Λ)
         jac = m.jac(Λ)
@@ -217,26 +212,26 @@ function post_solve!(pvd, x, Λ, Λ_, m, filePath)
     return pvd
 end
 
-function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, ::Newton_RaphsonSolver; Λmap=identity)
-    duh = get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64; Λmap)
+function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, ::Newton_RaphsonSolver)
+    duh = get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64)
     # update step
     α = update_cellstate!(m.caches[1].linesearch, get_state(m), duh)
     x .+= α * get_free_dof_values(duh)
     return α
 end
 
-function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, ::Any; Λmap=identity)
-    duh = get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64; Λmap)
+function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, ::Any)
+    duh = get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64)
     x .+= get_free_dof_values(duh)
     return 1.0
 end
 
 
-function get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64; Λmap=identity)
+function get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64)
     _, V, ∆U = m.spaces
     uh = get_state(m)
     # TrialFESpace!(∆U, m.dirichlet, ∆Λ)
-    TrialFESpace!(∆U, m.dirichlet, Λmap(Λ), Λmap(Λ) - Λmap(Λ - ∆Λ))
+    TrialFESpace!(∆U, m.dirichlet, Λ, ∆Λ)
     res = m.res(Λ - ∆Λ)
     jac = m.jac(Λ - ∆Λ)
     l(v) = -1.0 * res(uh, v)

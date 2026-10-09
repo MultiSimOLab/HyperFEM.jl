@@ -83,4 +83,9 @@ using ForwardDiff
   dΓ = get_Neumann_dΓ(model, neumann, 2)
   @test sum(assemble_vector(v -> residual_Neumann(neumann, v, dΓ, 0.5), V0)) ≈ -1.0
 
+  # Legacy updateBC! replaces the load functions of conditions built by DirichletBC
+  legacy = DirichletBC(["bottom", "top"], [[0.0, 0.0], [1.0, 0.0]], [Λ -> 1.0, Λ -> Λ])
+  updateBC!(legacy, legacy.caches, [Λ -> 3Λ for _ in legacy.caches])
+  @test get_space_functions(legacy, 0.5)[2] ≈ VectorValue(1.5, 0.0)
+
 end

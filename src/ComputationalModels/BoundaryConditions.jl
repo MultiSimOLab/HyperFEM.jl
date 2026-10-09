@@ -236,9 +236,16 @@ Base.getindex(bc::MultiFieldBoundaryConditions, i) = bc.fields[i]
 #    					 Legacy constructors
 #*******************************************************************************
 
+"Load function of a legacy condition, replaceable in place by `updateBC!`."
+mutable struct LegacyLoad
+    f::Any
+end
+
+(l::LegacyLoad)(Λ) = l.f(Λ)
+
 # `timestep === nothing` means `value` is a generator `Λ -> object`.
 _legacy_condition(tag, value, ::Nothing) = BoundaryCondition(tag, Parametric(value))
-_legacy_condition(tag, value, timestep) = BoundaryCondition(tag, Separable(value, timestep))
+_legacy_condition(tag, value, timestep) = BoundaryCondition(tag, Separable(value, LegacyLoad(timestep)))
 
 function _legacy_conditions(tags::Vector{String}, values, timesteps)
     @assert length(tags) == length(values) == length(timesteps)
@@ -252,10 +259,27 @@ Legacy constructor, returning `BoundaryConditions`. `values[i]` is multiplied by
 unless `timesteps[i] === nothing`; then `values[i]` is a generator `Λ -> object`.
 """
 DirichletBC(tags::Vector{String}, values, timesteps) = _legacy_conditions(tags, values, timesteps)
-DirichletBC(tags::Vector{String}, values) = BoundaryConditions(map(BoundaryCondition, tags, values))
+DirichletBC(tags::Vector{String}, values) = _legacy_conditions(tags, values, [Λ -> 1.0 for _ in tags])
 
 "Legacy constructor, returning `BoundaryConditions`. See `DirichletBC`."
 NeumannBC(tags::Vector{String}, values, timesteps) = _legacy_conditions(tags, values, timesteps)
+
+"""
+    updateBC!(bc, values, timesteps)
+
+Legacy interface for `StaggeredModel`: replace the load function of each condition built by
+`DirichletBC` or `NeumannBC` with `timesteps[i]`. `values` is only checked for its length.
+"""
+function updateBC!(bc::BoundaryConditions, values, timesteps)
+    @assert length(bc) == length(values) == length(timesteps)
+    for (c, timestep) in zip(bc.conditions, timesteps)
+        c.value isa Separable{<:Any,LegacyLoad} && (c.value.load.f = timestep)
+    end
+    bc
+end
+
+# Legacy field access by `StaggeredModel`: `bc.caches` is only used for its length.
+Base.getproperty(bc::BoundaryConditions, s::Symbol) = s === :caches ? getfield(bc, :conditions) : getfield(bc, s)
 
 
 #*******************************************************************************

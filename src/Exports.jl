@@ -157,6 +157,7 @@ end
 @publish ComputationalModels  solve!
 @publish ComputationalModels  dirichlet_preconditioning!
 @publish ComputationalModels  GmshDiscreteModel
+@publish ComputationalModels  updateBC!
 @publish ComputationalModels update_velocity!
 @publish ComputationalModels update_displacements!
 @publish ComputationalModels  PostProcessor
