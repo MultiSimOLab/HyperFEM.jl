@@ -99,6 +99,30 @@ end
 
 (p::Parametric)(Λ) = p.g(Λ)
 
+"""
+    central_difference(f, Λ; h=1e-6)
+
+Derivative of `f` at `Λ` by central differences. Default backend of [`get_time_derivative`](@ref).
+"""
+central_difference(f, Λ; h=1e-6) = (f(Λ + h) - f(Λ - h)) / (2h)
+
+# Derivative of a prescription with respect to Λ, using the backend `d(f, Λ)`.
+function _derivative(p::Separable, Λ, d)
+    dg = d(λ -> _at_load(p.load, λ), Λ)
+    p.space isa Number ? p.space * dg : x -> _to_value(p.space(x)) * dg
+end
+
+_derivative(p::NonSeparable, Λ, d) = x -> _componentwise(d, λ -> _to_value(p.f(x, λ)), Λ)
+
+function _derivative(p::Parametric, Λ, d)
+    p.g(Λ) isa Function ? x -> _componentwise(d, λ -> p.g(λ)(x), Λ) : d(p.g, Λ)
+end
+
+# Apply a scalar backend (e.g. ForwardDiff.derivative) to each component of a `VectorValue`.
+_componentwise(d, f, Λ) = _componentwise(d, f, Λ, f(Λ))
+_componentwise(d, f, Λ, ::Real) = d(f, Λ)
+_componentwise(d, f, Λ, ::VectorValue{N}) where {N} = VectorValue(ntuple(i -> d(λ -> f(λ)[i], Λ), N))
+
 
 #*******************************************************************************
 #    					 Boundary conditions
@@ -136,6 +160,7 @@ BoundaryCondition(tag::String, value, load=nothing; kwargs...) = BoundaryConditi
 get_tags(bc::BoundaryCondition) = bc.tag
 get_masks(bc::BoundaryCondition) = bc.mask
 get_space_functions(bc::BoundaryCondition, Λ::Real) = bc.value(Λ)
+get_time_derivative(bc::BoundaryCondition, Λ::Real; backend=central_difference) = _derivative(bc.value, Λ, backend)
 is_active(bc::BoundaryCondition, Λ) = is_active(bc.activity, Λ)
 
 
@@ -178,6 +203,16 @@ function get_masks(bc::BoundaryConditions)
 end
 
 get_space_functions(bc::BoundaryConditions, Λ::Real) = map(c -> get_space_functions(c, Λ), bc.conditions)
+
+"""
+    get_time_derivative(bc, Λ; backend=central_difference)
+
+Derivative of the prescribed values with respect to `Λ`, in the same format as `get_space_functions`.
+`backend(f, Λ)` differentiates a scalar function of `Λ`, e.g. `ForwardDiff.derivative`; vector
+values are differentiated component-wise. `CellField`s returned by a `Parametric` prescription
+require a backend supporting them, such as the default `central_difference`.
+"""
+get_time_derivative(bc::BoundaryConditions, Λ::Real; kwargs...) = map(c -> get_time_derivative(c, Λ; kwargs...), bc.conditions)
 
 
 """

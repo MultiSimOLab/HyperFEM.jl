@@ -1,5 +1,6 @@
 using Gridap
 using Gridap.FESpaces
+using ForwardDiff
 
 @testset "Dirichlet BC testing analytical mapping" begin
 
@@ -187,6 +188,22 @@ end
   ΔU = TrialFESpace(TestFESpace(model, reffe, rot_bc), rot_bc)
   TrialFESpace!(ΔU, rot_bc, 1.0, 0.25)
   @test get_dirichlet_dof_values(ΔU) ≈ dirichlet_values(rot_bc, 1.0) - dirichlet_values(rot_bc, 0.75)
+
+  # Derivatives with respect to the load parameter
+  drotation(x, Λ) = π / 2 * TensorValue(-sin(Λ * π / 2), cos(Λ * π / 2), -cos(Λ * π / 2), -sin(Λ * π / 2)) ⋅ x
+  x = VectorValue(0.3, 0.7)
+  der_bc = BoundaryConditions(
+    BoundaryCondition("bottom", [1.0, 2.0], Λ -> Λ^2),
+    BoundaryCondition("top", x -> x[1], Λ -> sin(Λ)),
+    BoundaryCondition("top", NonSeparable(rotation)),
+    BoundaryCondition("top", Parametric(Λ -> (x -> rotation(x, Λ)))))
+  for backend in (central_difference, ForwardDiff.derivative)
+    d = get_time_derivative(der_bc, 0.4; backend)
+    @test d[1] ≈ VectorValue(0.8, 1.6)
+    @test d[2](x) ≈ 0.3 * cos(0.4)
+    @test d[3](x) ≈ drotation(x, 0.4)
+    @test d[4](x) ≈ drotation(x, 0.4)
+  end
 
   # Empty boundary conditions
   V0 = TestFESpace(model, reffe, NothingBC())
