@@ -124,6 +124,16 @@ end
 @publish WeakForms jacobian
 @publish WeakForms mass_term
 
+@publish ComputationalModels  Prescription
+@publish ComputationalModels  Separable
+@publish ComputationalModels  NonSeparable
+@publish ComputationalModels  Parametric
+@publish ComputationalModels  BoundaryCondition
+@publish ComputationalModels  BoundaryConditions
+@publish ComputationalModels  MultiFieldBoundaryConditions
+@publish ComputationalModels  get_tags
+@publish ComputationalModels  get_masks
+@publish ComputationalModels  get_space_functions
 @publish ComputationalModels  DirichletBC
 @publish ComputationalModels  NeumannBC
 @publish ComputationalModels  get_Neumann_dΓ
@@ -145,7 +155,6 @@ end
 @publish ComputationalModels  solve!
 @publish ComputationalModels  dirichlet_preconditioning!
 @publish ComputationalModels  GmshDiscreteModel
-@publish ComputationalModels  updateBC!
 @publish ComputationalModels update_velocity!
 @publish ComputationalModels update_displacements!
 @publish ComputationalModels  PostProcessor

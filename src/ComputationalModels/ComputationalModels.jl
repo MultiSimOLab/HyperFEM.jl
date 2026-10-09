@@ -22,14 +22,22 @@ using WriteVTK
 using GridapGmsh 
 using GridapGmsh: GmshDiscreteModel
 
-import Base.getindex
-
 # Deprecation exports
 using HyperFEM.DiscreteModeling
 Base.@deprecate_binding CartesianTags DiscreteModeling.CartesianTags
 Base.@deprecate_binding EvolutionFunctions DiscreteModeling.EvolutionFunctions
 
 include("BoundaryConditions.jl")
+export Prescription
+export Separable
+export NonSeparable
+export Parametric
+export BoundaryCondition
+export BoundaryConditions
+export MultiFieldBoundaryConditions
+export get_tags
+export get_masks
+export get_space_functions
 export DirichletBC
 export NeumannBC
 export get_Neumann_dΓ
@@ -39,7 +47,6 @@ export MultiFieldBC
 export SingleFieldTC
 export MultiFieldTC
 export residual_Neumann
-export updateBC!
 export DirichletCoupling
 export InterpolableBC
 export InterpolableBC!
