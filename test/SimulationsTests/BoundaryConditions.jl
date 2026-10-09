@@ -197,13 +197,20 @@ end
     BoundaryCondition("top", x -> x[1], Λ -> sin(Λ)),
     BoundaryCondition("top", NonSeparable(rotation)),
     BoundaryCondition("top", Parametric(Λ -> (x -> rotation(x, Λ)))))
-  for backend in (central_difference, ForwardDiff.derivative)
-    d = get_time_derivative(der_bc, 0.4; backend)
-    @test d[1] ≈ VectorValue(0.8, 1.6)
-    @test d[2](x) ≈ 0.3 * cos(0.4)
-    @test d[3](x) ≈ drotation(x, 0.4)
-    @test d[4](x) ≈ drotation(x, 0.4)
-  end
+  d = get_time_derivative(der_bc, 0.4)
+  @test d[1] ≈ VectorValue(0.8, 1.6)
+  @test d[2](x) ≈ 0.3 * cos(0.4)
+  @test d[3](x) ≈ drotation(x, 0.4)
+  @test d[4](x) ≈ drotation(x, 0.4)
+
+  # ForwardDiff differentiates scalar loads, and VectorValues once wrapped
+  d = get_time_derivative(der_bc, 0.4; backend=ForwardDiff.derivative)
+  @test d[1] ≈ VectorValue(0.8, 1.6)
+  @test d[2](x) ≈ 0.3 * cos(0.4)
+  fd_vector = (f, Λ) -> VectorValue(ForwardDiff.derivative(λ -> Gridap.TensorValues.get_array(f(λ)), Λ))
+  d = get_time_derivative(BoundaryConditions(der_bc[3], der_bc[4]), 0.4; backend=fd_vector)
+  @test d[1](x) ≈ drotation(x, 0.4)
+  @test d[2](x) ≈ drotation(x, 0.4)
 
   # Empty boundary conditions
   V0 = TestFESpace(model, reffe, NothingBC())
