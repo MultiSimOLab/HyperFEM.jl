@@ -62,7 +62,7 @@ See [`Prescription`](@ref).
 struct Separable{S,L} <: Prescription
     space::S
     load::L
-    Separable(space, load=nothing) = new(_to_value(space), load)
+    Separable(space, load=nothing) = (s = _to_value(space); new{typeof(s),typeof(load)}(s, load))
 end
 
 _at_load(::Nothing, Λ) = 1.0
