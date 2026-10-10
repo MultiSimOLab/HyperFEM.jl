@@ -18,6 +18,7 @@ using GridapSolvers.SolverInterfaces: finished, print_message, converged
 
 using LinearAlgebra
 using WriteVTK
+using Printf
 
 using GridapGmsh 
 using GridapGmsh: GmshDiscreteModel
