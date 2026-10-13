@@ -243,9 +243,15 @@ end
 
 (l::LegacyLoad)(Λ) = l.f(Λ)
 
-# `timestep === nothing` means `value` is a generator `Λ -> object`.
-_legacy_condition(tag, value, ::Nothing) = BoundaryCondition(tag, Parametric(value))
-_legacy_condition(tag, value, timestep) = BoundaryCondition(tag, Separable(value, LegacyLoad(timestep)))
+_legacy_condition(tag, value, timestep) = BoundaryCondition(tag, _legacy_prescription(value, timestep))
+
+# `timestep === nothing` means `value` is a generator `Λ -> object`. Couplings ignore `timestep`.
+function _legacy_prescription(value, timestep)
+    value === DirichletCoupling && return Parametric(LegacyCoupling(nothing))
+    value isa InterpolableBC && return Parametric(LegacyCoupling(value.Interpolable))
+    isnothing(timestep) && return Parametric(value)
+    Separable(value, LegacyLoad(timestep))
+end
 
 function _legacy_conditions(tags::Vector{String}, values, timesteps)
     @assert length(tags) == length(values) == length(timesteps)
@@ -325,14 +331,27 @@ end
 #    					 Dirichlet coupling
 #*******************************************************************************
 
-# TODO: Port to a `Parametric` prescription. Requires `DirichletBC` caches, which no longer exist.
+# Legacy couplings. New code can prescribe `Parametric(Λ -> Interpolable(uh))` instead.
+
+"""
+Placeholder of a legacy `DirichletCoupling`, filled in place by `InterpolableBC!`.
+Until then, it prescribes the coordinates `x`, which `InterpolableBC` reads back.
+"""
+mutable struct LegacyCoupling
+    Interpolable::Any
+end
+
+(c::LegacyCoupling)(Λ) = isnothing(c.Interpolable) ? identity : _evaluator(c.Interpolable(Λ))
+
+_evaluator(f) = x -> evaluate(f, x)
+
 struct InterpolableBC{A,B,C} <: DirichletCoupling
     coords::A
     Interpolable::B
     caches::C
     function InterpolableBC(U::TrialFESpace, bc::BoundaryConditions, interface_tags::String, Interpolable::B) where {B}
         dcmask = findall(x -> x == interface_tags, get_tags(bc))
-        dim = length(U.space.fe_dof_basis.trian.model.grid.node_coordinates[1])
+        dim = num_point_dims(get_triangulation(U))
         mask = U.space.dirichlet_dof_tag .== dcmask[1]
         vals = U.dirichlet_values[mask]
         Interface_coords_ = reshape(vals, dim, :)'
@@ -350,5 +369,9 @@ function (obj::InterpolableBC)(Λ::Float64=1.0)
 end
 
 function InterpolableBC!(U::TrialFESpace, bc::BoundaryConditions, interface_tags::String, Interpolable)
-    error("InterpolableBC! is not supported yet by BoundaryConditions. Use a `Parametric` prescription instead.")
+    obj = InterpolableBC(U, bc, interface_tags, Interpolable)
+    coupling = bc[findfirst(==(interface_tags), get_tags(bc))].value
+    @assert coupling isa Parametric{LegacyCoupling} "Tag $interface_tags was not declared as a DirichletCoupling"
+    coupling.g.Interpolable = Interpolable
+    return obj
 end

@@ -88,4 +88,22 @@ using ForwardDiff
   updateBC!(legacy, legacy.caches, [Λ -> 3Λ for _ in legacy.caches])
   @test get_space_functions(legacy, 0.5)[2] ≈ VectorValue(1.5, 0.0)
 
+  # Couplings: a Gridap Interpolable from a non-matching mesh is a space function
+  f(x) = VectorValue(x[1]^2, x[1] * x[2])
+  reffe2 = ReferenceFE(lagrangian, VectorValue{2,Float64}, 2)
+  uhA = interpolate(f, FESpace(CartesianDiscreteModel((0.0, 1.0, 0.0, 1.0), (3, 3)), reffe2))
+  coupled = BoundaryConditions(
+    BoundaryCondition("bottom", [0.0, 0.0]),
+    BoundaryCondition("top", Parametric(Λ -> Gridap.CellData.Interpolable(uhA))))
+  Vc = TestFESpace(model, reffe2, coupled)
+  exact = get_dirichlet_dof_values(TrialFESpace(Vc, (VectorValue(0.0, 0.0), f)))
+  @test get_dirichlet_dof_values(TrialFESpace(Vc, coupled, 1.0)) ≈ exact
+
+  # Legacy coupling: DirichletCoupling marker filled by InterpolableBC!
+  legacy_coupled = DirichletBC(["bottom", "top"], [[0.0, 0.0], DirichletCoupling], [Λ -> 1.0, nothing])
+  Uc = TrialFESpace(TestFESpace(model, reffe2, legacy_coupled), legacy_coupled, 0.0)
+  InterpolableBC!(Uc, legacy_coupled, "top", Λ -> uhA)  # legacy contract: Λ -> CellField
+  TrialFESpace!(Uc, legacy_coupled, 1.0)
+  @test get_dirichlet_dof_values(Uc) ≈ exact
+
 end
