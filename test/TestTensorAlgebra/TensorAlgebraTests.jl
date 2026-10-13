@@ -107,6 +107,15 @@ end
   B = TensorValue(4.1, 5.2, 6.3, 7.4, 8.5, 9.6, 1.7, 2.8, 3.9)
   @test A + B == TensorValue(5.1, 7.2, 9.3, 11.4, 13.5, 15.6, 8.7, 10.8, 12.9)
   @test norm(A + B) ≈ 32.842807431765024
+  @test B - A ≈ TensorValue(3.1, 3.2, 3.3, 3.4, 3.5, 3.6, -5.3, -5.2, -5.1)
+  @test -A == TensorValue(-1.0, -2.0, -3.0, -4.0, -5.0, -6.0, -7.0, -8.0, -9.0)
+  C = TensorValue{2,3}(1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+  @test C + C == TensorValue{2,3}(2.0, 4.0, 6.0, 8.0, 10.0, 12.0)
+  @test TensorValue{2,2}(1, 2, 3, 4) + TensorValue{2,2}(0.5, 0.5, 0.5, 0.5) isa TensorValue{2,2,Float64}
+  E = TensorValue{0,3,Float64}(())  # empty tensor, built by Gridap for vertex grids
+  @test E + E == E
+  @test E - E == E
+  @test -E == E
 end
 
 
