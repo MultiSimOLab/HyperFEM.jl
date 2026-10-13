@@ -48,9 +48,11 @@ a `Number`/`VectorValue`, a function of the coordinates `x -> value`, or a `Cell
 """
 abstract type Prescription end
 
-_to_value(v::Number) = v
-_to_value(v::AbstractVector{<:Real}) = VectorValue(v...)
-_to_value(f) = f  # Any callable accepting the coordinates `x`
+_to_number(v::Number) = v
+_to_number(v::AbstractVector{<:Real}) = VectorValue(v...)
+
+_to_space(v::Union{Number,AbstractVector{<:Real}}) = _to_number(v)
+_to_space(f) = x -> _to_number(f(x))  # Any callable accepting the coordinates `x`
 
 """
     Separable(space, load=nothing)
@@ -62,7 +64,7 @@ See [`Prescription`](@ref).
 struct Separable{S,L} <: Prescription
     space::S
     load::L
-    Separable(space, load=nothing) = (s = _to_value(space); new{typeof(s),typeof(load)}(s, load))
+    Separable(space, load=nothing) = (s = _to_space(space); new{typeof(s),typeof(load)}(s, load))
 end
 
 _at_load(::Nothing, Λ) = 1.0
@@ -70,7 +72,7 @@ _at_load(f, Λ) = f(Λ)
 
 (p::Separable{<:Number})(Λ) = p.space * _at_load(p.load, Λ)
 
-(p::Separable)(Λ) = x -> _to_value(p.space(x)) * _at_load(p.load, Λ)
+(p::Separable)(Λ) = x -> p.space(x) * _at_load(p.load, Λ)
 
 """
     NonSeparable(f)
@@ -82,7 +84,7 @@ struct NonSeparable{F} <: Prescription
     f::F
 end
 
-(p::NonSeparable)(Λ) = x -> _to_value(p.f(x, Λ))
+(p::NonSeparable)(Λ) = x -> _to_number(p.f(x, Λ))
 
 """
     Parametric(g)
@@ -106,7 +108,11 @@ central_difference(f, Λ; h=1e-6) = (f(Λ + h) - f(Λ - h)) / (2h)
 # Derivative of a prescription with respect to Λ, using the backend `d(f, Λ)`.
 function _derivative(p::Separable, Λ, d)
     dg = d(λ -> _at_load(p.load, λ), Λ)
-    p.space isa Number ? p.space * dg : x -> _to_value(p.space(x)) * dg
+    if p.space isa Number
+        p.space * dg
+    else
+        x -> p.space(x) * dg
+    end
 end
 
 function _derivative(p::NonSeparable, Λ, d)
@@ -117,7 +123,7 @@ function _derivative(p::Parametric, Λ, d)
     if p(Λ) isa Function
         x -> d(λ -> p(λ)(x), Λ)
     else
-        d(p.g, Λ)
+        d(p.g, Λ)  # Number and CellField support subtraction
     end
 end
 
@@ -184,6 +190,11 @@ Base.isempty(bc::BoundaryConditions) = isempty(bc.conditions)
 Base.iterate(bc::BoundaryConditions, args...) = iterate(bc.conditions, args...)
 Base.getindex(bc::BoundaryConditions, i) = bc.conditions[i]
 
+"""
+    get_tags(bc::BoundaryConditions)
+
+Get the strings identifying the regions where each boundary condition is applied.
+"""
 get_tags(bc::BoundaryConditions) = String[get_tags(c) for c in bc.conditions]
 
 """
@@ -200,6 +211,13 @@ function get_masks(bc::BoundaryConditions)
     [isnothing(m) ? fill(true, ncomp) : collect(m) for m in masks]
 end
 
+"""
+    get_space_functions(bc::BoundaryConditions, Λ::Real)
+
+Values prescribed at `Λ`, one per condition, in the format accepted by Gridap:
+a constant (`Real` or `VectorValue`, both `Number`s), a function of the
+coordinates `x -> value`, or a Gridap object such as a `CellField` or an `Interpolable`.
+"""
 get_space_functions(bc::BoundaryConditions, Λ::Real) = map(c -> get_space_functions(c, Λ), bc.conditions)
 
 """
