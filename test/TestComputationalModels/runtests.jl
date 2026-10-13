@@ -5,6 +5,10 @@ using Test
 @testset "ComputationalModels" begin
 
   @time begin
+    include("PostProcessorsTests.jl")
+  end
+
+  @time begin
     include("BoundaryConditionsTests.jl")
   end
 
