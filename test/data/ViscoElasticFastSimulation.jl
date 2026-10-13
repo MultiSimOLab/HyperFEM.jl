@@ -80,7 +80,9 @@ function visco_elastic_fast_simulation(;t_end=15, writevtk=true, verbose=true)
   σΓ = Float64[]
 
   function driverpost(post)
-    σh11, _... = Piola(cons_model, Kinematics(Mechano,Solid),uh, unh, state_vars, Ω, dΩ, 0.0)
+    _, ∂Ψu, _ = cons_model()
+    Ph = interpolate_L2_field(∂Ψu ∘ (F∘∇(uh)', F∘∇(unh)', state_vars...), dΩ)
+    σh11 = VectorValue(1.0, 0.0, 0.0) ⋅ Ph ⋅ VectorValue(1.0, 0.0, 0.0)
     σΓ1 = sum(∫(σh11)dΓ1) / sum(∫(1.0)dΓ1)
     push!(σΓ, σΓ1)
     push!(λx, 1.0 + component_LInf(uh, :x, Ω) / long)

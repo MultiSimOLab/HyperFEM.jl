@@ -10,6 +10,8 @@ using Test
 
   include("TestWeakForms/runtests.jl")
 
+  include("TestComputationalModels/runtests.jl")
+
   include("SimulationsTests/runtests.jl")
 
 end;
