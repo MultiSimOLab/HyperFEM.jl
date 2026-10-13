@@ -49,8 +49,8 @@ H = TensorValue(1.:81...)
 
 SUITE["Tensor algebra"]["δδ_μ_2d"] = @benchmarkable δᵢₖδⱼₗ2D + δᵢₗδⱼₖ2D
 SUITE["Tensor algebra"]["δδ_λ_2d"] = @benchmarkable 1.0 * δᵢⱼδₖₗ2D
-SUITE["Tensor algebra"]["Cofactor"] = @benchmarkable cof(A)
-SUITE["Tensor algebra"]["Det(A)Inv(A')"] = @benchmarkable det(A)*inv(A')
-SUITE["Tensor algebra"]["×ᵢ⁴"] = @benchmarkable ×ᵢ⁴(A)
-SUITE["Tensor algebra"]["IIsym"] = @benchmarkable IIsym(A)
-SUITE["Tensor algebra"]["push_forward_C_to_F"] = @benchmarkable push_forward_C_to_F(F,H)
+SUITE["Tensor algebra"]["Cofactor"] = @benchmarkable cof($A)
+SUITE["Tensor algebra"]["Det(A)Inv(A')"] = @benchmarkable det($A)*inv($A')
+SUITE["Tensor algebra"]["×ᵢ⁴"] = @benchmarkable ×ᵢ⁴($A)
+SUITE["Tensor algebra"]["IIsym"] = @benchmarkable IIsym($A)
+SUITE["Tensor algebra"]["push_forward_C_to_F"] = @benchmarkable push_forward_C_to_F($F,$H)
