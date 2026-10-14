@@ -106,4 +106,11 @@ using ForwardDiff
   TrialFESpace!(Uc, legacy_coupled, 1.0)
   @test get_dirichlet_dof_values(Uc) ≈ exact
 
+  # Multi-field conditions: one per field, NothingBC leaves the field unconstrained
+  mbc = MultiFieldBC(bc, NothingBC())
+  Vm = MultiFieldFESpace([V, V0])
+  Um = TrialFESpace(Vm, mbc, 0.5)
+  @test get_dirichlet_dof_values(Um[1]) ≈ dirichlet_values(bc, 0.5)
+  @test Um[2] === V0
+
 end
