@@ -8,4 +8,8 @@ using Test
     include("PostProcessorsTests.jl")
   end
 
+  @time begin
+    include("BoundaryConditionsTests.jl")
+  end
+
 end

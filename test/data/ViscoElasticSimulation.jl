@@ -51,7 +51,7 @@ function visco_elastic_simulation(;t_end=15, writevtk=true, verbose=true)
   Ω = Triangulation(model)
   dΩ = Measure(Ω, degree)
   dΓ = get_Neumann_dΓ(model, NothingBC(), degree)
-  Γ1  = BoundaryTriangulation(model, tags=D_bc.tags[4])
+  Γ1  = BoundaryTriangulation(model, tags=get_tags(D_bc)[4])
   dΓ1 = Measure(Γ1, degree)
   Δt = 0.05
   update_time_step!(cons_model, Δt)
