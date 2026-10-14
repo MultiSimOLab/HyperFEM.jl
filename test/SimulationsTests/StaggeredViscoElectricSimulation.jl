@@ -6,12 +6,12 @@ using GridapSolvers.NonlinearSolvers
 using Gridap.FESpaces
 
 
-function staggered_visco_electric_simulation(; t_end=2, writevtk=true, verbose=true)
+function staggered_visco_electric_simulation(; t_end=0.5, writevtk=false, verbose=false)
 
   pname = stem(@__FILE__)
   folder = projdir("data", "sims", pname)
   outpath = joinpath(folder, pname)
-  setupfolder(folder; remove=".vtu")
+  writevtk && setupfolder(folder; remove=".vtu")
 
   long  = 0.050  # m
   width = 0.005  # m
@@ -136,6 +136,8 @@ function staggered_visco_electric_simulation(; t_end=2, writevtk=true, verbose=t
   (t, uz)
 end
 
-# t, uz = staggered_visco_electric_simulation(; t_end=2, writevtk=true, verbose=true)
-# using Plots
-# p = plot(t, uz)
+if abspath(PROGRAM_FILE) == @__FILE__
+  using Plots
+  t, uz = staggered_visco_electric_simulation(t_end=2, writevtk=true, verbose=true)
+  plot(t, uz)
+end

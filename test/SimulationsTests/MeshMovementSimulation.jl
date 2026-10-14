@@ -1,7 +1,9 @@
 using Gridap
 using Gridap.FESpaces
+using HyperFEM
 
-@testset "Mesh movement stabilization" begin
+
+function mesh_movement_simulation(; verbose=false)
 
   meshfile = "test_BC2.msh"
   geomodel = GmshDiscreteModel(projdir("test/models/" * meshfile))
@@ -84,7 +86,7 @@ using Gridap.FESpaces
 
   α = CellState(1.0, dΩair)
   linesearch = Injectivity_Preserving_LS(α, Uu, Vu; maxiter=50, αmin=1e-16, ρ=0.5, c=0.95)
-  nls_vacmech = Newton_RaphsonSolver(LUSolver(); maxiter=10, rtol=2, verbose=false, linesearch=linesearch)
+  nls_vacmech = Newton_RaphsonSolver(LUSolver(); maxiter=10, rtol=2, verbose=verbose, linesearch=linesearch)
 
   xh = FEFunction(Uu, zero_free_values(Uu))
   comp_model_vacmech = StaticNonlinearModel(res_vacmech, jac_vacmech, Uu, Vu, Du_air; nls=nls_vacmech, xh=xh)
@@ -99,7 +101,10 @@ using Gridap.FESpaces
     interpolate_everywhere!(x -> Mapping(x, Δβ * (t)), get_free_dof_values(uh⁻), uh⁻.dirichlet_values, Vu_⁻)
     solve!(comp_model_vacmech; args_vacmech...)
   end
- @test isapprox( norm(xh.free_values) ,   2.8132015601158087,rtol=1e-14)
+  return get_free_dof_values(xh)
+end
 
 
+if abspath(PROGRAM_FILE) == @__FILE__
+  mesh_movement_simulation(verbose=true)
 end

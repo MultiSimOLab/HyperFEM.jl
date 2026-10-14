@@ -6,11 +6,11 @@ using Gridap.FESpaces
 using HyperFEM
 
 
-function static_mechanical_neumann_simulation(;writevtk=true, verbose=true)
+function static_mechanical_neumann_simulation(; writevtk=false, verbose=false)
 
   pname = "StaticMechanical"
   simdir = projdir("data", "sims", pname)
-  setupfolder(simdir)
+  writevtk && setupfolder(simdir)
 
   long   = 0.05   # m
   width  = 0.005  # m
@@ -84,6 +84,6 @@ end
 
 if abspath(PROGRAM_FILE) == @__FILE__
   reset_timer!()
-  static_mechanical_neumann_simulation()
+  static_mechanical_neumann_simulation(writevtk=true, verbose=true)
   print_timer()
 end

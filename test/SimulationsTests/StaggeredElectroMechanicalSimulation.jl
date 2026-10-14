@@ -3,13 +3,13 @@ using HyperFEM
 using HyperFEM: jacobian
 
 
-function staggered_electro_mechanical_simulation(; is_vtk=true, verbose=true)
+function staggered_electro_mechanical_simulation(; writevtk=false, verbose=false)
   
   # Problem name
   pname = stem(@__FILE__)
   folder = projdir("data", "sims", pname)
   outpath = joinpath(folder, pname)
-  setupfolder(folder)
+  writevtk && setupfolder(folder)
   
   # Geometry and discrete model
   domain = (0.0, 0.1, 0.0, 0.01, 0.0, 0.002)
@@ -91,7 +91,7 @@ function staggered_electro_mechanical_simulation(; is_vtk=true, verbose=true)
 
   x = solve!(comp_model; stepping=(nsteps=5, nsubsteps=1, maxbisec=1), kargsolve=args, verbose=verbose)
 
-  if is_vtk
+  if writevtk
     writevtk(Ω, outpath, cellfields=["φh" => φh⁺, "uh" => uh⁺])
   end
 
@@ -99,4 +99,6 @@ function staggered_electro_mechanical_simulation(; is_vtk=true, verbose=true)
 end
 
 
-# staggered_electro_mechanical_simulation()
+if abspath(PROGRAM_FILE) == @__FILE__
+  staggered_electro_mechanical_simulation(writevtk=true, verbose=true)
+end

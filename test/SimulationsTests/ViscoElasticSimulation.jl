@@ -6,7 +6,10 @@ using HyperFEM
 using HyperFEM.DiscreteModeling.EvolutionFunctions
 using HyperFEM.ComputationalModels.PostMetrics
 
-function visco_elastic_simulation(;t_end=15, writevtk=true, verbose=true)
+function visco_elastic_simulation(; t_end=2, writevtk=false, verbose=false)
+  simdir = projdir("data", "sims", stem(@__FILE__))
+  writevtk && setupfolder(simdir)
+
   # Domain and tessellation
   long   = 0.05   # m
   width  = 0.005  # m
@@ -89,7 +92,7 @@ function visco_elastic_simulation(;t_end=15, writevtk=true, verbose=true)
     update_state!(cons_model, state_vars, F∘(∇(uh)'), F∘(∇(unh)'))
   end
 
-  post_model = PostProcessor(comp_model, driverpost; is_vtk=writevtk, filepath=nosuffix(@__FILE__))
+  post_model = PostProcessor(comp_model, driverpost; is_vtk=writevtk, filepath=simdir)
   solve!(comp_model; stepping=(nsteps=Int(t_end/Δt), maxbisec=1), post=post_model, ProjectDirichlet=true)
   (λx, σΓ)
 end
@@ -97,6 +100,6 @@ end
 
 if abspath(PROGRAM_FILE) == @__FILE__
   using Plots
-  @time  λx, σΓ = visco_elastic_simulation()
+  @time λx, σΓ = visco_elastic_simulation(t_end=15, writevtk=true, verbose=true)
   plot(λx, σΓ)
 end
