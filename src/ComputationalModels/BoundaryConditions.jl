@@ -78,7 +78,7 @@ _at_load(f, Λ) = f(Λ)
     NonSeparable(f)
 
 Prescribed value `f(x, Λ)`, for prescriptions such as a rigid rotation.
-See ['Prescription'](@ref)
+See [`Prescription`](@ref)
 """
 struct NonSeparable{F} <: Prescription
     f::F
