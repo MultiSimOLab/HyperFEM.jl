@@ -68,7 +68,7 @@ function Stokes(; writevtk=true, verbose=true)
     end
   end
 
-  post_model = PostProcessor(compmodel, driverpost; is_vtk=true, filepath=simdir)
+  post_model = PostProcessor(compmodel, driverpost; is_vtk=writevtk, filepath=simdir)
 
   @timeit pname begin
     solve!(compmodel; Assembly=false, post=post_model)
