@@ -43,6 +43,7 @@ function solve!(m::StaggeredModel;
     stepping=(nsteps=20, nsubsteps=1, maxbisec=15),
     presolver=(τ, ∆τ) -> nothing,
     evolτ=t-> max(min(t, 1.0), 0.0),
+    verbose=true,
     kargsolve)
 
     nsubsteps = stepping[:nsubsteps]
@@ -55,9 +56,11 @@ function solve!(m::StaggeredModel;
     flagconv = 1 # convergence flag 0 (max bisections) 1 (max steps)
     ∆τ = 1.0 / nsteps
     for τ in 0:nsteps-1
-        println("*******************************************")
-        println("           Staggered Step: $τ              ")
-        println("*******************************************")
+        if verbose
+            println("*******************************************")
+            println("           Staggered Step: $τ              ")
+            println("*******************************************")
+        end
         presolver(τ, ∆τ)
         τ⁻=evolτ(τ*∆τ)
         τ⁺=evolτ((τ+1)*∆τ)

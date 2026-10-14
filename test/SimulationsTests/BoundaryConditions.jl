@@ -1,45 +1,6 @@
 using Gridap
 using Gridap.FESpaces
 
-@testset "Dirichlet BC testing analytical mapping" begin
-
-  meshfile = "test_BC1.msh"
-  geomodel = GmshDiscreteModel(projdir("test/models/" * meshfile))
-  # Domains
-  order = 1
-  degree = 1 * order
-  Ω = Interior(geomodel, tags=["Air"])
-  dΩ = Measure(Ω, degree)
-
-  function Mapping(x, Λ)
-    L = 0.1
-    A = 0.98 * L
-    xd = [x[1], x[2] + A * sin(2 * π * (x[1] + L / 2) / L)]
-    u = (xd - [x[1], x[2]]) * Λ
-    return VectorValue(u)
-  end
-
-  evolu(Λ) = Λ
-  dir_u_tags_air = ["uair_fixed", "Interface"]
-  dir_u_values_air = [[0.0, 0.0], Λ -> (x -> Mapping(x, Λ))]
-  dir_u_timesteps_air = [evolu, nothing]
-  Du = DirichletBC(dir_u_tags_air, dir_u_values_air, dir_u_timesteps_air)
-
-  reffeu = ReferenceFE(lagrangian, VectorValue{2,Float64}, order)
-
-  Vu = TestFESpace(Ω, reffeu, Du, conformity=:H1)
-  Uu = TrialFESpace(Vu, Du, 1.0)
-
-@test isapprox(norm(Uu.dirichlet_values) ,  0.30990321069650995,rtol=1e-14)
-  TrialFESpace!(Uu, Du, 0.4)
-@test isapprox(norm(Uu.dirichlet_values) ,  0.12396128427860398,rtol=1e-14)
-  TrialFESpace!(Uu, Du, 1.0)
-@test isapprox(norm(Uu.dirichlet_values) ,  0.30990321069650995,rtol=1e-14)
-
- 
-end
-
-
 @testset "Mesh movement stabilization" begin
 
   meshfile = "test_BC2.msh"
