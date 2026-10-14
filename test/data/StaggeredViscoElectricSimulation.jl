@@ -1,7 +1,7 @@
 using HyperFEM
 using HyperFEM: jacobian, solve!
 using HyperFEM.ComputationalModels.PostMetrics
-using Gridap, GridapGmsh, GridapSolvers
+using Gridap, GridapSolvers
 using GridapSolvers.NonlinearSolvers
 using Gridap.FESpaces
 
@@ -101,7 +101,8 @@ function staggered_visco_electric_simulation(; t_end=2, writevtk=true, verbose=t
     push!(uz, component_LInf(uh⁺, :z, Ω))
   end
 
-  t = 0:Δt:t_end-Δt
+  nsteps = round(Int, t_end / Δt)
+  t = Δt * (1:nsteps)
   uz = Float64[]
 
   pvdstrategy = writevtk ? createpvd : mockpvd
@@ -109,11 +110,7 @@ function staggered_visco_electric_simulation(; t_end=2, writevtk=true, verbose=t
     u⁻ = get_free_dof_values(uh⁻)
     φ⁻ = get_free_dof_values(φh⁻)
 
-    step = 0
-    time = 0
-    while time < t_end
-      step += 1
-      time += Δt
+    for (step, time) in enumerate(t)
       verbose && println("Step: $step, time: $time")
 
       TrialFESpace!(Uφ, dirichlet_φ, time)

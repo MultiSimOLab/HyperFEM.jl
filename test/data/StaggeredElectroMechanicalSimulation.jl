@@ -89,7 +89,7 @@ function staggered_electro_mechanical_simulation(; is_vtk=true, verbose=true)
   args_mec  = Dict(:stepping => (nsteps=5, maxbisec=1))
   args=(args_elec,args_mec)
 
-  x = solve!(comp_model; stepping=(nsteps=5, nsubsteps=1, maxbisec=1), kargsolve=args)
+  x = solve!(comp_model; stepping=(nsteps=5, nsubsteps=1, maxbisec=1), kargsolve=args, verbose=verbose)
 
   if is_vtk
     writevtk(Ω, outpath, cellfields=["φh" => φh⁺, "uh" => uh⁺])
