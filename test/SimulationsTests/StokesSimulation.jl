@@ -5,11 +5,11 @@ using Gridap.FESpaces
 using HyperFEM
  
 
-function Stokes(; writevtk=true, verbose=true)
+function stokes_simulation(; writevtk=false, verbose=false)
 
   pname = "Stokes"
   simdir = projdir("data", "sims", pname)
-  setupfolder(simdir)
+  writevtk && setupfolder(simdir)
 
   geomodel = GmshDiscreteModel(projdir() * "/test/models/test_stokes.msh")
 
@@ -79,6 +79,6 @@ end
 
 if abspath(PROGRAM_FILE) == @__FILE__
   reset_timer!()
-  Stokes()
+  stokes_simulation(writevtk=true, verbose=true)
   print_timer()
 end

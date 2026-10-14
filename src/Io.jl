@@ -47,7 +47,7 @@ Return the path to the specified folders relative to the HyperFEM path.
 
 # Examples
     folder = projdir("data", "sims")
-    folder = projdir("test/data/mesh.msh")
+    folder = projdir("test/models/mesh.msh")
 """
 function projdir(folders::String...)
   base_folder = dirname(dirname(pathof(HyperFEM)))
