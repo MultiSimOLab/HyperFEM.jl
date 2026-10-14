@@ -4,13 +4,13 @@ using Test
 
 @testset "HyperFEMTests" verbose = true begin
 
-  include("TestConstitutiveModels/runtests.jl")
+  include("ConstitutiveModelsTests/runtests.jl")
 
-  include("TestTensorAlgebra/runtests.jl")
+  include("TensorAlgebraTests/runtests.jl")
 
-  include("TestWeakForms/runtests.jl")
+  include("WeakFormsTests/runtests.jl")
 
-  include("TestComputationalModels/runtests.jl")
+  include("ComputationalModelsTests/runtests.jl")
 
   include("SimulationsTests/runtests.jl")
 
