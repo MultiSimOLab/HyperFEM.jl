@@ -12,6 +12,8 @@ using Test
 
     include("StaggeredElectroMechanicalTest.jl")
 
+    include("StaggeredViscoElectricTest.jl")
+
     include("Stokes.jl")
 
     include("BoundaryConditions.jl")
