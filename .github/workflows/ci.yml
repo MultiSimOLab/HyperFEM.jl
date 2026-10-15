@@ -52,6 +52,7 @@ jobs:
         shell: julia --color=yes --project=. {0}
         run: |
           using Pkg, TOML
+          Pkg.Registry.add("General") # not installed yet on a fresh runner (no-op if cached)
           spec = TOML.parsefile("Project.toml")["compat"]["Gridap"]
           lowest = minimum(VersionNumber(lstrip(strip(v), ['^', '~'])) for v in split(spec, ','))
           println("Gridap compat \"$spec\" -> pinning to =$lowest")
