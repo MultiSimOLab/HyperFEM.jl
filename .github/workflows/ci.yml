@@ -35,3 +35,27 @@ jobs:
       - uses: julia-actions/cache@v3
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
+
+  lowest-gridap: # downgrade compatibility: the lowest Gridap allowed by [compat] must still work
+    name: Lowest Gridap
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: 'lts'
+          arch: x64
+      - uses: julia-actions/cache@v3
+      - name: Pin Gridap to the lowest version allowed by Project.toml
+        shell: julia --color=yes --project=. {0}
+        run: |
+          using Pkg, TOML
+          spec = TOML.parsefile("Project.toml")["compat"]["Gridap"]
+          lowest = minimum(VersionNumber(lstrip(strip(v), ['^', '~'])) for v in split(spec, ','))
+          println("Gridap compat \"$spec\" -> pinning to =$lowest")
+          Pkg.compat("Gridap", "=$lowest")
+          Pkg.resolve() # fail here if the lower bound is not installable
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
