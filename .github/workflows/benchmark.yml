@@ -19,4 +19,4 @@ jobs:
     steps:
       - uses: MilesCranmer/AirspeedVelocity.jl@action-v1
         with:
-          julia-version: '1'
+          julia-version: '1.13.1'  # setup fails on 1.13.2 ("Unknown package: Parsers"); go back to '1' once fixed
