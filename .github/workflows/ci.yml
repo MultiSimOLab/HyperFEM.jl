@@ -55,7 +55,8 @@ jobs:
           using Pkg, TOML
           Pkg.Registry.add("General") # not installed yet on a fresh runner (no-op if cached)
           spec = TOML.parsefile("Project.toml")["compat"]["Gridap"]
-          lowest = minimum(VersionNumber(lstrip(strip(v), ['^', '~'])) for v in split(spec, ','))
+          ranges = Pkg.Versions.semver_spec(spec).ranges
+          lowest = minimum(VersionNumber(r.lower.t...) for r in ranges)
           println("Gridap compat \"$spec\" -> pinning to =$lowest")
           Pkg.compat("Gridap", "=$lowest")
           Pkg.resolve() # fail here if the lower bound is not installable
