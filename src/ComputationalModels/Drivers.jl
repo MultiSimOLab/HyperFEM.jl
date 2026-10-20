@@ -83,6 +83,19 @@ end
 #    					 StaticNonlinearModel
 #*******************************************************************************	
 
+"""
+    build_operator(backend, res, jac, U, V, assem, previous)
+
+Algebraic operator used by the drivers. `Val(:gridap)` (default) builds Gridap's `FEOperator`;
+`Val(:kernel)` is provided by the HyperFEMKernels extension (`using HyperFEMKernels`).
+`previous` is the operator of the previous load step (or `nothing`), so that a backend can reuse
+its structure.
+"""
+build_operator(::Val{:gridap}, res, jac, U, V, assem, previous) =
+    get_algebraic_operator(FEOperator(res, jac, U, V, assem))
+build_operator(::Val{B}, res, jac, U, V, assem, previous) where {B} =
+    error("HyperFEM: backend :$B is not available; for :kernel load HyperFEMKernels (`using HyperFEMKernels`)")
+
 struct StaticNonlinearModel{A,B,C,D,E} <: ComputationalModel
     res::A
     jac::B
@@ -95,7 +108,8 @@ struct StaticNonlinearModel{A,B,C,D,E} <: ComputationalModel
         assem_U=SparseMatrixAssembler(U, V),
         nls::NonlinearSolver=NewtonSolver(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
         xh::FEFunction=FEFunction(U, zero_free_values(U)),
-        xh⁻::FEFunction=FEFunction(U, zero_free_values(U)))
+        xh⁻::FEFunction=FEFunction(U, zero_free_values(U)),
+        backend::Symbol=:gridap)
 
         ∆U = TrialFESpace(U, dirbc, 0.0)
         TrialFESpace!(U, dirbc, 0.0)
@@ -106,9 +120,9 @@ struct StaticNonlinearModel{A,B,C,D,E} <: ComputationalModel
         # x⁻ = zero_free_values(U)
         _res = res(1.0)
         _jac = jac(1.0)
-        op = get_algebraic_operator(FEOperator(_res, _jac, U, V, assem_U))
+        op = build_operator(Val(backend), _res, _jac, U, V, assem_U, nothing)
         nls_cache = instantiate_caches(x, nls, op)
-        caches = (nls, nls_cache, x, x⁻, assem_U)
+        caches = (nls, nls_cache, x, x⁻, assem_U, Val(backend), Ref{Any}(op))
 
         A, B, C = typeof(res), typeof(jac), typeof(spaces)
         D, E = typeof(dirbc), typeof(caches)
@@ -135,7 +149,7 @@ function solve!(m::StaticNonlinearModel;
     flagconv = 1 # convergence flag 0 (max bisections) 1 (max steps)
     U, V, ∆U, Un = m.spaces
     TrialFESpace!(U, m.dirichlet, 0.0)
-    nls, nls_cache, x, x⁻, assem_U = m.caches
+    nls, nls_cache, x, x⁻, assem_U = m.caches[1:5]
 
     Λ = 0.0
     ∆Λ = 1.0 / stepping[:nsteps]
@@ -168,7 +182,8 @@ function solve!(m::StaticNonlinearModel;
 
         res = m.res(Λ)
         jac = m.jac(Λ)
-        op = get_algebraic_operator(FEOperator(res, jac, U, V, assem_U))
+        op = build_operator(m.caches[6], res, jac, U, V, assem_U, m.caches[7][])
+        m.caches[7][] = op
         Algebra.solve!(x, nls, op, nls_cache)
         r_abs = nls.log.residuals[nls.log.num_iters+1]
         r_rel = r_abs / nls.log.residuals[1]
