@@ -362,7 +362,7 @@ function ∂Ce_∂C(::ViscousIncompressible, γα, ∂Se∂Ce_, invUvn, Ce, Ce_t
   K[10, 1:9] = get_array(K21)[:]  # There is no need to transpose the vector
   F = [get_array(F1); (get_array(F2)[:])']
   ∂u∂C = K \ F
-  ∂Ce∂C = ∂u∂C[1:9, 1:9]
+  ∂Ce∂C = ∂u∂C[SOneTo(9), SOneTo(9)]  # Static slice (SMatrix), not a Matrix
   return TensorValue(∂Ce∂C)
 end
 
