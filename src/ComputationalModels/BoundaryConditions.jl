@@ -274,20 +274,13 @@ Base.getindex(bc::MultiFieldBoundaryConditions, i) = bc.fields[i]
 #    					 Legacy constructors
 #*******************************************************************************
 
-"Load function of a legacy condition, replaceable in place by `updateBC!`."
-mutable struct LegacyLoad
-    f::Any
-end
-
-(l::LegacyLoad)(Λ) = l.f(Λ)
-
 _legacy_condition(tag, value, timestep) = BoundaryCondition(tag, _legacy_prescription(value, timestep))
 
 # `timestep === nothing` means `value` is a generator `Λ -> object`. Couplings ignore `timestep`.
 function _legacy_prescription(value, timestep)
     value === DirichletCoupling && return Parametric(LegacyCoupling(nothing))
     isnothing(timestep) && return Parametric(value)
-    Separable(value, LegacyLoad(timestep))
+    Separable(value, timestep)
 end
 
 function _legacy_conditions(tags::Vector{String}, values, timesteps)
@@ -307,23 +300,6 @@ DirichletBC(tags::Vector{String}, values) = _legacy_conditions(tags, values, [Λ
 "Legacy constructor, returning `BoundaryConditions`. See `DirichletBC`."
 NeumannBC(tags::Vector{String}, values, timesteps) = _legacy_conditions(tags, values, timesteps)
 
-"""
-    updateBC!(bc, values, timesteps)
-
-Legacy interface: replace the load function of each condition built by `DirichletBC` or `NeumannBC`
-with `timesteps[i]`. `values` is only checked for its length. (`StaggeredModel` no longer uses it:
-it composes with the loads through `set_load_map!`.)
-"""
-function updateBC!(bc::BoundaryConditions, values, timesteps)
-    @assert length(bc) == length(values) == length(timesteps)
-    for (c, timestep) in zip(bc.conditions, timesteps)
-        c.value isa Separable{<:Any,LegacyLoad} && (c.value.load.f = timestep)
-    end
-    bc
-end
-
-# Legacy field access by `StaggeredModel`: `bc.caches` is only used for its length.
-Base.getproperty(bc::BoundaryConditions, s::Symbol) = s === :caches ? getfield(bc, :conditions) : getfield(bc, s)
 
 
 #*******************************************************************************
@@ -374,7 +350,8 @@ end
 """
 Placeholder of a legacy `DirichletCoupling`, filled in place by `InterpolableBC!` with a generator
 `Λ -> field` (an `FEFunction`, `CellField` or `Interpolable`). Until then it yields `nothing` and the
-Dirichlet values of its tag are left untouched.
+Dirichlet values of its tag are left untouched. Deprecated: prescribe the field directly,
+`BoundaryCondition(tag, Parametric(Λ -> field))`.
 """
 mutable struct LegacyCoupling
     Interpolable::Any
@@ -385,16 +362,14 @@ end
 """
     InterpolableBC!(U, bc, interface_tag, Interpolable)
 
-Legacy interface: set the generator `Λ -> field` of the `DirichletCoupling` declared on `interface_tag`
-in `bc`. Returns the prescription. The values of `U` are updated at the next `TrialFESpace!`.
+Deprecated: set the generator `Λ -> field` of the `DirichletCoupling` declared on `interface_tag` in
+`bc`. Prescribe the field directly instead: `BoundaryCondition(interface_tag, Parametric(Λ -> field))`.
 """
 function InterpolableBC!(U::TrialFESpace, bc::BoundaryConditions, interface_tags::String, Interpolable)
+    Base.depwarn("`DirichletCoupling` + `InterpolableBC!` are deprecated: prescribe the field directly with " *
+                 "`BoundaryCondition(\"$interface_tags\", Parametric(Λ -> field))`", :InterpolableBC!)
     coupling = bc[findfirst(==(interface_tags), get_tags(bc))].value
     @assert coupling isa Parametric{LegacyCoupling} "Tag $interface_tags was not declared as a DirichletCoupling"
     coupling.g.Interpolable = Interpolable
     return coupling
 end
-
-"Legacy name of `InterpolableBC!` (kept for `InterpolableBC(U, bc, tag, Interpolable)` call sites)."
-InterpolableBC(U::TrialFESpace, bc::BoundaryConditions, interface_tags::String, Interpolable) =
-    InterpolableBC!(U, bc, interface_tags, Interpolable)

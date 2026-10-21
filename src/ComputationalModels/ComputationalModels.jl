@@ -50,9 +50,7 @@ export MultiFieldBC
 export SingleFieldTC
 export MultiFieldTC
 export residual_Neumann
-export updateBC!
 export DirichletCoupling
-export InterpolableBC
 export InterpolableBC!
 export add_tag_from_vertex_filter!
 

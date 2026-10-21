@@ -83,10 +83,12 @@ using ForwardDiff
   dΓ = get_Neumann_dΓ(model, neumann, 2)
   @test sum(assemble_vector(v -> residual_Neumann(neumann, v, dΓ, 0.5), V0)) ≈ -1.0
 
-  # Legacy updateBC! replaces the load functions of conditions built by DirichletBC
+  # Legacy constructor: Separable prescriptions with the given loads (a load map composes with them)
   legacy = DirichletBC(["bottom", "top"], [[0.0, 0.0], [1.0, 0.0]], [Λ -> 1.0, Λ -> Λ])
-  updateBC!(legacy, legacy.caches, [Λ -> 3Λ for _ in legacy.caches])
+  @test get_space_functions(legacy, 0.5)[2] ≈ VectorValue(0.5, 0.0)
+  set_load_map!(legacy, Λ -> 3Λ)
   @test get_space_functions(legacy, 0.5)[2] ≈ VectorValue(1.5, 0.0)
+  set_load_map!(legacy, identity)
 
   # Couplings: a Gridap Interpolable from a non-matching mesh is a space function
   f(x) = VectorValue(x[1]^2, x[1] * x[2])

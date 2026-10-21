@@ -158,7 +158,6 @@ end
 @publish ComputationalModels  solve!
 @publish ComputationalModels  dirichlet_preconditioning!
 @publish ComputationalModels  GmshDiscreteModel
-@publish ComputationalModels  updateBC!
 @publish ComputationalModels update_velocity!
 @publish ComputationalModels update_displacements!
 @publish ComputationalModels  PostProcessor
@@ -177,7 +176,6 @@ end
 @publish ComputationalModels  interpolate_L2_scalar
 @publish ComputationalModels  DirichletCoupling
 @publish ComputationalModels  evaluate!
-@publish ComputationalModels  InterpolableBC
 @publish ComputationalModels  InterpolableBC!
 @publish ComputationalModels  TrialFESpace! # Exporting internal function of Gridap
 @publish ComputationalModels interpolate_L2_field
