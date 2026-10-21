@@ -55,27 +55,31 @@ function solve!(m::StaggeredModel;
 
     flagconv = 1 # convergence flag 0 (max bisections) 1 (max steps)
     ∆τ = 1.0 / nsteps
-    for τ in 0:nsteps-1
-        if verbose
-            println("*******************************************")
-            println("           Staggered Step: $τ              ")
-            println("*******************************************")
+    try
+        for τ in 0:nsteps-1
+            if verbose
+                println("*******************************************")
+                println("           Staggered Step: $τ              ")
+                println("*******************************************")
+            end
+            presolver(τ, ∆τ)
+            τ⁻=evolτ(τ*∆τ)
+            τ⁺=evolτ((τ+1)*∆τ)
+            stevol(Λ) = τ⁻+ (τ⁺-τ⁻)*Λ
+            # the inner solves run their load parameter Λ in [0, 1]: the prescriptions see stevol(Λ) (composed with
+            # their own loads, not replacing them as the former updateBC! did)
+            map(x -> set_load_map!(x.dirichlet, stevol), m.compmodels)
+            for τ_inner in 1:nsubsteps
+                map((x) -> TrialFESpace!(x.spaces[1], x.dirichlet, 1.0), m.compmodels)
+                _, flagconv = map((x, y) -> solve!(x; y...), m.compmodels, kargsolve)
+                map((x, y) -> TrialFESpace!(x.fe_space, y.dirichlet, 1.0), m.state⁻, m.compmodels)
+                map((x, y) -> x .= y, x⁻, x⁺)
+            end
         end
-        presolver(τ, ∆τ)
-        τ⁻=evolτ(τ*∆τ)
-        τ⁺=evolτ((τ+1)*∆τ)
-        stevol(Λ) = τ⁻+ (τ⁺-τ⁻)*Λ
-        # the inner solves run their load parameter Λ in [0, 1]: the prescriptions see stevol(Λ) (composed with
-        # their own loads, not replacing them as the former updateBC! did)
-        map(x -> set_load_map!(x.dirichlet, stevol), m.compmodels)
-        for τ_inner in 1:nsubsteps
-            map((x) -> TrialFESpace!(x.spaces[1], x.dirichlet, 1.0), m.compmodels)
-            _, flagconv = map((x, y) -> solve!(x; y...), m.compmodels, kargsolve)
-            map((x, y) -> TrialFESpace!(x.fe_space, y.dirichlet, 1.0), m.state⁻, m.compmodels)
-            map((x, y) -> x .= y, x⁻, x⁺)
-        end
+    finally
+        # also when an inner solve throws: the conditions must not keep the ramp of the last step
+        map(x -> set_load_map!(x.dirichlet, identity), m.compmodels)
     end
-    map(x -> set_load_map!(x.dirichlet, identity), m.compmodels)
 
     return x⁺, flagconv
 

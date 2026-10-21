@@ -1,6 +1,7 @@
 using Gridap
 using Gridap.FESpaces
 using ForwardDiff
+using GridapSolvers, GridapSolvers.NonlinearSolvers
 
 
 @testset "Boundary conditions API" begin
@@ -236,5 +237,40 @@ end
   @test isapprox(norm(Uu.dirichlet_values), 0.12396128427860398, rtol=1e-14)
   TrialFESpace!(Uu, Du, 1.0)
   @test isapprox(norm(Uu.dirichlet_values), 0.30990321069650995, rtol=1e-14)
+
+end
+
+
+@testset "StaggeredModel restores the load map" begin
+
+  # A staggered model whose loop throws half-way must not leave the conditions with the ramp of its last step
+  model = CartesianDiscreteModel((0.0, 1.0, 0.0, 1.0), (4, 4))
+  labels = get_face_labeling(model)
+  add_tag_from_tags!(labels, "bottom", [1, 2, 5])
+  add_tag_from_tags!(labels, "top", [3, 4, 6])
+  dΩ = Measure(Triangulation(model), 2)
+  res(Λ) = (u, v) -> ∫(∇(v) ⋅ ∇(u))dΩ
+  jac(Λ) = (u, du, v) -> ∫(∇(v) ⋅ ∇(du))dΩ
+  nls = NewtonSolver(LUSolver(); maxiter=5, rtol=1e-10, verbose=false)
+  function poisson(top)                                           # two independent Laplace problems
+    bcp = BoundaryConditions(BoundaryCondition("bottom", 0.0), BoundaryCondition("top", top, Λ -> Λ))
+    Vp = TestFESpace(model, ReferenceFE(lagrangian, Float64, 1), bcp)
+    Up = TrialFESpace(Vp, bcp, 0.0)
+    up⁺ = FEFunction(Up, zero_free_values(Up))
+    up⁻ = FEFunction(TrialFESpace(Vp, bcp, 0.0), zero_free_values(Up))
+    StaticNonlinearModel(res, jac, Up, Vp, bcp; nls=nls, xh=up⁺), up⁺, up⁻, bcp, Up
+  end
+  m1, uh1⁺, uh1⁻, bc, U = poisson(1.0)
+  m2, uh2⁺, uh2⁻, bc2, _ = poisson(2.0)
+  sm = StaggeredModel((m1, m2), (uh1⁺, uh2⁺), (uh1⁻, uh2⁻))
+  args = (Dict(:stepping => (nsteps=1, maxbisec=1)), Dict(:stepping => (nsteps=1, maxbisec=1)))
+  load_map = HyperFEM.ComputationalModels.load_map
+
+  @test_throws ErrorException solve!(sm; stepping=(nsteps=4, nsubsteps=1, maxbisec=1), kargsolve=args, verbose=false,
+                                     presolver=(τ, ∆τ) -> τ == 2 && error("inner failure"))
+  @test load_map(bc, 0.3) == 0.3 && load_map(bc2, 0.3) == 0.3     # identity again, not the ramp of step 1
+  solve!(sm; stepping=(nsteps=4, nsubsteps=1, maxbisec=1), kargsolve=args, verbose=false)
+  @test load_map(bc, 0.3) == 0.3
+  @test maximum(get_dirichlet_dof_values(U)) ≈ 1.0                # full load at the end of the staggered loop
 
 end
