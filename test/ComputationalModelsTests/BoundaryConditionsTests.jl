@@ -156,6 +156,21 @@ using ForwardDiff
   Us = TrialFESpace(Vs, smix, 0.8)
   @test get_dirichlet_dof_values(Us) ≈ gridap_values(Vs, smix, 0.8)
 
+  # Couplings with a partial mask: only the masked components of the field are prescribed
+  for mask in ((true, false), (false, true))
+    cmask = BoundaryConditions(
+      BoundaryCondition("bottom", [0.0, 0.0]),
+      BoundaryCondition("top", Parametric(Λ -> Λ * uhM); mask=mask))          # field on the whole model
+    Vcm = TestFESpace(model, reffe2, cmask)
+    @test num_dirichlet_dofs(Vcm) < num_dirichlet_dofs(Vc)                    # the free component is not Dirichlet
+    @test get_dirichlet_dof_values(TrialFESpace(Vcm, cmask, 0.7)) ≈ gridap_values(Vcm, cmask, 0.7)
+    cmaskΓ = BoundaryConditions(
+      BoundaryCondition("bottom", [0.0, 0.0]),
+      BoundaryCondition("top", Parametric(Λ -> Gridap.CellData.Interpolable(uhΓ)); mask=mask))   # field only on the interface
+    exactΓ = BoundaryConditions(BoundaryCondition("bottom", [0.0, 0.0]), BoundaryCondition("top", x -> 2 * f(x); mask=mask))
+    @test get_dirichlet_dof_values(TrialFESpace(Vcm, cmaskΓ, 1.0)) ≈ get_dirichlet_dof_values(TrialFESpace(Vcm, exactΓ, 1.0))
+  end
+
   # Load map (StaggeredModel): the Separable loads see f(Λ) (composed), the other prescriptions the raw Λ
   set_load_map!(mix, Λ -> 0.5 * Λ)
   TrialFESpace!(Umix, mix, 0.8)
