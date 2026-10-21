@@ -22,7 +22,6 @@ include("MeshMovementSimulation.jl")
   @testset "StaticMechanicalDirichlet" begin
     x = static_mechanical_dirichlet_simulation()
     @test norm(x) ≈ 0.27148722276
-    @test static_mechanical_dirichlet_simulation(bc=:new) == x     # same prescriptions through BoundaryConditions
   end
 
   @testset "StaticMechanicalNeumann" begin
@@ -50,7 +49,6 @@ include("MeshMovementSimulation.jl")
   @testset "MeshMovement" begin
     x = mesh_movement_simulation()
     @test isapprox(norm(x), 2.8132015601158087, rtol=1e-14)
-    @test mesh_movement_simulation(bc=:new) == x                  # interface field through Parametric
   end
 
 end

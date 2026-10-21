@@ -6,9 +6,7 @@ using Gridap.FESpaces
 using HyperFEM
 
 
-# `bc = :legacy` builds the Dirichlet conditions with `DirichletBC`; `bc = :new` with `BoundaryConditions`
-# (same prescriptions, written through the new interface). Both must give the same solution.
-function static_mechanical_dirichlet_simulation(; writevtk=false, verbose=false, bc=:legacy)
+function static_mechanical_dirichlet_simulation(; writevtk=false, verbose=false)
 
   pname = "Stretch"
   simdir = projdir("data", "sims", pname)
@@ -31,12 +29,9 @@ function static_mechanical_dirichlet_simulation(; writevtk=false, verbose=false,
   dΩ = Measure(Ω, degree)
 
   # Dirichlet boundary conditions
-  dir_u_tags = ["fixed", "moving"]
-  dir_u_values = [[0.0, 0.0, 0.0], [0.08, 0.0, 0.0]]
-  dir_u_timesteps = [EvolutionFunctions.constant(), EvolutionFunctions.ramp()]
-  D_bc = bc === :legacy ? DirichletBC(dir_u_tags, dir_u_values, dir_u_timesteps) :
-         BoundaryConditions(BoundaryCondition("fixed", [0.0, 0.0, 0.0]),
-                            BoundaryCondition("moving", [0.08, 0.0, 0.0], EvolutionFunctions.ramp()))
+  D_bc = BoundaryConditions(
+    BoundaryCondition("fixed", [0.0, 0.0, 0.0]),
+    BoundaryCondition("moving", [0.08, 0.0, 0.0], EvolutionFunctions.ramp()))
 
   #  FE spaces
   reffeu = ReferenceFE(lagrangian, VectorValue{3,Float64}, order)

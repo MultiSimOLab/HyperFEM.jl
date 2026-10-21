@@ -41,8 +41,6 @@ export get_space_functions
 export set_load_map!
 export get_time_derivative
 export central_difference
-export DirichletBC
-export NeumannBC
 export get_Neumann_dΓ
 export NothingBC
 export NothingTC
@@ -50,8 +48,6 @@ export MultiFieldBC
 export SingleFieldTC
 export MultiFieldTC
 export residual_Neumann
-export DirichletCoupling
-export InterpolableBC!
 export add_tag_from_vertex_filter!
 
 

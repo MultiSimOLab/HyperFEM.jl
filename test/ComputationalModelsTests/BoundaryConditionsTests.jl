@@ -79,16 +79,16 @@ using ForwardDiff
   @test norm(assemble_vector(v -> residual_Neumann(NothingBC(), v, dΓ0, 1.0), V0)) == 0.0
 
   # Neumann conditions share the same type
-  neumann = NeumannBC(["top"], [[1.0, 0.0]], [Λ -> 2Λ])
+  neumann = BoundaryConditions(BoundaryCondition("top", [1.0, 0.0], Λ -> 2Λ))
   dΓ = get_Neumann_dΓ(model, neumann, 2)
   @test sum(assemble_vector(v -> residual_Neumann(neumann, v, dΓ, 0.5), V0)) ≈ -1.0
 
-  # Legacy constructor: Separable prescriptions with the given loads (a load map composes with them)
-  legacy = DirichletBC(["bottom", "top"], [[0.0, 0.0], [1.0, 0.0]], [Λ -> 1.0, Λ -> Λ])
-  @test get_space_functions(legacy, 0.5)[2] ≈ VectorValue(0.5, 0.0)
-  set_load_map!(legacy, Λ -> 3Λ)
-  @test get_space_functions(legacy, 0.5)[2] ≈ VectorValue(1.5, 0.0)
-  set_load_map!(legacy, identity)
+  # A load map composes with the loads of the Separable prescriptions
+  ramped = BoundaryConditions(BoundaryCondition("bottom", [0.0, 0.0]), BoundaryCondition("top", [1.0, 0.0], Λ -> Λ))
+  @test get_space_functions(ramped, 0.5)[2] ≈ VectorValue(0.5, 0.0)
+  set_load_map!(ramped, Λ -> 3Λ)
+  @test get_space_functions(ramped, 0.5)[2] ≈ VectorValue(1.5, 0.0)
+  set_load_map!(ramped, identity)
 
   # Couplings: a Gridap Interpolable from a non-matching mesh is a space function
   f(x) = VectorValue(x[1]^2, x[1] * x[2])
@@ -101,11 +101,9 @@ using ForwardDiff
   exact = get_dirichlet_dof_values(TrialFESpace(Vc, (VectorValue(0.0, 0.0), f)))
   @test get_dirichlet_dof_values(TrialFESpace(Vc, coupled, 1.0)) ≈ exact
 
-  # Legacy coupling: DirichletCoupling marker filled by InterpolableBC!
-  legacy_coupled = DirichletBC(["bottom", "top"], [[0.0, 0.0], DirichletCoupling], [Λ -> 1.0, nothing])
-  Uc = TrialFESpace(TestFESpace(model, reffe2, legacy_coupled), legacy_coupled, 0.0)
-  InterpolableBC!(Uc, legacy_coupled, "top", Λ -> uhA)  # legacy contract: Λ -> CellField
-  TrialFESpace!(Uc, legacy_coupled, 1.0)
+  # The field itself (no Interpolable) is admissible too
+  coupled_field = BoundaryConditions(BoundaryCondition("bottom", [0.0, 0.0]), BoundaryCondition("top", Parametric(Λ -> uhA)))
+  Uc = TrialFESpace(Vc, coupled_field, 1.0)
   @test get_dirichlet_dof_values(Uc) ≈ exact
 
   # Coupling with a field that lives only on the faces of its tag (an FESpace on a BoundaryTriangulation):
@@ -121,13 +119,11 @@ using ForwardDiff
   TrialFESpace!(UΓ, coupledΓ, 1.0)
   @test get_dirichlet_dof_values(UΓ) ≈ get_dirichlet_dof_values(TrialFESpace(Vc, (VectorValue(0.0, 0.0), x -> 2 * f(x))))
   @test @allocated(TrialFESpace!(UΓ, coupledΓ, 1.0)) < 10^5     # no point-search tree rebuilt
-  # the same through the legacy interface (the field itself, no Interpolable), and the increment variant
-  legacyΓ = DirichletBC(["bottom", "top"], [[0.0, 0.0], DirichletCoupling], [Λ -> 1.0, nothing])
-  UlΓ = TrialFESpace(TestFESpace(model, reffe2, legacyΓ), legacyΓ, 0.0)   # coupling not set yet: no error
-  InterpolableBC!(UlΓ, legacyΓ, "top", Λ -> Λ * uhΓ)                       # a new CellField at every Λ
-  TrialFESpace!(UlΓ, legacyΓ, 1.0)
+  # a new CellField generated at every Λ, and the increment variant
+  scaledΓ = BoundaryConditions(BoundaryCondition("bottom", [0.0, 0.0]), BoundaryCondition("top", Parametric(Λ -> Λ * uhΓ)))
+  UlΓ = TrialFESpace(Vc, scaledΓ, 1.0)
   @test get_dirichlet_dof_values(UlΓ) ≈ get_dirichlet_dof_values(UΓ)
-  TrialFESpace!(UlΓ, legacyΓ, 1.0, 0.5)
+  TrialFESpace!(UlΓ, scaledΓ, 1.0, 0.5)
   @test get_dirichlet_dof_values(UlΓ) ≈ 0.5 * get_dirichlet_dof_values(UΓ)
 
   # The applicator (prescriptions evaluated at the Dirichlet nodes only) gives Gridap's values for every
@@ -211,10 +207,9 @@ end
   end
 
   evolu(Λ) = Λ
-  dir_u_tags_air = ["uair_fixed", "Interface"]
-  dir_u_values_air = [[0.0, 0.0], Λ -> (x -> Mapping(x, Λ))]
-  dir_u_timesteps_air = [evolu, nothing]
-  Du = DirichletBC(dir_u_tags_air, dir_u_values_air, dir_u_timesteps_air)
+  Du = BoundaryConditions(
+    BoundaryCondition("uair_fixed", [0.0, 0.0], evolu),
+    BoundaryCondition("Interface", Parametric(Λ -> (x -> Mapping(x, Λ)))))
 
   reffeu = ReferenceFE(lagrangian, VectorValue{2,Float64}, order)
 

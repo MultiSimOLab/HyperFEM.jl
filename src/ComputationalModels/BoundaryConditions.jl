@@ -1,6 +1,5 @@
 
 abstract type TimedependentCondition end
-abstract type DirichletCoupling end
 
 
 struct MultiFieldTC{A} <: TimedependentCondition
@@ -271,38 +270,6 @@ Base.getindex(bc::MultiFieldBoundaryConditions, i) = bc.fields[i]
 
 
 #*******************************************************************************
-#    					 Legacy constructors
-#*******************************************************************************
-
-_legacy_condition(tag, value, timestep) = BoundaryCondition(tag, _legacy_prescription(value, timestep))
-
-# `timestep === nothing` means `value` is a generator `Λ -> object`. Couplings ignore `timestep`.
-function _legacy_prescription(value, timestep)
-    value === DirichletCoupling && return Parametric(LegacyCoupling(nothing))
-    isnothing(timestep) && return Parametric(value)
-    Separable(value, timestep)
-end
-
-function _legacy_conditions(tags::Vector{String}, values, timesteps)
-    @assert length(tags) == length(values) == length(timesteps)
-    BoundaryConditions(map(_legacy_condition, tags, values, timesteps))
-end
-
-"""
-    DirichletBC(tags, values, timesteps)
-
-Legacy constructor, returning `BoundaryConditions`. `values[i]` is multiplied by `timesteps[i](Λ)`,
-unless `timesteps[i] === nothing`; then `values[i]` is a generator `Λ -> object`.
-"""
-DirichletBC(tags::Vector{String}, values, timesteps) = _legacy_conditions(tags, values, timesteps)
-DirichletBC(tags::Vector{String}, values) = _legacy_conditions(tags, values, [Λ -> 1.0 for _ in tags])
-
-"Legacy constructor, returning `BoundaryConditions`. See `DirichletBC`."
-NeumannBC(tags::Vector{String}, values, timesteps) = _legacy_conditions(tags, values, timesteps)
-
-
-
-#*******************************************************************************
 #    					 Neumann conditions
 #*******************************************************************************
 
@@ -338,38 +305,4 @@ end
 
 function get_Neumann_dΓ(model, bc::MultiFieldBoundaryConditions, degree::Int)
     [get_Neumann_dΓ(model, bc_i, degree) for bc_i in bc]
-end
-
-
-#*******************************************************************************
-#    					 Dirichlet coupling
-#*******************************************************************************
-
-# Legacy couplings. New code prescribes the field directly: `Parametric(Λ -> uh)` (or an `Interpolable`).
-
-"""
-Placeholder of a legacy `DirichletCoupling`, filled in place by `InterpolableBC!` with a generator
-`Λ -> field` (an `FEFunction`, `CellField` or `Interpolable`). Until then it yields `nothing` and the
-Dirichlet values of its tag are left untouched. Deprecated: prescribe the field directly,
-`BoundaryCondition(tag, Parametric(Λ -> field))`.
-"""
-mutable struct LegacyCoupling
-    Interpolable::Any
-end
-
-(c::LegacyCoupling)(Λ) = isnothing(c.Interpolable) ? nothing : c.Interpolable(Λ)
-
-"""
-    InterpolableBC!(U, bc, interface_tag, Interpolable)
-
-Deprecated: set the generator `Λ -> field` of the `DirichletCoupling` declared on `interface_tag` in
-`bc`. Prescribe the field directly instead: `BoundaryCondition(interface_tag, Parametric(Λ -> field))`.
-"""
-function InterpolableBC!(U::TrialFESpace, bc::BoundaryConditions, interface_tags::String, Interpolable)
-    Base.depwarn("`DirichletCoupling` + `InterpolableBC!` are deprecated: prescribe the field directly with " *
-                 "`BoundaryCondition(\"$interface_tags\", Parametric(Λ -> field))`", :InterpolableBC!)
-    coupling = bc[findfirst(==(interface_tags), get_tags(bc))].value
-    @assert coupling isa Parametric{LegacyCoupling} "Tag $interface_tags was not declared as a DirichletCoupling"
-    coupling.g.Interpolable = Interpolable
-    return coupling
 end

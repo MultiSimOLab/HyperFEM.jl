@@ -110,8 +110,7 @@ end
 """
     apply!(space, app::DirichletApplicator, bc, Λ)
 
-Set the Dirichlet values of `space` from `bc` at `Λ`. A prescription returning `nothing` (a legacy
-coupling not set yet) leaves the values of its tag untouched.
+Set the Dirichlet values of `space` from `bc` at `Λ`.
 """
 function apply!(space::SingleFieldFESpace, app::DirichletApplicator, bc::BoundaryConditions, Λ)
     dv = get_dirichlet_dof_values(space)
@@ -127,7 +126,6 @@ function apply!(space::SingleFieldFESpace, app::DirichletApplicator, bc::Boundar
             end
         else
             v = p(Λ)
-            v === nothing && continue
             vals = _is_field(v) ? _values_at_nodes!(app, i, v, t) : _values_at_nodes(v, t)
             @inbounds for (j, d) in enumerate(t.dofs)
                 dv[d] = vals[j]
@@ -143,8 +141,7 @@ end
 Set the Dirichlet values of `space` to the increment of the prescriptions between `Λ - ΔΛ` and `Λ`:
 `base .* (load(Λ) - load(Λ - ΔΛ))` for `Separable` prescriptions (no evaluation), the difference of two
 evaluations at the nodes of the tag for the others (the one at `Λ - ΔΛ` first, so that a field updated
-in place by its generator ends in the state of `Λ`). A prescription returning `nothing` gives a zero
-increment.
+in place by its generator ends in the state of `Λ`).
 """
 function apply!(space::SingleFieldFESpace, app::DirichletApplicator, bc::BoundaryConditions, Λ, ΔΛ)
     dv = get_dirichlet_dof_values(space)
@@ -160,14 +157,8 @@ function apply!(space::SingleFieldFESpace, app::DirichletApplicator, bc::Boundar
             end
         else
             v⁻ = p(Λ - ΔΛ)
-            vals⁻ = v⁻ === nothing ? nothing : (_is_field(v⁻) ? _values_at_nodes!(app, i, v⁻, t) : _values_at_nodes(v⁻, t))
+            vals⁻ = _is_field(v⁻) ? _values_at_nodes!(app, i, v⁻, t) : _values_at_nodes(v⁻, t)
             v = p(Λ)
-            if v === nothing || vals⁻ === nothing
-                @inbounds for d in t.dofs
-                    dv[d] = 0.0
-                end
-                continue
-            end
             vals = _is_field(v) ? _values_at_nodes!(app, i, v, t) : _values_at_nodes(v, t)
             @inbounds for (j, d) in enumerate(t.dofs)
                 dv[d] = vals[j] - vals⁻[j]
