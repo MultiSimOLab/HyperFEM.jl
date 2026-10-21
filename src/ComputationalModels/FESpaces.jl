@@ -35,6 +35,8 @@ end
 Set the Dirichlet values to the increment between the load parameters `Λ - ΔΛ` and `Λ`.
 """
 function Gridap.FESpaces.TrialFESpace!(space::SingleFieldFESpace, bc::BoundaryConditions, Λ::Real, ΔΛ::Real)
+  app = _applicator(space, bc)
+  app === nothing || return apply!(space, app, bc, Λ, ΔΛ)
   TrialFESpace!(space, bc, Λ - ΔΛ)
   values⁻ = copy(get_dirichlet_dof_values(space))
   TrialFESpace!(space, bc, Λ)

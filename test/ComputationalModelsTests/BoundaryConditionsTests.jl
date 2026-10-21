@@ -170,6 +170,15 @@ using ForwardDiff
   @test get_dirichlet_dof_values(Umix)[tagof.>=3] ≈ raw[tagof.>=3]
   TrialFESpace!(Umix, mix, 0.8)
   @test get_dirichlet_dof_values(Umix) ≈ raw
+  # Increment variant on every kind of prescription: difference of the two states, no full evaluation
+  TrialFESpace!(Umix, mix, 0.8, 0.3)
+  @test get_dirichlet_dof_values(Umix) ≈ gridap_values(Vmix, mix, 0.8) - gridap_values(Vmix, mix, 0.5)
+  @test @allocated(TrialFESpace!(Umix, mix, 0.8, 0.3)) < 2 * 10^5          # two evaluations of the non-Separable ones
+  set_load_map!(mix, Λ -> 0.5 * Λ)
+  TrialFESpace!(Umix, mix, 0.8, 0.3)
+  set_load_map!(mix, identity)
+  @test get_dirichlet_dof_values(Umix)[tagof.<=2] ≈ (mapped - get_dirichlet_dof_values(TrialFESpace(Vmix, mix, 0.25)))[tagof.<=2]
+  @test get_dirichlet_dof_values(Umix)[tagof.>=3] ≈ (raw - get_dirichlet_dof_values(TrialFESpace(Vmix, mix, 0.5)))[tagof.>=3]
 
   # Multi-field conditions: one per field, NothingBC leaves the field unconstrained
   mbc = MultiFieldBC(bc, NothingBC())

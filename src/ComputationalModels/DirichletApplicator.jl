@@ -137,6 +137,46 @@ function apply!(space::SingleFieldFESpace, app::DirichletApplicator, bc::Boundar
     space
 end
 
+"""
+    apply!(space, app::DirichletApplicator, bc, Λ, ΔΛ)
+
+Set the Dirichlet values of `space` to the increment of the prescriptions between `Λ - ΔΛ` and `Λ`:
+`base .* (load(Λ) - load(Λ - ΔΛ))` for `Separable` prescriptions (no evaluation), the difference of two
+evaluations at the nodes of the tag for the others (the one at `Λ - ΔΛ` first, so that a field updated
+in place by its generator ends in the state of `Λ`). A prescription returning `nothing` gives a zero
+increment.
+"""
+function apply!(space::SingleFieldFESpace, app::DirichletApplicator, bc::BoundaryConditions, Λ, ΔΛ)
+    dv = get_dirichlet_dof_values(space)
+    for (i, c) in enumerate(bc.conditions)
+        t = app.tags[i]
+        isempty(t.dofs) && continue
+        p = c.value
+        if p isa Separable
+            s = _at_load(p.load, load_map(bc, Λ)) - _at_load(p.load, load_map(bc, Λ - ΔΛ))
+            b = app.base[i]
+            @inbounds for (j, d) in enumerate(t.dofs)
+                dv[d] = b[j] * s
+            end
+        else
+            v⁻ = p(Λ - ΔΛ)
+            vals⁻ = v⁻ === nothing ? nothing : (_is_field(v⁻) ? _values_at_nodes!(app, i, v⁻, t) : _values_at_nodes(v⁻, t))
+            v = p(Λ)
+            if v === nothing || vals⁻ === nothing
+                @inbounds for d in t.dofs
+                    dv[d] = 0.0
+                end
+                continue
+            end
+            vals = _is_field(v) ? _values_at_nodes!(app, i, v, t) : _values_at_nodes(v, t)
+            @inbounds for (j, d) in enumerate(t.dofs)
+                dv[d] = vals[j] - vals⁻[j]
+            end
+        end
+    end
+    space
+end
+
 "The applicator of `space` for `bc` (built at the first use), or `nothing` if not supported."
 function _applicator(space::SingleFieldFESpace, bc::BoundaryConditions)
     key = get_dirichlet_dof_values(space)
