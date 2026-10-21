@@ -371,8 +371,8 @@ function ∂Ce_∂C(::ViscousIncompressible, γα, ∂Se∂Ce_, invUvn, Ce, Ce_t
   K[10, 1:9] = get_array(K21)[:]  # There is no need to transpose the vector
   F = [get_array(F1); (get_array(F2)[:])']
   ∂u∂C = K \ F
-  ∂Ce∂C = ∂u∂C[1:9, 1:9]
-  return TensorValue(∂Ce∂C)
+  ∂Ce∂C = SMatrix{9,9}(∂u∂C[1:9, 1:9])  # NTuple(::Matrix) fails on Julia 1.14
+  return TensorValue(Tuple(∂Ce∂C))
 end
 
 

@@ -266,7 +266,12 @@ end
 end
 
 
-function allocations(f, args...)
+"""
+Bytes allocated by `f(args...)`, excluding compilation (warm-up call).
+Measured inside a specialized function: at the @testset level, Julia 1.10
+counts the dynamic dispatch of the call itself.
+"""
+function allocations(f::G, args::Vararg{Any,N}) where {G,N}
   f(args...)
   @allocated f(args...)
 end
