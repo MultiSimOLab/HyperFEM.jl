@@ -99,29 +99,6 @@ end
 (p::Parametric)(Λ) = p.g(Λ)
 
 """
-    Coupled(g)
-
-Prescribed field `g(Λ)` (an `FEFunction`, `CellField` or `Interpolable`) that may be defined only on
-the faces of its tag, e.g. a field of an `FESpace` built on an interface. Gridap receives a placeholder
-for the tag; the field is evaluated solely at the Dirichlet nodes of the tag and written by mask after
-Gridap's interpolation (see `apply_coupling!`). The evaluation cache (point search included) is kept
-while `g(Λ)` returns the same field object, so a field updated in place (e.g. `interpolate_everywhere!`
-into the same `FEFunction`) costs one point search per node; a new field object rebuilds it.
-`g(Λ) === nothing` leaves the values of the tag untouched (coupling not set yet). See [`Prescription`](@ref).
-"""
-mutable struct Coupled{G} <: Prescription
-    g::G
-    mask::Union{Nothing,Vector{Bool}}   # Dirichlet dofs of the tag (set at first use for the space)
-    coords::Vector                      # coordinates of the nodes of those dofs
-    ndofs::Int                          # dofs per node (components)
-    cache::Any                          # Gridap evaluation cache (point search included)
-    field::Any                          # the field the cache was built for
-end
-Coupled(g) = Coupled(g, nothing, [], 0, nothing, nothing)
-
-(p::Coupled)(Λ) = x -> x                # placeholder for Gridap, overwritten by the mask
-
-"""
     central_difference(f, Λ; h=1e-6)
 
 Derivative of `f` at `Λ` by central differences. Default backend of [`get_time_derivative`](@ref).
@@ -150,7 +127,6 @@ function _derivative(p::Parametric, Λ, d)
     end
 end
 
-_derivative(p::Coupled, Λ, d) = d(p.g, Λ)   # as Parametric: CellFields support subtraction
 
 
 #*******************************************************************************
@@ -200,7 +176,8 @@ Collection of boundary conditions applied to a single field.
 """
 struct BoundaryConditions{C<:Tuple}
     conditions::C
-    BoundaryConditions(conditions::Tuple{Vararg{BoundaryCondition}}) = new{typeof(conditions)}(conditions)
+    applicators::IdDict{Any,Any}     # DirichletApplicator per space (keyed by its Dirichlet values vector)
+    BoundaryConditions(conditions::Tuple{Vararg{BoundaryCondition}}) = new{typeof(conditions)}(conditions, IdDict{Any,Any}())
 end
 
 BoundaryConditions(conditions::BoundaryCondition...) = BoundaryConditions(conditions)
@@ -244,59 +221,6 @@ a constant (`Real` or `VectorValue`, both `Number`s), a function of the
 coordinates `x -> value`, or a Gridap object such as a `CellField` or an `Interpolable`.
 """
 get_space_functions(bc::BoundaryConditions, Λ::Real) = map(c -> get_space_functions(c, Λ), bc.conditions)
-
-_coupled_field(f) = f
-_coupled_field(f::Gridap.CellData.Interpolable) = f.uh
-
-"Mask and node coordinates of the Dirichlet dofs of `tag` (index in the space's tags) in `space`."
-function _coupling_nodes!(p::Coupled, space::TrialFESpace, tag::Int)
-    mask = get_dirichlet_dof_tag(space) .== tag
-    # Dirichlet values of the identity = node coordinates (nested TrialFESpaces, e.g. ∆U of the drivers, included)
-    coords_all = compute_dirichlet_values_for_tags(space, [x -> x for _ in 1:num_dirichlet_tags(space)])
-    dim = num_point_dims(get_triangulation(space))
-    vals = coords_all[mask]
-    p.ndofs = dim                                            # vector-valued fields: dim components per node
-    p.coords = [VectorValue(vals[i:i+dim-1]...) for i in 1:dim:length(vals)]
-    p.mask = mask
-    p
-end
-
-"""
-    apply_coupling!(space, p::Coupled, tag, Λ)
-
-Write `p.g(Λ)` at the Dirichlet nodes of `tag` (its index among the space's Dirichlet tags) into
-`space`, after Gridap's `TrialFESpace!`. The field is evaluated only at those nodes, with a cached
-point search, so it may live only on the faces of the tag.
-"""
-function apply_coupling!(space::TrialFESpace, p::Coupled, tag::Int, Λ)
-    f = p.g(Λ)
-    f === nothing && return space
-    p.mask === nothing && _coupling_nodes!(p, space, tag)
-    fld = _coupled_field(f)
-    if p.cache === nothing || p.field !== fld
-        p.cache = Gridap.Arrays.return_cache(fld, p.coords[1])
-        p.field = fld
-    end
-    dv = get_dirichlet_dof_values(space)
-    idx = findall(p.mask)
-    k = 0
-    for x in p.coords
-        v = Gridap.Arrays.evaluate!(p.cache, fld, x)
-        for c in 1:p.ndofs
-            dv[idx[k+c]] = v[c]
-        end
-        k += p.ndofs
-    end
-    space
-end
-
-"Apply every `Coupled` condition of `bc` to `space` (after Gridap's `TrialFESpace!`)."
-function apply_couplings!(space::TrialFESpace, bc::BoundaryConditions, Λ)
-    for (i, c) in enumerate(bc.conditions)
-        c.value isa Coupled && apply_coupling!(space, c.value, i, Λ)
-    end
-    space
-end
 
 """
     get_time_derivative(bc, Λ; backend=central_difference)
@@ -343,7 +267,7 @@ _legacy_condition(tag, value, timestep) = BoundaryCondition(tag, _legacy_prescri
 
 # `timestep === nothing` means `value` is a generator `Λ -> object`. Couplings ignore `timestep`.
 function _legacy_prescription(value, timestep)
-    value === DirichletCoupling && return Coupled(LegacyCoupling(nothing))
+    value === DirichletCoupling && return Parametric(LegacyCoupling(nothing))
     isnothing(timestep) && return Parametric(value)
     Separable(value, LegacyLoad(timestep))
 end
@@ -426,7 +350,7 @@ end
 #    					 Dirichlet coupling
 #*******************************************************************************
 
-# Legacy couplings. New code can prescribe `Coupled(Λ -> Interpolable(uh))` instead.
+# Legacy couplings. New code prescribes the field directly: `Parametric(Λ -> uh)` (or an `Interpolable`).
 
 """
 Placeholder of a legacy `DirichletCoupling`, filled in place by `InterpolableBC!` with a generator
@@ -443,15 +367,15 @@ end
     InterpolableBC!(U, bc, interface_tag, Interpolable)
 
 Legacy interface: set the generator `Λ -> field` of the `DirichletCoupling` declared on `interface_tag`
-in `bc`. Returns the `Coupled` prescription. The values of `U` are updated at the next `TrialFESpace!`.
+in `bc`. Returns the prescription. The values of `U` are updated at the next `TrialFESpace!`.
 """
 function InterpolableBC!(U::TrialFESpace, bc::BoundaryConditions, interface_tags::String, Interpolable)
     coupling = bc[findfirst(==(interface_tags), get_tags(bc))].value
-    @assert coupling isa Coupled{LegacyCoupling} "Tag $interface_tags was not declared as a DirichletCoupling"
+    @assert coupling isa Parametric{LegacyCoupling} "Tag $interface_tags was not declared as a DirichletCoupling"
     coupling.g.Interpolable = Interpolable
     return coupling
 end
 
-"Legacy name of [`Coupled`](@ref) (kept for `InterpolableBC(U, bc, tag, Interpolable)` call sites)."
+"Legacy name of `InterpolableBC!` (kept for `InterpolableBC(U, bc, tag, Interpolable)` call sites)."
 InterpolableBC(U::TrialFESpace, bc::BoundaryConditions, interface_tags::String, Interpolable) =
     InterpolableBC!(U, bc, interface_tags, Interpolable)

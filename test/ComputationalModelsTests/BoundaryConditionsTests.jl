@@ -112,14 +112,14 @@ using ForwardDiff
   uhΓ = interpolate_everywhere(f, FESpace(Γ, reffe2))
   coupledΓ = BoundaryConditions(
     BoundaryCondition("bottom", [0.0, 0.0]),
-    BoundaryCondition("top", Coupled(Λ -> Gridap.CellData.Interpolable(uhΓ))))
+    BoundaryCondition("top", Parametric(Λ -> Gridap.CellData.Interpolable(uhΓ))))
   UΓ = TrialFESpace(Vc, coupledΓ, 1.0)
   @test get_dirichlet_dof_values(UΓ) ≈ exact
   get_free_dof_values(uhΓ) .*= 2.0                               # field updated in place (staggered loop)
   TrialFESpace!(UΓ, coupledΓ, 1.0)
   @test get_dirichlet_dof_values(UΓ) ≈ get_dirichlet_dof_values(TrialFESpace(Vc, (VectorValue(0.0, 0.0), x -> 2 * f(x))))
-  @test @allocated(TrialFESpace!(UΓ, coupledΓ, 1.0)) < 10^6     # no point-search tree rebuilt
-  # the same through the legacy interface, and the increment variant
+  @test @allocated(TrialFESpace!(UΓ, coupledΓ, 1.0)) < 10^5     # no point-search tree rebuilt
+  # the same through the legacy interface (the field itself, no Interpolable), and the increment variant
   legacyΓ = DirichletBC(["bottom", "top"], [[0.0, 0.0], DirichletCoupling], [Λ -> 1.0, nothing])
   UlΓ = TrialFESpace(TestFESpace(model, reffe2, legacyΓ), legacyΓ, 0.0)   # coupling not set yet: no error
   InterpolableBC!(UlΓ, legacyΓ, "top", Λ -> Λ * uhΓ)                       # a new CellField at every Λ
@@ -127,6 +127,36 @@ using ForwardDiff
   @test get_dirichlet_dof_values(UlΓ) ≈ get_dirichlet_dof_values(UΓ)
   TrialFESpace!(UlΓ, legacyΓ, 1.0, 0.5)
   @test get_dirichlet_dof_values(UlΓ) ≈ 0.5 * get_dirichlet_dof_values(UΓ)
+
+  # The applicator (prescriptions evaluated at the Dirichlet nodes only) gives Gridap's values for every
+  # kind of prescription, on vector and scalar spaces, with partial masks and nested TrialFESpaces
+  gridap_values(V, bc, Λ) = get_dirichlet_dof_values(TrialFESpace(V, HyperFEM.ComputationalModels.get_space_functions(bc, Λ)))
+  uhM = interpolate(f, FESpace(model, reffe2))                   # a field on the same model (Gridap can interpolate it)
+  mix = BoundaryConditions(                                       # one condition per tag (tag_7/8: left/right edges)
+    BoundaryCondition("bottom", [0.3, -0.2], Λ -> 2Λ; mask=(true, false)),
+    BoundaryCondition("top", x -> VectorValue(x[1] * x[2], x[2]^2), Λ -> cos(Λ)),
+    BoundaryCondition("tag_7", NonSeparable(rotation); mask=(false, true)),
+    BoundaryCondition("tag_8", Parametric(Λ -> Λ * uhM)))
+  Vmix = TestFESpace(model, reffe2, mix)
+  Umix = TrialFESpace(Vmix, mix, 0.0)
+  @test HyperFEM.ComputationalModels._applicator(Umix, mix) !== nothing
+  for Λ in (0.0, 0.37, 1.0)
+    TrialFESpace!(Umix, mix, Λ)
+    @test get_dirichlet_dof_values(Umix) ≈ gridap_values(Vmix, mix, Λ)
+    UUmix = TrialFESpace(Umix, mix, Λ)                            # nested, as ∆U of the drivers
+    @test get_dirichlet_dof_values(UUmix) ≈ gridap_values(Vmix, mix, Λ)
+  end
+  @test @allocated(TrialFESpace!(Umix, mix, 0.5)) < 10^5
+  reffe1 = ReferenceFE(lagrangian, Float64, 2)
+  φA = interpolate(x -> x[1] - x[2]^2, FESpace(CartesianDiscreteModel((0.0, 1.0, 0.0, 1.0), (3, 3)), reffe1))
+  smix = BoundaryConditions(
+    BoundaryCondition("bottom", 2.5, Λ -> Λ),
+    BoundaryCondition("top", x -> x[1] + x[2]),
+    BoundaryCondition("tag_7", NonSeparable((x, Λ) -> Λ * x[1])),
+    BoundaryCondition("tag_8", Parametric(Λ -> Gridap.CellData.Interpolable(φA))))
+  Vs = TestFESpace(model, reffe1, smix)
+  Us = TrialFESpace(Vs, smix, 0.8)
+  @test get_dirichlet_dof_values(Us) ≈ gridap_values(Vs, smix, 0.8)
 
   # Multi-field conditions: one per field, NothingBC leaves the field unconstrained
   mbc = MultiFieldBC(bc, NothingBC())

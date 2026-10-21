@@ -32,8 +32,6 @@ export Prescription
 export Separable
 export NonSeparable
 export Parametric
-export Coupled
-export apply_coupling!
 export BoundaryCondition
 export BoundaryConditions
 export MultiFieldBoundaryConditions
@@ -58,6 +56,7 @@ export InterpolableBC!
 export add_tag_from_vertex_filter!
 
 
+include("DirichletApplicator.jl")
 include("FESpaces.jl")
 export TrialFESpace
 export TrialFESpace!
