@@ -6,7 +6,7 @@ function Gridap.FESpaces.TestFESpace(model, reffe, bc::BoundaryConditions; kwarg
 end
 
 function Gridap.FESpaces.TrialFESpace(space::SingleFieldFESpace, bc::BoundaryConditions, Λ::Real=0.0)
-  TrialFESpace(space, get_space_functions(bc, Λ))
+  apply_couplings!(TrialFESpace(space, get_space_functions(bc, Λ)), bc, Λ)
 end
 
 function Gridap.FESpaces.TrialFESpace(space::SingleFieldFESpace, ::NothingBC, Λ::Real=0.0)
@@ -15,6 +15,7 @@ end
 
 function Gridap.FESpaces.TrialFESpace!(space::SingleFieldFESpace, bc::BoundaryConditions, Λ::Real)
   TrialFESpace!(space, get_space_functions(bc, Λ))
+  apply_couplings!(space, bc, Λ)
 end
 
 function Gridap.FESpaces.TrialFESpace!(space::SingleFieldFESpace, ::NothingBC, Λ::Real)

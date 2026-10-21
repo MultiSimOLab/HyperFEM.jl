@@ -128,6 +128,7 @@ end
 @publish ComputationalModels Separable
 @publish ComputationalModels NonSeparable
 @publish ComputationalModels Parametric
+@publish ComputationalModels Coupled
 @publish ComputationalModels BoundaryCondition
 @publish ComputationalModels BoundaryConditions
 @publish ComputationalModels MultiFieldBoundaryConditions

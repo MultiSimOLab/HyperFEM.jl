@@ -106,6 +106,28 @@ using ForwardDiff
   TrialFESpace!(Uc, legacy_coupled, 1.0)
   @test get_dirichlet_dof_values(Uc) ≈ exact
 
+  # Coupling with a field that lives only on the faces of its tag (an FESpace on a BoundaryTriangulation):
+  # it must never be evaluated off the interface, and the point search must be cached
+  Γ = BoundaryTriangulation(model, tags="top")
+  uhΓ = interpolate_everywhere(f, FESpace(Γ, reffe2))
+  coupledΓ = BoundaryConditions(
+    BoundaryCondition("bottom", [0.0, 0.0]),
+    BoundaryCondition("top", Coupled(Λ -> Gridap.CellData.Interpolable(uhΓ))))
+  UΓ = TrialFESpace(Vc, coupledΓ, 1.0)
+  @test get_dirichlet_dof_values(UΓ) ≈ exact
+  get_free_dof_values(uhΓ) .*= 2.0                               # field updated in place (staggered loop)
+  TrialFESpace!(UΓ, coupledΓ, 1.0)
+  @test get_dirichlet_dof_values(UΓ) ≈ get_dirichlet_dof_values(TrialFESpace(Vc, (VectorValue(0.0, 0.0), x -> 2 * f(x))))
+  @test @allocated(TrialFESpace!(UΓ, coupledΓ, 1.0)) < 10^6     # no point-search tree rebuilt
+  # the same through the legacy interface, and the increment variant
+  legacyΓ = DirichletBC(["bottom", "top"], [[0.0, 0.0], DirichletCoupling], [Λ -> 1.0, nothing])
+  UlΓ = TrialFESpace(TestFESpace(model, reffe2, legacyΓ), legacyΓ, 0.0)   # coupling not set yet: no error
+  InterpolableBC!(UlΓ, legacyΓ, "top", Λ -> Λ * uhΓ)                       # a new CellField at every Λ
+  TrialFESpace!(UlΓ, legacyΓ, 1.0)
+  @test get_dirichlet_dof_values(UlΓ) ≈ get_dirichlet_dof_values(UΓ)
+  TrialFESpace!(UlΓ, legacyΓ, 1.0, 0.5)
+  @test get_dirichlet_dof_values(UlΓ) ≈ 0.5 * get_dirichlet_dof_values(UΓ)
+
   # Multi-field conditions: one per field, NothingBC leaves the field unconstrained
   mbc = MultiFieldBC(bc, NothingBC())
   Vm = MultiFieldFESpace([V, V0])

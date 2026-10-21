@@ -32,6 +32,8 @@ export Prescription
 export Separable
 export NonSeparable
 export Parametric
+export Coupled
+export apply_coupling!
 export BoundaryCondition
 export BoundaryConditions
 export MultiFieldBoundaryConditions
