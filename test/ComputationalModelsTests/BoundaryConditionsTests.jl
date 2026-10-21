@@ -158,6 +158,19 @@ using ForwardDiff
   Us = TrialFESpace(Vs, smix, 0.8)
   @test get_dirichlet_dof_values(Us) ≈ gridap_values(Vs, smix, 0.8)
 
+  # Load map (StaggeredModel): the Separable loads see f(Λ) (composed), the other prescriptions the raw Λ
+  set_load_map!(mix, Λ -> 0.5 * Λ)
+  TrialFESpace!(Umix, mix, 0.8)
+  @test get_dirichlet_dof_values(Umix) ≈ gridap_values(Vmix, mix, 0.8)   # same path, same map
+  set_load_map!(mix, identity)
+  mapped = get_dirichlet_dof_values(TrialFESpace(Vmix, mix, 0.4))        # Separable at 0.4 ...
+  raw = get_dirichlet_dof_values(TrialFESpace(Vmix, mix, 0.8))           # ... the others at 0.8
+  tagof = get_dirichlet_dof_tag(Vmix)
+  @test get_dirichlet_dof_values(Umix)[tagof.<=2] ≈ mapped[tagof.<=2]
+  @test get_dirichlet_dof_values(Umix)[tagof.>=3] ≈ raw[tagof.>=3]
+  TrialFESpace!(Umix, mix, 0.8)
+  @test get_dirichlet_dof_values(Umix) ≈ raw
+
   # Multi-field conditions: one per field, NothingBC leaves the field unconstrained
   mbc = MultiFieldBC(bc, NothingBC())
   Vm = MultiFieldFESpace([V, V0])

@@ -65,8 +65,9 @@ function solve!(m::StaggeredModel;
         τ⁻=evolτ(τ*∆τ)
         τ⁺=evolτ((τ+1)*∆τ)
         stevol(Λ) = τ⁻+ (τ⁺-τ⁻)*Λ
-        # stevol(Λ) = ∆τ * (Λ + τ)
-        map(x -> updateBC!(x.dirichlet, x.dirichlet.caches, [stevol for _ in 1:length(x.dirichlet.caches)]), m.compmodels)
+        # the inner solves run their load parameter Λ in [0, 1]: the prescriptions see stevol(Λ) (composed with
+        # their own loads, not replacing them as the former updateBC! did)
+        map(x -> set_load_map!(x.dirichlet, stevol), m.compmodels)
         for τ_inner in 1:nsubsteps
             map((x) -> TrialFESpace!(x.spaces[1], x.dirichlet, 1.0), m.compmodels)
             _, flagconv = map((x, y) -> solve!(x; y...), m.compmodels, kargsolve)
@@ -74,6 +75,7 @@ function solve!(m::StaggeredModel;
             map((x, y) -> x .= y, x⁻, x⁺)
         end
     end
+    map(x -> set_load_map!(x.dirichlet, identity), m.compmodels)
 
     return x⁺, flagconv
 

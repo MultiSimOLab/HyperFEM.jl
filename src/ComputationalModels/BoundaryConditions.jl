@@ -177,8 +177,24 @@ Collection of boundary conditions applied to a single field.
 struct BoundaryConditions{C<:Tuple}
     conditions::C
     applicators::IdDict{Any,Any}     # DirichletApplicator per space (keyed by its Dirichlet values vector)
-    BoundaryConditions(conditions::Tuple{Vararg{BoundaryCondition}}) = new{typeof(conditions)}(conditions, IdDict{Any,Any}())
+    loadmap::Base.RefValue{Any}      # Λ -> Λ' applied before the prescriptions (see `set_load_map!`)
+    BoundaryConditions(conditions::Tuple{Vararg{BoundaryCondition}}) =
+        new{typeof(conditions)}(conditions, IdDict{Any,Any}(), Ref{Any}(identity))
 end
+
+"""
+    set_load_map!(bc, f)
+
+Make the `load` of the `Separable` prescriptions of `bc` see `f(Λ)` instead of `Λ` (in `TrialFESpace!`,
+`get_space_functions`, `residual_Neumann`). Used by `StaggeredModel` to map the load parameter of each
+inner solve to the global one, composing with the loads instead of replacing them (as the former
+`updateBC!` did). The other prescriptions (`NonSeparable`, `Parametric`, e.g. a coupling interpolating
+between two staggered stages) keep receiving the parameter of the inner solve. `identity` resets.
+"""
+set_load_map!(bc::BoundaryConditions, f) = (bc.loadmap[] = f; bc)
+load_map(bc::BoundaryConditions, Λ) = bc.loadmap[](Λ)
+"Load parameter seen by a condition: mapped for `Separable` prescriptions, raw otherwise."
+_load_of(c::BoundaryCondition, bc::BoundaryConditions, Λ) = c.value isa Separable ? load_map(bc, Λ) : Λ
 
 BoundaryConditions(conditions::BoundaryCondition...) = BoundaryConditions(conditions)
 BoundaryConditions(conditions::AbstractVector{<:BoundaryCondition}) = BoundaryConditions(Tuple(conditions))
@@ -220,7 +236,7 @@ Values prescribed at `Λ`, one per condition, in the format accepted by Gridap:
 a constant (`Real` or `VectorValue`, both `Number`s), a function of the
 coordinates `x -> value`, or a Gridap object such as a `CellField` or an `Interpolable`.
 """
-get_space_functions(bc::BoundaryConditions, Λ::Real) = map(c -> get_space_functions(c, Λ), bc.conditions)
+get_space_functions(bc::BoundaryConditions, Λ::Real) = map(c -> get_space_functions(c, _load_of(c, bc, Λ)), bc.conditions)
 
 """
     get_time_derivative(bc, Λ; backend=central_difference)
@@ -229,7 +245,7 @@ Derivative of the prescribed values with respect to `Λ`, in the same format as 
 `backend(f, Λ)` differentiates a function of `Λ`. `CellField`s returned by a `Parametric` prescription
 require a backend supporting them, such as the default `central_difference`.
 """
-get_time_derivative(bc::BoundaryConditions, Λ::Real; kwargs...) = map(c -> get_time_derivative(c, Λ; kwargs...), bc.conditions)
+get_time_derivative(bc::BoundaryConditions, Λ::Real; kwargs...) = map(c -> get_time_derivative(c, _load_of(c, bc, Λ); kwargs...), bc.conditions)   # w.r.t. the (mapped) parameter
 
 
 """
@@ -246,6 +262,8 @@ MultiFieldBoundaryConditions(fields::BoundaryConditions...) = MultiFieldBoundary
 MultiFieldBoundaryConditions(fields::AbstractVector) = MultiFieldBoundaryConditions(Tuple(fields))
 
 const MultiFieldBC = MultiFieldBoundaryConditions
+
+set_load_map!(bc::MultiFieldBoundaryConditions, f) = (foreach(b -> set_load_map!(b, f), bc.fields); bc)
 
 Base.length(bc::MultiFieldBoundaryConditions) = length(bc.fields)
 Base.iterate(bc::MultiFieldBoundaryConditions, args...) = iterate(bc.fields, args...)
@@ -292,8 +310,9 @@ NeumannBC(tags::Vector{String}, values, timesteps) = _legacy_conditions(tags, va
 """
     updateBC!(bc, values, timesteps)
 
-Legacy interface for `StaggeredModel`: replace the load function of each condition built by
-`DirichletBC` or `NeumannBC` with `timesteps[i]`. `values` is only checked for its length.
+Legacy interface: replace the load function of each condition built by `DirichletBC` or `NeumannBC`
+with `timesteps[i]`. `values` is only checked for its length. (`StaggeredModel` no longer uses it:
+it composes with the loads through `set_load_map!`.)
 """
 function updateBC!(bc::BoundaryConditions, values, timesteps)
     @assert length(bc) == length(values) == length(timesteps)

@@ -120,7 +120,7 @@ function apply!(space::SingleFieldFESpace, app::DirichletApplicator, bc::Boundar
         isempty(t.dofs) && continue
         p = c.value
         if p isa Separable
-            s = _at_load(p.load, Λ)
+            s = _at_load(p.load, load_map(bc, Λ))
             b = app.base[i]
             @inbounds for (j, d) in enumerate(t.dofs)
                 dv[d] = b[j] * s

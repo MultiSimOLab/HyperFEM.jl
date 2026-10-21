@@ -38,6 +38,7 @@ export MultiFieldBoundaryConditions
 export get_tags
 export get_masks
 export get_space_functions
+export set_load_map!
 export get_time_derivative
 export central_difference
 export DirichletBC

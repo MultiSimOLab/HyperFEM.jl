@@ -134,6 +134,7 @@ end
 @publish ComputationalModels get_tags
 @publish ComputationalModels get_masks
 @publish ComputationalModels get_space_functions
+@publish ComputationalModels set_load_map!
 @publish ComputationalModels get_time_derivative
 @publish ComputationalModels central_difference
 @publish ComputationalModels  DirichletBC
