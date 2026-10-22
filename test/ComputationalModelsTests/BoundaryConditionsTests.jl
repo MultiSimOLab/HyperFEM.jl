@@ -290,3 +290,48 @@ end
   @test get_space_functions(bc1, 0.3)[2] ≈ 0.3
 
 end
+
+
+@testset "StaggeredModel: Neumann load and Dirichlet projection" begin
+
+  # Laplace on the unit square with the flux on the top ramped by the load (Neumann through the model), a
+  # Dirichlet ramp on the left edge, and a second problem coupled to the first on its top edge. Both
+  # with the Dirichlet projection (increment of the conditions, in the load for the first, in the stage
+  # for the coupling). The exact solution of the first is u = Λ·y: at the end of the staggered loop
+  # (Λ = 1) and half-way (Λ = 1/2) the Neumann load must follow the global ramp, not the inner stage.
+  model = CartesianDiscreteModel((0.0, 1.0, 0.0, 1.0), (4, 4))
+  labels = get_face_labeling(model)
+  add_tag_from_tags!(labels, "bottom", [1, 2, 5])
+  add_tag_from_tags!(labels, "top", [3, 4, 6])
+  add_tag_from_tags!(labels, "left", [7])
+  dΩ = Measure(Triangulation(model), 2)
+  res(Λ) = (u, v) -> ∫(∇(v) ⋅ ∇(u))dΩ
+  jac(Λ) = (u, du, v) -> ∫(∇(v) ⋅ ∇(du))dΩ
+  nls = NewtonSolver(LUSolver(); maxiter=5, rtol=1e-10, verbose=false)
+  reffe = ReferenceFE(lagrangian, Float64, 1)
+  bc1 = BoundaryConditions(BoundaryCondition("bottom", 0.0), BoundaryCondition("left", x -> x[2], Λ -> Λ))
+  neumann1 = NeumannConditions(model, BoundaryConditions(BoundaryCondition("top", 1.0, Λ -> Λ)), 2)
+  V1 = TestFESpace(model, reffe, bc1)
+  U1 = TrialFESpace(V1, bc1, 0.0)
+  u1⁺ = FEFunction(U1, zero_free_values(U1))
+  u1⁻ = FEFunction(TrialFESpace(V1, bc1, 0.0), zero_free_values(U1))
+  m1 = StaticNonlinearModel(res, jac, U1, V1, bc1; neumann=neumann1, nls=nls, xh=u1⁺)
+  bc2 = BoundaryConditions(BoundaryCondition("bottom", 0.0), BoundaryCondition("top", Coupling(τ -> u1⁻ + (u1⁺ - u1⁻) * τ)))
+  V2 = TestFESpace(model, reffe, bc2)
+  U2 = TrialFESpace(V2, bc2, 0.0)
+  u2⁺ = FEFunction(U2, zero_free_values(U2))
+  u2⁻ = FEFunction(TrialFESpace(V2, bc2, 0.0), zero_free_values(U2))
+  m2 = StaticNonlinearModel(res, jac, U2, V2, bc2; nls=nls, xh=u2⁺)
+  sm = StaggeredModel((m1, m2), (u1⁺, u2⁺), (u1⁻, u2⁻))
+  args = (Dict(:stepping => (nsteps=2, maxbisec=1), :ProjectDirichlet => true),
+          Dict(:stepping => (nsteps=2, maxbisec=1), :ProjectDirichlet => true))
+  mid = Float64[]                                                 # u1 at the start of the third of 4 steps (Λ = 1/2)
+  solve!(sm; stepping=(nsteps=4, nsubsteps=1, maxbisec=1), kargsolve=args, verbose=false,
+         presolver=(τ, ∆τ) -> τ == 2 && append!(mid, get_free_dof_values(u1⁺)))
+  x = Point(0.3, 0.7)
+  @test u1⁺(x) ≈ 0.7                                              # u = Λ·y at Λ = 1
+  @test FEFunction(U1, mid)(x) ≈ 0.35                             # u = Λ·y at Λ = 1/2: the flux followed the global load
+  @test u2⁺(x) ≈ u1⁺(x) && u2⁺(Point(0.9, 0.2)) ≈ u1⁺(Point(0.9, 0.2))   # the coupled problem ends at the state of the first
+  @test maximum(get_dirichlet_dof_values(U2)) ≈ 1.0
+
+end
