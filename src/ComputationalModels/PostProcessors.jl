@@ -233,7 +233,7 @@ function interpolate_L2_field(x, dΩ::Measure, Ω₂::Triangulation=get_triangul
 end
 
 function interpolate_L2_field(x, Ω, dΩ::Measure, T::Type=get_cell_field_type(x, dΩ))
-  @warn "This signature is kept for direct compatibility with `interpolate_L2_scalar/vector/tensor` and it will be removed after release 0.0.7. The domain `Ω` can be removed from the list of arguments." maxlog=1
+  @warn "interpolate_L2_field: This signature is kept for direct compatibility with `interpolate_L2_scalar/vector/tensor` and it will be removed after release 0.0.7. The domain `Ω` can be removed from the list of arguments." maxlog=1
   refL2 = ReferenceFE(lagrangian, T, 0)
   reffe = ReferenceFE(lagrangian, T, 1)
   VL2 = FESpace(Ω, refL2, conformity=:L2)
