@@ -256,16 +256,18 @@ end
 
 
 @testset "regularize_hessian" begin
+  # TensorValue from a Matrix by splatting (TensorValue(::Matrix) fails for 9x9 on Julia 1.14.0-alpha1)
+  tensor(M::AbstractMatrix) = TensorValue{size(M, 1),size(M, 2)}(M...)
   # Reference: the former implementation of HessianRegularization (LAPACK eigen on the upper triangle)
   function reference_regularization(C::TensorValue, δ)
     vecval = LinearAlgebra.eigen(LinearAlgebra.Symmetric(get_array(C)))
     vec, val = vecval.vectors, vecval.values
-    TensorValue(vec * LinearAlgebra.diagm(max.(δ, val)) * vec')
+    tensor(vec * LinearAlgebra.diagm(max.(δ, val)) * vec')
   end
   function random_symmetric(N, λ)
     Q = Matrix(LinearAlgebra.qr(randn(N, N)).Q)
     A = Q * LinearAlgebra.Diagonal(λ) * Q'
-    TensorValue((A + A') / 2)
+    tensor((A + A') / 2)
   end
   allocs(C, δ) = @allocated regularize_hessian(C, δ)
 
@@ -285,7 +287,7 @@ end
     # only the upper triangle counts, as with Symmetric
     C = random_symmetric(N, scale .* randn(N))
     A = get_array(C) + 1e-3 * scale * LinearAlgebra.triu(randn(N, N), 1)'
-    @test isapprox(regularize_hessian(TensorValue(A), δ), reference_regularization(TensorValue(A), δ), rtol=1e-12)
+    @test isapprox(regularize_hessian(tensor(A), δ), reference_regularization(tensor(A), δ), rtol=1e-12)
   end
 
   # positive definite above δ: returned unchanged
