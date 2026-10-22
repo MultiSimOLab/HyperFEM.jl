@@ -26,17 +26,10 @@ degree = 2 * order
 dΩ = Measure(Ω, degree)
 
 # Dirichlet boundary conditions 
-evolu(Λ) = 1.0
-dir_u_tags = [&quot;fixedup&quot;]
-dir_u_values = [[0.0, 0.0, 0.0]]
-dir_u_timesteps = [evolu]
-Du = DirichletBC(dir_u_tags, dir_u_values, dir_u_timesteps)
+Du = BoundaryConditions(BoundaryCondition(&quot;fixedup&quot;, [0.0, 0.0, 0.0]))          # value * load(Λ), load = 1 by default
 
 evolφ(Λ) = Λ
-dir_φ_tags = [&quot;midsuf&quot;, &quot;topsuf&quot;]
-dir_φ_values = [0.0, 0.1]
-dir_φ_timesteps = [evolφ, evolφ]
-Dφ = DirichletBC(dir_φ_tags, dir_φ_values, dir_φ_timesteps)
+Dφ = BoundaryConditions(BoundaryCondition(&quot;midsuf&quot;, 0.0, evolφ), BoundaryCondition(&quot;topsuf&quot;, 0.1, evolφ))
 
 D_bc = MultiFieldBC([Du, Dφ])
 
@@ -45,12 +38,12 @@ reffeu = ReferenceFE(lagrangian, VectorValue{3,Float64}, order)
 reffeφ = ReferenceFE(lagrangian, Float64, order)
 
 # Test FE Spaces
-Vu = TestFESpace(geomodel, reffeu, D_bc.BoundaryCondition[1], conformity=:H1)
-Vφ = TestFESpace(geomodel, reffeφ, D_bc.BoundaryCondition[2], conformity=:H1)
+Vu = TestFESpace(geomodel, reffeu, D_bc[1], conformity=:H1)
+Vφ = TestFESpace(geomodel, reffeφ, D_bc[2], conformity=:H1)
 
 # Trial FE Spaces
-Uu = TrialFESpace(Vu, D_bc.BoundaryCondition[1], 1.0)
-Uφ = TrialFESpace(Vφ, D_bc.BoundaryCondition[2], 1.0)
+Uu = TrialFESpace(Vu, D_bc[1], 1.0)
+Uφ = TrialFESpace(Vφ, D_bc[2], 1.0)
 
 # Multifield FE Spaces
 V = MultiFieldFESpace([Vu, Vφ])
@@ -97,4 +90,4 @@ end
 post_model = PostProcessor(comp_model, driverpost; is_vtk=true, filepath=simdir)
 
 # Solve
-x = solve!(comp_model; stepping=(nsteps=5, maxbisec=5), post=post_model)</code></pre><h2 id="HyperFEM-Gallery"><a class="docs-heading-anchor" href="#HyperFEM-Gallery">HyperFEM Gallery</a><a id="HyperFEM-Gallery-1"></a><a class="docs-heading-anchor-permalink" href="#HyperFEM-Gallery" title="Permalink"></a></h2><p><img src="https://github.com/MultiSimOLab/HyperFEM.jl/raw/main/docs/img/sims.png" alt="img"/></p><h2 id="How-to-cite-HyperFEM"><a class="docs-heading-anchor" href="#How-to-cite-HyperFEM">How to cite HyperFEM</a><a id="How-to-cite-HyperFEM-1"></a><a class="docs-heading-anchor-permalink" href="#How-to-cite-HyperFEM" title="Permalink"></a></h2><p>In order to give credit to the HyperFEM contributors, we ask that you please reference the paper:</p><p>C. Perez‐Garcia, R. Ortigosa, J. Martínez‐Frutos, and D. Garcia‐Gonzalez, <strong>Topology and material optimization in ultra-soft magnetoactive structures: making advantage of residual anisotropies.</strong> Adv. Mater. (2025): e18489. https://doi.org/10.1002/adma.202518489</p><p>along with the required citations for <a href="https://github.com/gridap/Gridap.jl">Gridap</a>.</p><h2 id="Project-funded-by"><a class="docs-heading-anchor" href="#Project-funded-by">Project funded by</a><a id="Project-funded-by-1"></a><a class="docs-heading-anchor-permalink" href="#Project-funded-by" title="Permalink"></a></h2><ul><li>Grants PID2022-141957OA-C22/PID2022-141957OB-C22  funded by MCIN/AEI/ 10.13039/501100011033  and by &#39;&#39;ERDF A way of making Europe&#39;&#39;</li></ul><p align="center"><img src="https://github.com/MultiSimOLab/HyperFEM.jl/raw/main/docs/img/aei.png" width="70%"></p><h2 id="Contact"><a class="docs-heading-anchor" href="#Contact">Contact</a><a id="Contact-1"></a><a class="docs-heading-anchor-permalink" href="#Contact" title="Permalink"></a></h2><p>Contact the project administrator <a href="mailto:jesus.martinez@upct.es">Jesús Martínez-Frutos</a> for further questions about licenses and terms of use.</p></article><nav class="docs-footer"><a class="docs-footer-nextpage" href="tutorials/">Tutorials »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Thursday 22 October 2026 15:30">Thursday 22 October 2026</span>. Using Julia version 1.13.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+x = solve!(comp_model; stepping=(nsteps=5, maxbisec=5), post=post_model)</code></pre><h2 id="HyperFEM-Gallery"><a class="docs-heading-anchor" href="#HyperFEM-Gallery">HyperFEM Gallery</a><a id="HyperFEM-Gallery-1"></a><a class="docs-heading-anchor-permalink" href="#HyperFEM-Gallery" title="Permalink"></a></h2><p><img src="https://github.com/MultiSimOLab/HyperFEM.jl/raw/main/docs/img/sims.png" alt="img"/></p><h2 id="How-to-cite-HyperFEM"><a class="docs-heading-anchor" href="#How-to-cite-HyperFEM">How to cite HyperFEM</a><a id="How-to-cite-HyperFEM-1"></a><a class="docs-heading-anchor-permalink" href="#How-to-cite-HyperFEM" title="Permalink"></a></h2><p>In order to give credit to the HyperFEM contributors, we ask that you please reference the paper:</p><p>C. Perez‐Garcia, R. Ortigosa, J. Martínez‐Frutos, and D. Garcia‐Gonzalez, <strong>Topology and material optimization in ultra-soft magnetoactive structures: making advantage of residual anisotropies.</strong> Adv. Mater. (2025): e18489. https://doi.org/10.1002/adma.202518489</p><p>along with the required citations for <a href="https://github.com/gridap/Gridap.jl">Gridap</a>.</p><h2 id="Project-funded-by"><a class="docs-heading-anchor" href="#Project-funded-by">Project funded by</a><a id="Project-funded-by-1"></a><a class="docs-heading-anchor-permalink" href="#Project-funded-by" title="Permalink"></a></h2><ul><li>Grants PID2022-141957OA-C22/PID2022-141957OB-C22  funded by MCIN/AEI/ 10.13039/501100011033  and by &#39;&#39;ERDF A way of making Europe&#39;&#39;</li></ul><p align="center"><img src="https://github.com/MultiSimOLab/HyperFEM.jl/raw/main/docs/img/aei.png" width="70%"></p><h2 id="Contact"><a class="docs-heading-anchor" href="#Contact">Contact</a><a id="Contact-1"></a><a class="docs-heading-anchor-permalink" href="#Contact" title="Permalink"></a></h2><p>Contact the project administrator <a href="mailto:jesus.martinez@upct.es">Jesús Martínez-Frutos</a> for further questions about licenses and terms of use.</p></article><nav class="docs-footer"><a class="docs-footer-nextpage" href="tutorials/">Tutorials »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Thursday 22 October 2026 15:35">Thursday 22 October 2026</span>. Using Julia version 1.13.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
