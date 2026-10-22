@@ -2,19 +2,21 @@
 #    					 Dirichlet applicator
 #*******************************************************************************
 #
-# Sets the Dirichlet values of a TrialFESpace from its BoundaryConditions at any load parameter Λ
-# without Gridap's cell-by-cell interpolation of every prescribed function over the whole space.
-# Built once per (space, conditions): for every condition, the Dirichlet dofs of its tag, the
-# coordinates of their nodes and the component of each dof. Then, at every Λ:
+# Sets the Dirichlet values of a TrialFESpace from its BoundaryConditions at a load Λ and a stage τ
+# (see `Prescription`) without Gridap's cell-by-cell interpolation of every prescribed function over the
+# whole space. Built once per (space, conditions) by `dirichlet_applicator(space, bc)` and owned by the
+# computational model (one per space it updates): for every condition, the Dirichlet dofs of its tag, the
+# coordinates of their nodes and the component of each dof. Then, at every (Λ, τ):
 #   - Separable prescriptions (value(x) * load(Λ), the common case): the values at the nodes are
 #     computed once at construction and scaled by load(Λ);
 #   - constants and functions of x returned by the other prescriptions: evaluated at the nodes of
 #     the tag only;
-#   - fields (CellField, FEFunction, Interpolable): evaluated at the nodes of the tag only, with a
-#     cached point search, so a field defined only on the faces of the tag (e.g. an FESpace on an
-#     interface) is admissible and the update costs one point search per node.
+#   - fields (CellField, FEFunction, Interpolable) returned by a Coupling: evaluated at the nodes of the
+#     tag only, with a cached point search, so a field defined only on the faces of the tag (e.g. an
+#     FESpace on an interface) is admissible and the update costs one point search per node.
 # Spaces whose Dirichlet dofs cannot be mapped to Lagrangian nodes (no LagrangianDofBasis, or
-# non-Vector Dirichlet values such as distributed ones) fall back to Gridap's interpolation.
+# non-Vector Dirichlet values such as distributed ones) get a `DirichletInterpolator`, which uses
+# Gridap's interpolation.
 
 "Dirichlet dofs of one condition: their ids, the node of each (into `coords`) and its component."
 struct DirichletTagDofs
@@ -25,17 +27,27 @@ struct DirichletTagDofs
 end
 
 """
-    DirichletApplicator(space, bc)
+    DirichletApplicator
 
-Precomputed data to set the Dirichlet values of `space` from `bc` (see the header of this file).
-`nothing` when the space is not supported (Gridap's interpolation is used instead).
+Precomputed data to set the Dirichlet values of one space from its `BoundaryConditions`; see the header
+of this file and [`dirichlet_applicator`](@ref).
 """
-mutable struct DirichletApplicator
+mutable struct DirichletApplicator{B<:BoundaryConditions}
+    bc::B
     tags::Vector{DirichletTagDofs}
     base::Vector{Any}                 # Separable: value(x)[comp] per dof of the tag; nothing otherwise
     cache::Vector{Any}                # per tag: Gridap evaluation cache of the last field
     field::Vector{Any}                # per tag: the field the cache was built for
 end
+
+"Fallback for spaces the applicator does not support: Gridap's interpolation of the prescribed functions."
+struct DirichletInterpolator{B<:BoundaryConditions}
+    bc::B
+end
+
+const DirichletUpdater = Union{DirichletApplicator,DirichletInterpolator}
+
+get_conditions(app::DirichletUpdater) = app.bc
 
 _num_components(::Type{<:Integer}) = 1
 _num_components(::Type{T}) where {T} = length(T)
@@ -46,14 +58,21 @@ _comp(v::MultiValue, c) = v[c]
 
 _rounded(x, tol) = ntuple(k -> round(x[k] / tol) * tol, length(x))
 
-function DirichletApplicator(space::SingleFieldFESpace, bc::BoundaryConditions)
+"""
+    dirichlet_applicator(space, bc)
+
+The object that sets the Dirichlet values of `space` from `bc`: a [`DirichletApplicator`](@ref) when the
+Dirichlet dofs of `space` map to Lagrangian nodes, a `DirichletInterpolator` (Gridap's interpolation)
+otherwise, `nothing` for `NothingBC`. Multi-field spaces give a tuple, one per field.
+"""
+function dirichlet_applicator(space::SingleFieldFESpace, bc::BoundaryConditions)
     dv = get_dirichlet_dof_values(space)
-    dv isa Vector || return nothing
+    dv isa Vector || return DirichletInterpolator(bc)
     ntags = num_dirichlet_tags(space)
     ntags == length(bc) || error("HyperFEM: the space has $ntags Dirichlet tags but the conditions have $(length(bc))")
-    ntags == 0 && return DirichletApplicator(DirichletTagDofs[], Any[], Any[], Any[])
+    ntags == 0 && return DirichletApplicator(bc, DirichletTagDofs[], Any[], Any[], Any[])
     dofbasis = first(get_data(get_fe_dof_basis(space)))
-    dofbasis isa Gridap.ReferenceFEs.LagrangianDofBasis || return nothing
+    dofbasis isa Gridap.ReferenceFEs.LagrangianDofBasis || return DirichletInterpolator(bc)
     nc = _num_components(eltype(dofbasis.node_and_comp_to_dof))
     dim = num_point_dims(get_triangulation(space))
     # coordinates and component of every Dirichlet dof, through Gridap's own interpolation (any nesting, any mask)
@@ -81,7 +100,14 @@ function DirichletApplicator(space::SingleFieldFESpace, bc::BoundaryConditions)
         push!(tags, t)
         push!(base, c.value isa Separable ? _values_at_nodes(c.value.space, t) : nothing)
     end
-    DirichletApplicator(tags, base, Any[nothing for _ in tags], Any[nothing for _ in tags])
+    DirichletApplicator(bc, tags, base, Any[nothing for _ in tags], Any[nothing for _ in tags])
+end
+
+dirichlet_applicator(space::SingleFieldFESpace, ::NothingBC) = nothing
+
+function dirichlet_applicator(space::MultiFieldFESpace, bc::MultiFieldBoundaryConditions)
+    @assert length(space) == length(bc)
+    Tuple(map(dirichlet_applicator, space.spaces, bc.fields))
 end
 
 "Values at the dofs of a tag of a constant or of a function of x."
@@ -107,26 +133,28 @@ function _values_at_nodes!(app::DirichletApplicator, i::Int, v, t::DirichletTagD
     [_comp(vals[n], c) for (n, c) in zip(t.nodes, t.comps)]
 end
 
-"""
-    apply!(space, app::DirichletApplicator, bc, Λ)
+_values!(app::DirichletApplicator, i::Int, v, t::DirichletTagDofs) =
+    _is_field(v) ? _values_at_nodes!(app, i, v, t) : _values_at_nodes(v, t)
 
-Set the Dirichlet values of `space` from `bc` at `Λ`.
 """
-function apply!(space::SingleFieldFESpace, app::DirichletApplicator, bc::BoundaryConditions, Λ)
+    apply!(space, app::DirichletApplicator, Λ, τ)
+
+Set the Dirichlet values of `space` from the conditions of `app` at the load `Λ` and the stage `τ`.
+"""
+function apply!(space::SingleFieldFESpace, app::DirichletApplicator, Λ, τ)
     dv = get_dirichlet_dof_values(space)
-    for (i, c) in enumerate(bc.conditions)
+    for (i, c) in enumerate(app.bc.conditions)
         t = app.tags[i]
         isempty(t.dofs) && continue
         p = c.value
         if p isa Separable
-            s = _at_load(p.load, load_map(bc, Λ))
+            s = _at_load(p.load, Λ)
             b = app.base[i]
             @inbounds for (j, d) in enumerate(t.dofs)
                 dv[d] = b[j] * s
             end
         else
-            v = p(Λ)
-            vals = _is_field(v) ? _values_at_nodes!(app, i, v, t) : _values_at_nodes(v, t)
+            vals = _values!(app, i, p(Λ, τ), t)
             @inbounds for (j, d) in enumerate(t.dofs)
                 dv[d] = vals[j]
             end
@@ -136,30 +164,28 @@ function apply!(space::SingleFieldFESpace, app::DirichletApplicator, bc::Boundar
 end
 
 """
-    apply!(space, app::DirichletApplicator, bc, Λ, ΔΛ)
+    apply!(space, app::DirichletApplicator, Λ, ΔΛ, τ, Δτ)
 
-Set the Dirichlet values of `space` to the increment of the prescriptions between `Λ - ΔΛ` and `Λ`:
-`base .* (load(Λ) - load(Λ - ΔΛ))` for `Separable` prescriptions (no evaluation), the difference of two
-evaluations at the nodes of the tag for the others (the one at `Λ - ΔΛ` first, so that a field updated
-in place by its generator ends in the state of `Λ`).
+Set the Dirichlet values of `space` to the increment of the prescriptions between `(Λ - ΔΛ, τ - Δτ)`
+and `(Λ, τ)`: `base .* (load(Λ) - load(Λ - ΔΛ))` for `Separable` prescriptions (no evaluation), the
+difference of two evaluations at the nodes of the tag for the others (the earlier one first, so that a
+field updated in place by its generator ends in the state of `(Λ, τ)`).
 """
-function apply!(space::SingleFieldFESpace, app::DirichletApplicator, bc::BoundaryConditions, Λ, ΔΛ)
+function apply!(space::SingleFieldFESpace, app::DirichletApplicator, Λ, ΔΛ, τ, Δτ)
     dv = get_dirichlet_dof_values(space)
-    for (i, c) in enumerate(bc.conditions)
+    for (i, c) in enumerate(app.bc.conditions)
         t = app.tags[i]
         isempty(t.dofs) && continue
         p = c.value
         if p isa Separable
-            s = _at_load(p.load, load_map(bc, Λ)) - _at_load(p.load, load_map(bc, Λ - ΔΛ))
+            s = _at_load(p.load, Λ) - _at_load(p.load, Λ - ΔΛ)
             b = app.base[i]
             @inbounds for (j, d) in enumerate(t.dofs)
                 dv[d] = b[j] * s
             end
         else
-            v⁻ = p(Λ - ΔΛ)
-            vals⁻ = _is_field(v⁻) ? _values_at_nodes!(app, i, v⁻, t) : _values_at_nodes(v⁻, t)
-            v = p(Λ)
-            vals = _is_field(v) ? _values_at_nodes!(app, i, v, t) : _values_at_nodes(v, t)
+            vals⁻ = _values!(app, i, p(Λ - ΔΛ, τ - Δτ), t)
+            vals = _values!(app, i, p(Λ, τ), t)
             @inbounds for (j, d) in enumerate(t.dofs)
                 dv[d] = vals[j] - vals⁻[j]
             end
@@ -168,10 +194,13 @@ function apply!(space::SingleFieldFESpace, app::DirichletApplicator, bc::Boundar
     space
 end
 
-"The applicator of `space` for `bc` (built at the first use), or `nothing` if not supported."
-function _applicator(space::SingleFieldFESpace, bc::BoundaryConditions)
-    key = get_dirichlet_dof_values(space)
-    get!(bc.applicators, key) do
-        DirichletApplicator(space, bc)
-    end
+# Fallback: Gridap's interpolation of all the prescribed functions
+apply!(space::SingleFieldFESpace, app::DirichletInterpolator, Λ, τ) = TrialFESpace!(space, get_space_functions(app.bc, Λ, τ))
+
+function apply!(space::SingleFieldFESpace, app::DirichletInterpolator, Λ, ΔΛ, τ, Δτ)
+    TrialFESpace!(space, get_space_functions(app.bc, Λ - ΔΛ, τ - Δτ))
+    values⁻ = copy(get_dirichlet_dof_values(space))
+    TrialFESpace!(space, get_space_functions(app.bc, Λ, τ))
+    get_dirichlet_dof_values(space) .-= values⁻
+    space
 end
