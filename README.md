@@ -55,8 +55,7 @@ dΩ = Measure(Ω, degree)
 # Dirichlet boundary conditions 
 Du = BoundaryConditions(BoundaryCondition("fixedup", [0.0, 0.0, 0.0]))          # value * load(Λ), load = 1 by default
 
-evolφ(Λ) = Λ
-Dφ = BoundaryConditions(BoundaryCondition("midsuf", 0.0, evolφ), BoundaryCondition("topsuf", 0.1, evolφ))
+Dφ = BoundaryConditions(BoundaryCondition("midsuf", 0.0, Λ -> Λ), BoundaryCondition("topsuf", 0.1, Λ -> Λ))
 
 D_bc = MultiFieldBC([Du, Dφ])
 

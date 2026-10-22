@@ -3,8 +3,11 @@ using Gridap.FESpaces
 using HyperFEM
 
 
-# The interface displacement is a `CellField` generated at every Λ (`Parametric`).
-function mesh_movement_simulation(; verbose=false)
+# The interface displacement is the state of another problem (here a prescribed mapping between two
+# stages), imposed on the interface of the air as a `Coupling` of the stage parameter. With
+# `interface_field = true` the two stages live only on the faces of the interface (an FESpace on its
+# BoundaryTriangulation, as in the staggered solid–vacuum problems), and must give the same solution.
+function mesh_movement_simulation(; verbose=false, interface_field=false)
 
   meshfile = "test_BC2.msh"
   geomodel = GmshDiscreteModel(projdir("test/models/" * meshfile))
@@ -61,15 +64,18 @@ function mesh_movement_simulation(; verbose=false)
   Vu_⁺ = TestFESpace(Ωair, reffeu, dirichlet_tags=["uair_fixed", "Interface"], conformity=:H1)
   Vu_⁻ = TestFESpace(Ωair, reffeu, dirichlet_tags=["uair_fixed", "Interface"], conformity=:H1)
 
+  if interface_field
+    Vu_⁺ = FESpace(Γair_int, reffeu)
+    Vu_⁻ = FESpace(Γair_int, reffeu)
+  end
   uh⁺ = interpolate_everywhere(x -> Mapping(x, 1.0), Vu_⁺)
   uh⁻ = interpolate_everywhere(x -> Mapping(x, 0.0), Vu_⁻)
 
-  dir(Λ) = uh⁻ + (uh⁺ - uh⁻) * Λ
+  dir(τ) = uh⁻ + (uh⁺ - uh⁻) * τ
 
-  evolu(Λ) = Λ
   Du_air = BoundaryConditions(
-    BoundaryCondition("uair_fixed", [0.0, 0.0], evolu),
-    BoundaryCondition("Interface", Parametric(dir)))
+    BoundaryCondition("uair_fixed", [0.0, 0.0], Λ -> Λ),
+    BoundaryCondition("Interface", Coupling(dir)))
 
   Vu = TestFESpace(Ωair, reffeu, Du_air, conformity=:H1)
   Uu = TrialFESpace(Vu, Du_air, 1.0)

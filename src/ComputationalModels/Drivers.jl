@@ -3,6 +3,8 @@ abstract type ComputationalModel end
 get_state(::ComputationalModel) = @abstractmethod
 get_measure(::ComputationalModel) = @abstractmethod
 get_spaces(::ComputationalModel) = @abstractmethod
+"Dirichlet applicators of the spaces a model updates (see `dirichlet_applicator`)."
+get_applicators(::ComputationalModel) = @abstractmethod
 get_trial_space(m::ComputationalModel) = get_spaces(m)[1]
 get_test_space(m::ComputationalModel) = get_spaces(m)[2]
 
@@ -16,11 +18,12 @@ end
 #*******************************************************************************	
 
 
-struct StaggeredModel{A,B,C,D} <: ComputationalModel
+struct StaggeredModel{A,B,C,D,E} <: ComputationalModel
     compmodels::A
     state⁺::B
     state⁻::C
     caches::D
+    applicators⁻::E                   # Dirichlet applicators of the spaces of state⁻
 
     function StaggeredModel(
         CompModels::Tuple{Vararg{ComputationalModel,N}},
@@ -31,9 +34,9 @@ struct StaggeredModel{A,B,C,D} <: ComputationalModel
         x⁻ = map((x) -> get_free_dof_values(x), state⁻)
 
         caches = (x⁺, x⁻)
-        A, B, C, D = typeof(CompModels), typeof(state⁺), typeof(state⁻), typeof(caches)
-
-        return new{A,B,C,D}(CompModels, state⁺, state⁻, caches)
+        apps⁻ = map((s, m) -> dirichlet_applicator(get_fe_space(s), m.dirichlet), state⁻, CompModels)
+        A, B, C, D, E = typeof(CompModels), typeof(state⁺), typeof(state⁻), typeof(caches), typeof(apps⁻)
+        return new{A,B,C,D,E}(CompModels, state⁺, state⁻, caches, apps⁻)
     end
 
 end
@@ -50,35 +53,29 @@ function solve!(m::StaggeredModel;
     nsteps = stepping[:nsteps]
 
     x⁺, x⁻ = m.caches
-    map((x) -> TrialFESpace!(x.spaces[1], x.dirichlet, 0.0), m.compmodels)
-    map((x, y) -> TrialFESpace!(x.fe_space, y.dirichlet, 0.0), m.state⁻, m.compmodels)
+    map((x) -> TrialFESpace!(x.spaces[1], get_applicators(x)[1], 0.0), m.compmodels)
+    map((s, a) -> TrialFESpace!(get_fe_space(s), a, 0.0), m.state⁻, m.applicators⁻)
 
     flagconv = 1 # convergence flag 0 (max bisections) 1 (max steps)
     ∆τ = 1.0 / nsteps
-    try
-        for τ in 0:nsteps-1
-            if verbose
-                println("*******************************************")
-                println("           Staggered Step: $τ              ")
-                println("*******************************************")
-            end
-            presolver(τ, ∆τ)
-            τ⁻=evolτ(τ*∆τ)
-            τ⁺=evolτ((τ+1)*∆τ)
-            stevol(Λ) = τ⁻+ (τ⁺-τ⁻)*Λ
-            # the inner solves run their load parameter Λ in [0, 1]: the prescriptions see stevol(Λ) (composed with
-            # their own loads, not replacing them as the former updateBC! did)
-            map(x -> set_load_map!(x.dirichlet, stevol), m.compmodels)
-            for τ_inner in 1:nsubsteps
-                map((x) -> TrialFESpace!(x.spaces[1], x.dirichlet, 1.0), m.compmodels)
-                _, flagconv = map((x, y) -> solve!(x; y...), m.compmodels, kargsolve)
-                map((x, y) -> TrialFESpace!(x.fe_space, y.dirichlet, 1.0), m.state⁻, m.compmodels)
-                map((x, y) -> x .= y, x⁻, x⁺)
-            end
+    for τ in 0:nsteps-1
+        if verbose
+            println("*******************************************")
+            println("           Staggered Step: $τ              ")
+            println("*******************************************")
         end
-    finally
-        # also when an inner solve throws: the conditions must not keep the ramp of the last step
-        map(x -> set_load_map!(x.dirichlet, identity), m.compmodels)
+        presolver(τ, ∆τ)
+        τ⁻=evolτ(τ*∆τ)
+        τ⁺=evolτ((τ+1)*∆τ)
+        # Inside the step the inner solves run their stage parameter from 0 to 1; the load they apply is
+        # the ramp of the step (the drivers pass both to the conditions, see `Prescription`)
+        stevol(stage) = τ⁻ + (τ⁺ - τ⁻) * stage
+        for τ_inner in 1:nsubsteps
+            map((x) -> TrialFESpace!(x.spaces[1], get_applicators(x)[1], τ⁺; stage=1.0), m.compmodels)
+            _, flagconv = map((x, y) -> solve!(x; load=stevol, y...), m.compmodels, kargsolve)
+            map((s, a) -> TrialFESpace!(get_fe_space(s), a, τ⁺; stage=1.0), m.state⁻, m.applicators⁻)
+            map((x, y) -> x .= y, x⁻, x⁺)
+        end
     end
 
     return x⁺, flagconv
@@ -89,36 +86,49 @@ end
 #    					 StaticNonlinearModel
 #*******************************************************************************	
 
-struct StaticNonlinearModel{A,B,C,D,E} <: ComputationalModel
+"""
+    StaticNonlinearModel(res, jac, U, V, dirichlet; neumann=nothing, nls, xh, xh⁻)
+
+`res(τ)` and `jac(τ)` are functions of the stage parameter τ of the solver. `dirichlet` are the
+`BoundaryConditions` of `U`; `neumann`, if any, the [`NeumannConditions`](@ref) added to the residual by
+the driver at the load of every step. The model owns the Dirichlet applicators of its spaces
+(`get_applicators`: those of `U`, `∆U` and the space of `xh⁻`).
+"""
+struct StaticNonlinearModel{A,B,C,D,E,F,G} <: ComputationalModel
     res::A
     jac::B
     spaces::C
     dirichlet::D
-    caches::E
+    neumann::E
+    applicators::F
+    caches::G
 
     function StaticNonlinearModel(
         res::Function, jac::Function, U, V, dirbc;
+        neumann=nothing,
         assem_U=SparseMatrixAssembler(U, V),
         nls::NonlinearSolver=NewtonSolver(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
         xh::FEFunction=FEFunction(U, zero_free_values(U)),
         xh⁻::FEFunction=FEFunction(U, zero_free_values(U)))
 
         ∆U = TrialFESpace(U, dirbc, 0.0)
-        TrialFESpace!(U, dirbc, 0.0)
         Un = get_fe_space(xh⁻)
+        app_U = dirichlet_applicator(U, dirbc)
+        applicators = (app_U, dirichlet_applicator(∆U, dirbc), Un === U ? app_U : dirichlet_applicator(Un, dirbc))
+        TrialFESpace!(U, app_U, 0.0)
         spaces = (U, V, ∆U, Un)
         x = get_free_dof_values(xh)
         x⁻ = get_free_dof_values(xh⁻)
         # x⁻ = zero_free_values(U)
-        _res = res(1.0)
+        _res = with_neumann(res(1.0), neumann, 1.0)
         _jac = jac(1.0)
         op = get_algebraic_operator(FEOperator(_res, _jac, U, V, assem_U))
         nls_cache = instantiate_caches(x, nls, op)
         caches = (nls, nls_cache, x, x⁻, assem_U)
 
         A, B, C = typeof(res), typeof(jac), typeof(spaces)
-        D, E = typeof(dirbc), typeof(caches)
-        return new{A,B,C,D,E}(res, jac, spaces, dirbc, caches)
+        D, E, F, G = typeof(dirbc), typeof(neumann), typeof(applicators), typeof(caches)
+        return new{A,B,C,D,E,F,G}(res, jac, spaces, dirbc, neumann, applicators, caches)
     end
 end
 
@@ -126,6 +136,7 @@ end
 get_state(m::StaticNonlinearModel) = FEFunction(get_trial_space(m), m.caches[3])
 get_measure(m::StaticNonlinearModel) = m.res.dΩ
 get_spaces(m::StaticNonlinearModel) = m.spaces
+get_applicators(m::StaticNonlinearModel) = m.applicators
 get_assemblers(m::StaticNonlinearModel) = (m.caches[4])
 
 
@@ -133,14 +144,21 @@ get_assemblers(m::StaticNonlinearModel) = (m.caches[4])
 #   filePath=datadir("sims", "Temp"),
 #   vtk::WriteVTK.CollectionFile=paraview_collection(datadir("sims", "Temp") * "/Results", append=false)
 
+"""
+    solve!(m::StaticNonlinearModel; stepping, RestartState, ProjectDirichlet, post, load=identity)
+
+Incremental solve with the stage parameter Λ from 0 to 1. The conditions and the Neumann term are
+applied at the load `load(Λ)` (`identity` by default; `StaggeredModel` passes the ramp of its step).
+"""
 function solve!(m::StaticNonlinearModel;
     stepping=(nsteps=20, maxbisec=15), RestartState::Bool=false, ProjectDirichlet::Bool=false,
-    post=PostProcessor())
+    post=PostProcessor(), load=identity)
 
     reset!(post)
     flagconv = 1 # convergence flag 0 (max bisections) 1 (max steps)
     U, V, ∆U, Un = m.spaces
-    TrialFESpace!(U, m.dirichlet, 0.0)
+    app_U, _, app_Un = m.applicators
+    TrialFESpace!(U, app_U, load(0.0); stage=0.0)
     nls, nls_cache, x, x⁻, assem_U = m.caches
 
     Λ = 0.0
@@ -160,19 +178,19 @@ function solve!(m::StaticNonlinearModel;
             Λ = min(1.0, Λ)
         end
         if ProjectDirichlet
-            α = dirichlet_preconditioning!(x, m, Λ, ∆Λ, nls)
+            α = dirichlet_preconditioning!(x, m, Λ, ∆Λ, nls, load)
         end
         #@show α
         Λ -= ∆Λ
         ∆Λ = α * ∆Λ
-        TrialFESpace!(Un, m.dirichlet, Λ)
+        TrialFESpace!(Un, app_Un, load(Λ); stage=Λ)
         Λ += ∆Λ
 
         # U.dirichlet_values .+= α*∆U.dirichlet_values
 
-        TrialFESpace!(U, m.dirichlet, Λ)
+        TrialFESpace!(U, app_U, load(Λ); stage=Λ)
 
-        res = m.res(Λ)
+        res = with_neumann(m.res(Λ), m.neumann, load(Λ))
         jac = m.jac(Λ)
         op = get_algebraic_operator(FEOperator(res, jac, U, V, assem_U))
         Algebra.solve!(x, nls, op, nls_cache)
@@ -221,27 +239,27 @@ function post_solve!(pvd, x, Λ, Λ_, m, filePath)
     return pvd
 end
 
-function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, ::Newton_RaphsonSolver)
-    duh = get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64)
+function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, ::Newton_RaphsonSolver, load=identity)
+    duh = get_dirichlet_preconditioner(m, Λ, ∆Λ, load)
     # update step
     α = update_cellstate!(m.caches[1].linesearch, get_state(m), duh)
     x .+= α * get_free_dof_values(duh)
     return α
 end
 
-function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, ::Any)
-    duh = get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64)
+function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, ::Any, load=identity)
+    duh = get_dirichlet_preconditioner(m, Λ, ∆Λ, load)
     x .+= get_free_dof_values(duh)
     return 1.0
 end
 
 
-function get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64)
+function get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, load=identity)
     _, V, ∆U = m.spaces
     uh = get_state(m)
-    # TrialFESpace!(∆U, m.dirichlet, ∆Λ)
-    TrialFESpace!(∆U, m.dirichlet, Λ, ∆Λ)
-    res = m.res(Λ - ∆Λ)
+    # increment of the Dirichlet values between the stages Λ - ∆Λ and Λ (loads load(Λ - ∆Λ) and load(Λ))
+    TrialFESpace!(∆U, m.applicators[2], load(Λ), load(Λ) - load(Λ - ∆Λ); stage=(Λ, ∆Λ))
+    res = with_neumann(m.res(Λ - ∆Λ), m.neumann, load(Λ - ∆Λ))
     jac = m.jac(Λ - ∆Λ)
     l(v) = -1.0 * res(uh, v)
     a(du, v) = jac(uh, du, v)
@@ -255,13 +273,14 @@ end
 #*******************************************************************************	
 
 
-struct DynamicNonlinearModel{A,B,C,D,E,F} <: ComputationalModel
+struct DynamicNonlinearModel{A,B,C,D,E,F,G} <: ComputationalModel
     res::A
     jac::B
     spaces::C
     dirichlet::D
     velocity::E
-    caches::F
+    applicators::F                    # of U and Uold
+    caches::G
 
     function DynamicNonlinearModel(
         res::Function, jac::Function, U, Uold, V, dirbc, velocity::TimedependentCondition;
@@ -270,6 +289,7 @@ struct DynamicNonlinearModel{A,B,C,D,E,F} <: ComputationalModel
         xh::FEFunction=FEFunction(U, zero_free_values(U)))
 
         spaces = (U, V, Uold)
+        applicators = (dirichlet_applicator(U, dirbc), dirichlet_applicator(Uold, dirbc))
         x = get_free_dof_values(xh)
         x⁻ = zero_free_values(Uold)
         uh⁻ = FEFunction(Uold, x⁻)
@@ -280,8 +300,8 @@ struct DynamicNonlinearModel{A,B,C,D,E,F} <: ComputationalModel
         nls_cache = instantiate_caches(x, nls, op)
         caches = (nls, nls_cache, x, x⁻, assem_U, uh⁻)
         A, B, C = typeof(res), typeof(jac), typeof(spaces)
-        D, E, F = typeof(dirbc), typeof(velocity), typeof(caches)
-        return new{A,B,C,D,E,F}(res, jac, spaces, dirbc, velocity, caches)
+        D, E, F, G = typeof(dirbc), typeof(velocity), typeof(applicators), typeof(caches)
+        return new{A,B,C,D,E,F,G}(res, jac, spaces, dirbc, velocity, applicators, caches)
     end
 end
 
@@ -289,6 +309,7 @@ end
 get_state(m::DynamicNonlinearModel) = FEFunction(get_trial_space(m), m.caches[3])
 get_measure(m::DynamicNonlinearModel) = m.res.dΩ
 get_spaces(m::DynamicNonlinearModel) = m.spaces
+get_applicators(m::DynamicNonlinearModel) = m.applicators
 get_assemblers(m::DynamicNonlinearModel) = (m.caches[4])
 
 
@@ -352,8 +373,8 @@ function solve!(m::DynamicNonlinearModel;
         vuh = m.velocity()
         _res = m.res(t, uh⁻, vuh)
         _jac = m.jac(t, uh⁻, vuh)
-        TrialFESpace!(U, m.dirichlet, t)
-        TrialFESpace!(U⁻, m.dirichlet, t - Δt)
+        TrialFESpace!(U, m.applicators[1], t)
+        TrialFESpace!(U⁻, m.applicators[2], t - Δt)
 
         # @show(    ∑( ∫(uh⁻[1]⋅uh⁻[1])m.res.dΩ  )  )
         # @show(    ∑( ∫(uh⁻[2]⋅uh⁻[2])m.res.dΩ   ) )

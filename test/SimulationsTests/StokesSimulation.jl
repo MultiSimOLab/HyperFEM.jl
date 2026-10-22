@@ -22,11 +22,10 @@ function stokes_simulation(; writevtk=false, verbose=false)
   dΩ = Measure(Ω, 2 * orderu)
 
   # Dirichlet velocity
-  evolu(Λ) = 1.0
   Du = BoundaryConditions(
-    BoundaryCondition("Dirichlet_Inlet", x -> VectorValue([16 * 1.0 * (0.0625 - x[2]^2), 0.0]), evolu),
-    BoundaryCondition("Dirichlet_Wall", [0.0, 0.0], evolu),
-    BoundaryCondition("Dirichlet_Circle", [0.0, 0.0], evolu))
+    BoundaryCondition("Dirichlet_Inlet", x -> VectorValue([16 * 1.0 * (0.0625 - x[2]^2), 0.0])),
+    BoundaryCondition("Dirichlet_Wall", [0.0, 0.0]),
+    BoundaryCondition("Dirichlet_Circle", [0.0, 0.0]))
 
   D_bc = MultiFieldBC([Du, NothingBC()])
 
