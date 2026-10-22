@@ -292,12 +292,16 @@ end
   C = random_symmetric(9, 1.0 .+ rand(9))
   @test regularize_hessian(C, 1e-6) == C
 
-  # no allocations, on the fast path (positive definite) and on the eigen-decomposition path
+  # No allocations, on the fast path (positive definite) and on the eigen-decomposition path. Skipped when
+  # bounds checking is forced (Pkg.test runs with --check-bounds=yes): @inbounds is then ignored and the
+  # MMatrix scratch arrays can escape to the heap through the BoundsError path (depending on the Julia
+  # version). The allocation-free behaviour is also tracked by the "regularize_hessian" benchmarks.
+  forced_boundscheck = Base.JLOptions().check_bounds == 1
   for N in (4, 9)
     Cpd = random_symmetric(N, 1.0 .+ rand(N))
     Cind = random_symmetric(N, randn(N))
     regularize_hessian(Cpd, 1e-6); regularize_hessian(Cind, 1e-6)
-    @test allocs(Cpd, 1e-6) == 0
-    @test allocs(Cind, 1e-6) == 0
+    @test allocs(Cpd, 1e-6) == 0 skip = forced_boundscheck
+    @test allocs(Cind, 1e-6) == 0 skip = forced_boundscheck
   end
 end
