@@ -6,7 +6,7 @@ using HyperFEM
 using HyperFEM.DiscreteModeling.EvolutionFunctions
 using HyperFEM.ComputationalModels.PostMetrics
 
-function visco_elastic_simulation(; t_end=2, writevtk=false, verbose=false)
+function visco_elastic_simulation(; backend=:gridap, t_end=2, writevtk=false, verbose=false)
   simdir = projdir("data", "sims", stem(@__FILE__))
   writevtk && setupfolder(simdir)
 
@@ -76,7 +76,7 @@ function visco_elastic_simulation(; t_end=2, writevtk=false, verbose=false)
 
   ls = LUSolver()
   nls = NewtonSolver(ls; maxiter=20, atol=1.e-6, rtol=1.e-6, verbose=verbose)
-  comp_model = StaticNonlinearModel(res, jac, Uu, Vu, D_bc; nls=nls, xh=uh, xh⁻=unh)
+  comp_model = StaticNonlinearModel(res, jac, Uu, Vu, D_bc; nls=nls, xh=uh, xh⁻=unh, backend=backend)
 
   λx = Float64[]
   σΓ = Float64[]
