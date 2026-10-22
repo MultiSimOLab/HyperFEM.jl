@@ -31,7 +31,7 @@ include("BoundaryConditions.jl")
 export Prescription
 export Separable
 export NonSeparable
-export Parametric
+export Coupling
 export BoundaryCondition
 export BoundaryConditions
 export MultiFieldBoundaryConditions
@@ -40,8 +40,6 @@ export get_masks
 export get_space_functions
 export get_time_derivative
 export central_difference
-export DirichletBC
-export NeumannBC
 export get_Neumann_dΓ
 export NothingBC
 export NothingTC
@@ -49,13 +47,13 @@ export MultiFieldBC
 export SingleFieldTC
 export MultiFieldTC
 export residual_Neumann
-export updateBC!
-export DirichletCoupling
-export InterpolableBC
-export InterpolableBC!
+export NeumannConditions
 export add_tag_from_vertex_filter!
 
 
+include("DirichletApplicator.jl")
+export dirichlet_applicator
+export DirichletApplicator
 include("FESpaces.jl")
 export TrialFESpace
 export TrialFESpace!
@@ -76,6 +74,7 @@ export dirichlet_preconditioning!
 export get_state
 export get_measure
 export get_spaces
+export get_applicators
 export get_assemblers
 export get_trial_space
 export get_test_space

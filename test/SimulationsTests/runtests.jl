@@ -49,6 +49,7 @@ include("MeshMovementSimulation.jl")
   @testset "MeshMovement" begin
     x = mesh_movement_simulation()
     @test isapprox(norm(x), 2.8132015601158087, rtol=1e-14)
+    @test isapprox(mesh_movement_simulation(interface_field=true), x, rtol=1e-12)   # stages living only on the interface
   end
 
 end

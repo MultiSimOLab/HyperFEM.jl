@@ -21,12 +21,11 @@ function stokes_simulation(; writevtk=false, verbose=false)
   Ω = Triangulation(geomodel)
   dΩ = Measure(Ω, 2 * orderu)
 
-  # DirichletBC velocity
-  evolu(Λ) = 1.0
-  dir_u_tags = ["Dirichlet_Inlet", "Dirichlet_Wall", "Dirichlet_Circle"]
-  dir_u_values = [x -> VectorValue([16 * 1.0 * (0.0625 - x[2]^2), 0.0]), [0.0, 0.0], [0.0, 0.0]]
-  dir_u_timesteps = [evolu, evolu, evolu]
-  Du = DirichletBC(dir_u_tags, dir_u_values, dir_u_timesteps)
+  # Dirichlet velocity
+  Du = BoundaryConditions(
+    BoundaryCondition("Dirichlet_Inlet", x -> VectorValue([16 * 1.0 * (0.0625 - x[2]^2), 0.0])),
+    BoundaryCondition("Dirichlet_Wall", [0.0, 0.0]),
+    BoundaryCondition("Dirichlet_Circle", [0.0, 0.0]))
 
   D_bc = MultiFieldBC([Du, NothingBC()])
 

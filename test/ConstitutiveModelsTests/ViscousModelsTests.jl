@@ -264,3 +264,31 @@ end
   ∂∂Ψ∂FF_ref = TensorValue(ForwardDiff.jacobian(F -> get_array(∂Ψ∂F(TensorValue(F), Fn, Cv)), get_array(F1)))
   @test isapprox(∂∂Ψ∂FF(F1, Fn, Cv), ∂∂Ψ∂FF_ref, rtol=1e-8)
 end
+
+
+"""
+Bytes allocated by `f(args...)`, excluding compilation (warm-up call).
+Measured inside a specialized function: at the @testset level, Julia 1.10
+counts the dynamic dispatch of the call itself.
+"""
+function allocations(f::G, args::Vararg{Any,N}) where {G,N}
+  f(args...)
+  @allocated f(args...)
+end
+
+@testset "GeneralizedMaxwell ViscousPolyconvex allocations" begin
+  hyper_elastic_model = NeoHookean3D(λ=λ, μ=μ) + VolumetricEnergy(λ=λ)
+  branch1 = ViscousPolyconvex(μ=μ1, τ=τ1)
+  branch2 = ViscousPolyconvex(μ=μ2, τ=τ2)
+  cons_model = GeneralizedMaxwell(hyper_elastic_model, branch1, branch2)
+  update_time_step!(cons_model, 0.1)
+  Ψ, ∂Ψ∂F, ∂∂Ψ∂FF = cons_model()
+  D = Dissipation(cons_model)
+  F = I3 + 1e-2*TensorValue(1:9...)
+  Fn = I3
+  Cv = I3
+  @test allocations(Ψ, F, Fn, Cv, Cv) == 0
+  @test allocations(∂Ψ∂F, F, Fn, Cv, Cv) == 0
+  @test allocations(∂∂Ψ∂FF, F, Fn, Cv, Cv) == 0
+  @test allocations(D, F, Fn, Cv, Cv) == 0
+end
