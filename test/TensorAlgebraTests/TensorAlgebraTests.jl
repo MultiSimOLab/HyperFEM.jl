@@ -2,6 +2,7 @@ using Gridap.TensorValues
 using Gridap.Arrays
 using HyperFEM.TensorAlgebra
 using Test
+import LinearAlgebra
 
 
 digits1(D) = [Float64(i) for i in 1:D]
@@ -251,4 +252,58 @@ end
   DCDF = F' ⊗₁₃²⁴ I3 + I3 ⊗₁₄²³ F'
   S_ref = 0.5 * DCDF' · H · DCDF
   @test push_forward_C_to_F(F, H) ≈ S_ref
+end
+
+
+@testset "regularize_hessian" begin
+  # TensorValue from a Matrix by splatting (TensorValue(::Matrix) fails for 9x9 on Julia 1.14.0-alpha1)
+  tensor(M::AbstractMatrix) = TensorValue{size(M, 1),size(M, 2)}(M...)
+  # Reference: the former implementation of HessianRegularization (LAPACK eigen on the upper triangle)
+  function reference_regularization(C::TensorValue, δ)
+    vecval = LinearAlgebra.eigen(LinearAlgebra.Symmetric(get_array(C)))
+    vec, val = vecval.vectors, vecval.values
+    tensor(vec * LinearAlgebra.diagm(max.(δ, val)) * vec')
+  end
+  function random_symmetric(N, λ)
+    Q = Matrix(LinearAlgebra.qr(randn(N, N)).Q)
+    A = Q * LinearAlgebra.Diagonal(λ) * Q'
+    tensor((A + A') / 2)
+  end
+  allocs(C, δ) = @allocated regularize_hessian(C, δ)
+
+  for N in (4, 9), _ in 1:200
+    scale = 10.0^rand(-2:5)
+    δ = 1e-6 * scale
+    spectra = (scale .* (0.1 .+ rand(N)),                          # positive definite
+               scale .* randn(N),                                   # indefinite
+               scale .* [rand((-1.0, 0.5, 2.0)) for _ in 1:N],      # repeated eigenvalues
+               δ .* (1 .+ 1e-3 .* randn(N)),                        # eigenvalues around δ
+               scale .* [i <= N ÷ 2 ? 0.0 : rand() for i in 1:N])  # singular
+    for λ in spectra
+      C = random_symmetric(N, λ)
+      R = reference_regularization(C, δ)
+      @test isapprox(regularize_hessian(C, δ), R, rtol=1e-12)
+    end
+    # only the upper triangle counts, as with Symmetric
+    C = random_symmetric(N, scale .* randn(N))
+    A = get_array(C) + 1e-3 * scale * LinearAlgebra.triu(randn(N, N), 1)'
+    @test isapprox(regularize_hessian(tensor(A), δ), reference_regularization(tensor(A), δ), rtol=1e-12)
+  end
+
+  # positive definite above δ: returned unchanged
+  C = random_symmetric(9, 1.0 .+ rand(9))
+  @test regularize_hessian(C, 1e-6) == C
+
+  # No allocations, on the fast path (positive definite) and on the eigen-decomposition path. Skipped when
+  # bounds checking is forced (Pkg.test runs with --check-bounds=yes): @inbounds is then ignored and the
+  # MMatrix scratch arrays can escape to the heap through the BoundsError path (depending on the Julia
+  # version). The allocation-free behaviour is also tracked by the "regularize_hessian" benchmarks.
+  forced_boundscheck = Base.JLOptions().check_bounds == 1
+  for N in (4, 9)
+    Cpd = random_symmetric(N, 1.0 .+ rand(N))
+    Cind = random_symmetric(N, randn(N))
+    regularize_hessian(Cpd, 1e-6); regularize_hessian(Cind, 1e-6)
+    @test allocs(Cpd, 1e-6) == 0 skip = forced_boundscheck
+    @test allocs(Cind, 1e-6) == 0 skip = forced_boundscheck
+  end
 end
