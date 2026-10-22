@@ -45,15 +45,11 @@ function staggered_visco_electric_simulation(; t_end=0.5, writevtk=false, verbos
   update_time_step!(cons_model, Δt)
 
   # Dirichlet boundary conditions 
-  dir_u_tags = ["fixed"]
-  dir_u_values = [[0.0, 0.0, 0.0]]
-  dir_u_timesteps = [EvolutionFunctions.constant()]
-  dirichlet_u = DirichletBC(dir_u_tags, dir_u_values, dir_u_timesteps)
+  dirichlet_u = BoundaryConditions(BoundaryCondition("fixed", [0.0, 0.0, 0.0], EvolutionFunctions.constant()))
 
-  dir_φ_tags = ["bottom", "mid"]
-  dir_φ_values = [0.0, 0.1]
-  dir_φ_timesteps = [EvolutionFunctions.constant(), EvolutionFunctions.ramp(1.0)]
-  dirichlet_φ = DirichletBC(dir_φ_tags, dir_φ_values, dir_φ_timesteps)
+  dirichlet_φ = BoundaryConditions(
+    BoundaryCondition("bottom", 0.0, EvolutionFunctions.constant()),
+    BoundaryCondition("mid", 0.1, EvolutionFunctions.ramp(1.0)))
 
   # Finite Elements
   reffeu = ReferenceFE(lagrangian, VectorValue{3,Float64}, order)

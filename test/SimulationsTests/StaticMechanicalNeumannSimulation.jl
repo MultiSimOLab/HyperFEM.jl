@@ -29,16 +29,10 @@ function static_mechanical_neumann_simulation(; writevtk=false, verbose=false)
   dΩ = Measure(Ω, degree)
 
   # Dirichlet conditions 
-  dir_u_tags = ["fixed"]
-  dir_u_values = [[0.0, 0.0, 0.0]]
-  dir_u_timesteps = [EvolutionFunctions.constant()]
-  D_bc = DirichletBC(dir_u_tags, dir_u_values, dir_u_timesteps)
+  D_bc = BoundaryConditions(BoundaryCondition("fixed", [0.0, 0.0, 0.0], EvolutionFunctions.constant()))
 
   # Neumann conditions 
-  neu_F_tags = ["force"]
-  neu_F_values = [[0.0, 0.0, -1e-3]]
-  neu_F_timesteps = [EvolutionFunctions.ramp()]
-  N_bc = NeumannBC(neu_F_tags, neu_F_values, neu_F_timesteps)
+  N_bc = BoundaryConditions(BoundaryCondition("force", [0.0, 0.0, -1e-3], EvolutionFunctions.ramp()))
   dΓ = get_Neumann_dΓ(geometry, N_bc, degree)
 
   #  FE spaces

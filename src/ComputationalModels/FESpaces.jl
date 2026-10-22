@@ -6,15 +6,23 @@ function Gridap.FESpaces.TestFESpace(model, reffe, bc::BoundaryConditions; kwarg
 end
 
 function Gridap.FESpaces.TrialFESpace(space::SingleFieldFESpace, bc::BoundaryConditions, Λ::Real=0.0)
-  TrialFESpace(space, get_space_functions(bc, Λ))
+  TrialFESpace!(TrialFESpace(zero_dirichlet_values(space), space), bc, Λ)
 end
 
 function Gridap.FESpaces.TrialFESpace(space::SingleFieldFESpace, ::NothingBC, Λ::Real=0.0)
   space
 end
 
+# The Dirichlet values are set by a DirichletApplicator (prescriptions evaluated at the Dirichlet nodes
+# of their tag only, Separable ones precomputed, fields with a cached point search); spaces it does not
+# support use Gridap's interpolation of the prescribed functions.
 function Gridap.FESpaces.TrialFESpace!(space::SingleFieldFESpace, bc::BoundaryConditions, Λ::Real)
-  TrialFESpace!(space, get_space_functions(bc, Λ))
+  app = _applicator(space, bc)
+  if app === nothing
+    TrialFESpace!(space, get_space_functions(bc, Λ))
+  else
+    apply!(space, app, bc, Λ)
+  end
 end
 
 function Gridap.FESpaces.TrialFESpace!(space::SingleFieldFESpace, ::NothingBC, Λ::Real)
@@ -27,6 +35,8 @@ end
 Set the Dirichlet values to the increment between the load parameters `Λ - ΔΛ` and `Λ`.
 """
 function Gridap.FESpaces.TrialFESpace!(space::SingleFieldFESpace, bc::BoundaryConditions, Λ::Real, ΔΛ::Real)
+  app = _applicator(space, bc)
+  app === nothing || return apply!(space, app, bc, Λ, ΔΛ)
   TrialFESpace!(space, bc, Λ - ΔΛ)
   values⁻ = copy(get_dirichlet_dof_values(space))
   TrialFESpace!(space, bc, Λ)

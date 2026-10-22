@@ -33,16 +33,10 @@ function staggered_electro_mechanical_simulation(; writevtk=false, verbose=false
 
   # Dirichlet conditions 
   evolu(Λ) = 1.0
-  dir_u_tags = ["fixedu"]
-  dir_u_values = [[0.0, 0.0, 0.0]]
-  dir_u_timesteps = [evolu]
-  Du = DirichletBC(dir_u_tags, dir_u_values, dir_u_timesteps)
+  Du = BoundaryConditions(BoundaryCondition("fixedu", [0.0, 0.0, 0.0], evolu))
 
   evolφ(Λ) = Λ
-  dir_φ_tags = ["midsuf", "topsuf"]
-  dir_φ_values = [0.0, 0.00005]
-  dir_φ_timesteps = [evolφ, evolφ]
-  Dφ = DirichletBC(dir_φ_tags, dir_φ_values, dir_φ_timesteps)
+  Dφ = BoundaryConditions(BoundaryCondition("midsuf", 0.0, evolφ), BoundaryCondition("topsuf", 0.00005, evolφ))
 
   # FE spaces
   reffeu = ReferenceFE(lagrangian, VectorValue{3,Float64}, order)

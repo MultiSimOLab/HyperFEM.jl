@@ -1,6 +1,5 @@
 
 abstract type TimedependentCondition end
-abstract type DirichletCoupling end
 
 
 struct MultiFieldTC{A} <: TimedependentCondition
@@ -128,6 +127,7 @@ function _derivative(p::Parametric, Λ, d)
 end
 
 
+
 #*******************************************************************************
 #    					 Boundary conditions
 #*******************************************************************************
@@ -175,8 +175,25 @@ Collection of boundary conditions applied to a single field.
 """
 struct BoundaryConditions{C<:Tuple}
     conditions::C
-    BoundaryConditions(conditions::Tuple{Vararg{BoundaryCondition}}) = new{typeof(conditions)}(conditions)
+    applicators::IdDict{Any,Any}     # DirichletApplicator per space (keyed by its Dirichlet values vector)
+    loadmap::Base.RefValue{Any}      # Λ -> Λ' applied before the prescriptions (see `set_load_map!`)
+    BoundaryConditions(conditions::Tuple{Vararg{BoundaryCondition}}) =
+        new{typeof(conditions)}(conditions, IdDict{Any,Any}(), Ref{Any}(identity))
 end
+
+"""
+    set_load_map!(bc, f)
+
+Make the `load` of the `Separable` prescriptions of `bc` see `f(Λ)` instead of `Λ` (in `TrialFESpace!`,
+`get_space_functions`, `residual_Neumann`). Used by `StaggeredModel` to map the load parameter of each
+inner solve to the global one, composing with the loads instead of replacing them (as the former
+`updateBC!` did). The other prescriptions (`NonSeparable`, `Parametric`, e.g. a coupling interpolating
+between two staggered stages) keep receiving the parameter of the inner solve. `identity` resets.
+"""
+set_load_map!(bc::BoundaryConditions, f) = (bc.loadmap[] = f; bc)
+load_map(bc::BoundaryConditions, Λ) = bc.loadmap[](Λ)
+"Load parameter seen by a condition: mapped for `Separable` prescriptions, raw otherwise."
+_load_of(c::BoundaryCondition, bc::BoundaryConditions, Λ) = c.value isa Separable ? load_map(bc, Λ) : Λ
 
 BoundaryConditions(conditions::BoundaryCondition...) = BoundaryConditions(conditions)
 BoundaryConditions(conditions::AbstractVector{<:BoundaryCondition}) = BoundaryConditions(Tuple(conditions))
@@ -218,7 +235,7 @@ Values prescribed at `Λ`, one per condition, in the format accepted by Gridap:
 a constant (`Real` or `VectorValue`, both `Number`s), a function of the
 coordinates `x -> value`, or a Gridap object such as a `CellField` or an `Interpolable`.
 """
-get_space_functions(bc::BoundaryConditions, Λ::Real) = map(c -> get_space_functions(c, Λ), bc.conditions)
+get_space_functions(bc::BoundaryConditions, Λ::Real) = map(c -> get_space_functions(c, _load_of(c, bc, Λ)), bc.conditions)
 
 """
     get_time_derivative(bc, Λ; backend=central_difference)
@@ -227,7 +244,7 @@ Derivative of the prescribed values with respect to `Λ`, in the same format as 
 `backend(f, Λ)` differentiates a function of `Λ`. `CellField`s returned by a `Parametric` prescription
 require a backend supporting them, such as the default `central_difference`.
 """
-get_time_derivative(bc::BoundaryConditions, Λ::Real; kwargs...) = map(c -> get_time_derivative(c, Λ; kwargs...), bc.conditions)
+get_time_derivative(bc::BoundaryConditions, Λ::Real; kwargs...) = map(c -> get_time_derivative(c, _load_of(c, bc, Λ); kwargs...), bc.conditions)   # w.r.t. the (mapped) parameter
 
 
 """
@@ -245,65 +262,11 @@ MultiFieldBoundaryConditions(fields::AbstractVector) = MultiFieldBoundaryConditi
 
 const MultiFieldBC = MultiFieldBoundaryConditions
 
+set_load_map!(bc::MultiFieldBoundaryConditions, f) = (foreach(b -> set_load_map!(b, f), bc.fields); bc)
+
 Base.length(bc::MultiFieldBoundaryConditions) = length(bc.fields)
 Base.iterate(bc::MultiFieldBoundaryConditions, args...) = iterate(bc.fields, args...)
 Base.getindex(bc::MultiFieldBoundaryConditions, i) = bc.fields[i]
-
-
-#*******************************************************************************
-#    					 Legacy constructors
-#*******************************************************************************
-
-"Load function of a legacy condition, replaceable in place by `updateBC!`."
-mutable struct LegacyLoad
-    f::Any
-end
-
-(l::LegacyLoad)(Λ) = l.f(Λ)
-
-_legacy_condition(tag, value, timestep) = BoundaryCondition(tag, _legacy_prescription(value, timestep))
-
-# `timestep === nothing` means `value` is a generator `Λ -> object`. Couplings ignore `timestep`.
-function _legacy_prescription(value, timestep)
-    value === DirichletCoupling && return Parametric(LegacyCoupling(nothing))
-    value isa InterpolableBC && return Parametric(LegacyCoupling(value.Interpolable))
-    isnothing(timestep) && return Parametric(value)
-    Separable(value, LegacyLoad(timestep))
-end
-
-function _legacy_conditions(tags::Vector{String}, values, timesteps)
-    @assert length(tags) == length(values) == length(timesteps)
-    BoundaryConditions(map(_legacy_condition, tags, values, timesteps))
-end
-
-"""
-    DirichletBC(tags, values, timesteps)
-
-Legacy constructor, returning `BoundaryConditions`. `values[i]` is multiplied by `timesteps[i](Λ)`,
-unless `timesteps[i] === nothing`; then `values[i]` is a generator `Λ -> object`.
-"""
-DirichletBC(tags::Vector{String}, values, timesteps) = _legacy_conditions(tags, values, timesteps)
-DirichletBC(tags::Vector{String}, values) = _legacy_conditions(tags, values, [Λ -> 1.0 for _ in tags])
-
-"Legacy constructor, returning `BoundaryConditions`. See `DirichletBC`."
-NeumannBC(tags::Vector{String}, values, timesteps) = _legacy_conditions(tags, values, timesteps)
-
-"""
-    updateBC!(bc, values, timesteps)
-
-Legacy interface for `StaggeredModel`: replace the load function of each condition built by
-`DirichletBC` or `NeumannBC` with `timesteps[i]`. `values` is only checked for its length.
-"""
-function updateBC!(bc::BoundaryConditions, values, timesteps)
-    @assert length(bc) == length(values) == length(timesteps)
-    for (c, timestep) in zip(bc.conditions, timesteps)
-        c.value isa Separable{<:Any,LegacyLoad} && (c.value.load.f = timestep)
-    end
-    bc
-end
-
-# Legacy field access by `StaggeredModel`: `bc.caches` is only used for its length.
-Base.getproperty(bc::BoundaryConditions, s::Symbol) = s === :caches ? getfield(bc, :conditions) : getfield(bc, s)
 
 
 #*******************************************************************************
@@ -342,54 +305,4 @@ end
 
 function get_Neumann_dΓ(model, bc::MultiFieldBoundaryConditions, degree::Int)
     [get_Neumann_dΓ(model, bc_i, degree) for bc_i in bc]
-end
-
-
-#*******************************************************************************
-#    					 Dirichlet coupling
-#*******************************************************************************
-
-# Legacy couplings. New code can prescribe `Parametric(Λ -> Interpolable(uh))` instead.
-
-"""
-Placeholder of a legacy `DirichletCoupling`, filled in place by `InterpolableBC!`.
-Until then, it prescribes the coordinates `x`, which `InterpolableBC` reads back.
-"""
-mutable struct LegacyCoupling
-    Interpolable::Any
-end
-
-(c::LegacyCoupling)(Λ) = isnothing(c.Interpolable) ? identity : _evaluator(c.Interpolable(Λ))
-
-_evaluator(f) = x -> evaluate(f, x)
-
-struct InterpolableBC{A,B,C} <: DirichletCoupling
-    coords::A
-    Interpolable::B
-    caches::C
-    function InterpolableBC(U::TrialFESpace, bc::BoundaryConditions, interface_tags::String, Interpolable::B) where {B}
-        dcmask = findall(x -> x == interface_tags, get_tags(bc))
-        dim = num_point_dims(get_triangulation(U))
-        mask = U.space.dirichlet_dof_tag .== dcmask[1]
-        vals = U.dirichlet_values[mask]
-        Interface_coords_ = reshape(vals, dim, :)'
-        coords = VectorValue.(eachrow(Interface_coords_))
-        v = evaluate(Interpolable(1.0), coords)
-        bc_values = reduce(vcat, map(x -> get_array(x), v))
-        caches = (bc_values, mask)
-        new{typeof(coords),B,typeof(caches)}(coords, Interpolable, caches)
-    end
-end
-
-function (obj::InterpolableBC)(Λ::Float64=1.0)
-    bc_values = obj.caches[1]
-    bc_values .= reduce(vcat, map(x -> get_array(x), evaluate(obj.Interpolable(Λ), obj.coords)))
-end
-
-function InterpolableBC!(U::TrialFESpace, bc::BoundaryConditions, interface_tags::String, Interpolable)
-    obj = InterpolableBC(U, bc, interface_tags, Interpolable)
-    coupling = bc[findfirst(==(interface_tags), get_tags(bc))].value
-    @assert coupling isa Parametric{LegacyCoupling} "Tag $interface_tags was not declared as a DirichletCoupling"
-    coupling.g.Interpolable = Interpolable
-    return obj
 end

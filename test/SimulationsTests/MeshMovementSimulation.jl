@@ -3,6 +3,7 @@ using Gridap.FESpaces
 using HyperFEM
 
 
+# The interface displacement is a `CellField` generated at every Λ (`Parametric`).
 function mesh_movement_simulation(; verbose=false)
 
   meshfile = "test_BC2.msh"
@@ -66,10 +67,9 @@ function mesh_movement_simulation(; verbose=false)
   dir(Λ) = uh⁻ + (uh⁺ - uh⁻) * Λ
 
   evolu(Λ) = Λ
-  dir_u_tags_air = ["uair_fixed", "Interface"]
-  dir_u_values_air = [[0.0, 0.0], Λ -> dir(Λ)]
-  dir_u_timesteps_air = [evolu, nothing]
-  Du_air = DirichletBC(dir_u_tags_air, dir_u_values_air, dir_u_timesteps_air)
+  Du_air = BoundaryConditions(
+    BoundaryCondition("uair_fixed", [0.0, 0.0], evolu),
+    BoundaryCondition("Interface", Parametric(dir)))
 
   Vu = TestFESpace(Ωair, reffeu, Du_air, conformity=:H1)
   Uu = TrialFESpace(Vu, Du_air, 1.0)

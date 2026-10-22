@@ -134,10 +134,9 @@ end
 @publish ComputationalModels get_tags
 @publish ComputationalModels get_masks
 @publish ComputationalModels get_space_functions
+@publish ComputationalModels set_load_map!
 @publish ComputationalModels get_time_derivative
 @publish ComputationalModels central_difference
-@publish ComputationalModels  DirichletBC
-@publish ComputationalModels  NeumannBC
 @publish ComputationalModels  get_Neumann_dΓ
 @publish ComputationalModels  residual_Neumann
 @publish ComputationalModels  NothingBC
@@ -157,7 +156,6 @@ end
 @publish ComputationalModels  solve!
 @publish ComputationalModels  dirichlet_preconditioning!
 @publish ComputationalModels  GmshDiscreteModel
-@publish ComputationalModels  updateBC!
 @publish ComputationalModels update_velocity!
 @publish ComputationalModels update_displacements!
 @publish ComputationalModels  PostProcessor
@@ -174,10 +172,7 @@ end
 @publish ComputationalModels  interpolate_L2_tensor
 @publish ComputationalModels  interpolate_L2_vector
 @publish ComputationalModels  interpolate_L2_scalar
-@publish ComputationalModels  DirichletCoupling
 @publish ComputationalModels  evaluate!
-@publish ComputationalModels  InterpolableBC
-@publish ComputationalModels  InterpolableBC!
 @publish ComputationalModels  TrialFESpace! # Exporting internal function of Gridap
 @publish ComputationalModels interpolate_L2_field
 @publish ComputationalModels L2_projection
