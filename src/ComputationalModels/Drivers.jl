@@ -100,6 +100,25 @@ build_operator(::Val{B}, res, jac, U, V, assem, previous) where {B} =
     error("HyperFEM: backend :$B is not available; for :kernel load HyperFEMKernels (`using HyperFEMKernels`)")
 
 """
+    dirichlet_projection(backend, res, jac, uh, ∆U, V, ls, previous) -> (duh, op)
+
+Linearised problem of the Dirichlet projection (`solve!` with `ProjectDirichlet=true`): solves
+`jac(uh, du, v) = -res(uh, v)` for `du` in `∆U`, whose Dirichlet values hold the increment of the
+conditions of the step, with the linear solver `ls`. Returns the increment `duh` (an `FEFunction` of
+`∆U`) and the operator used, handed back as `previous` in the next step so that a backend can reuse
+its structure (`nothing` the first time). `Val(:gridap)` assembles an `AffineFEOperator`;
+`Val(:kernel)` is provided by the HyperFEMKernels extension.
+"""
+function dirichlet_projection(::Val{:gridap}, res, jac, uh, ∆U, V, ls, previous)
+    l(v) = -1.0 * res(uh, v)
+    a(du, v) = jac(uh, du, v)
+    op = AffineFEOperator(a, l, ∆U, V)
+    solve(ls, op), nothing
+end
+dirichlet_projection(::Val{B}, res, jac, uh, ∆U, V, ls, previous) where {B} =
+    error("HyperFEM: backend :$B is not available; for :kernel load HyperFEMKernels (`using HyperFEMKernels`)")
+
+"""
     StaticNonlinearModel(res, jac, U, V, dirichlet; neumann=nothing, nls, xh, xh⁻, backend=:gridap)
 
 `res(τ)` and `jac(τ)` are functions of the stage parameter τ of the solver. `dirichlet` are the
@@ -139,7 +158,7 @@ struct StaticNonlinearModel{A,B,C,D,E,F,G} <: ComputationalModel
         _jac = jac(1.0)
         op = build_operator(Val(backend), _res, _jac, U, V, assem_U, nothing)
         nls_cache = instantiate_caches(x, nls, op)
-        caches = (nls, nls_cache, x, x⁻, assem_U, Val(backend), Ref{Any}(op))
+        caches = (nls, nls_cache, x, x⁻, assem_U, Val(backend), Ref{Any}(op), Ref{Any}(nothing))
 
         A, B, C = typeof(res), typeof(jac), typeof(spaces)
         D, E, F, G = typeof(dirbc), typeof(neumann), typeof(applicators), typeof(caches)
@@ -277,11 +296,8 @@ function get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆�
     TrialFESpace!(∆U, m.applicators[2], load(Λ), load(Λ) - load(Λ - ∆Λ); stage=(Λ, ∆Λ))
     res = with_neumann(m.res(Λ - ∆Λ), m.neumann, load(Λ - ∆Λ))
     jac = m.jac(Λ - ∆Λ)
-    l(v) = -1.0 * res(uh, v)
-    a(du, v) = jac(uh, du, v)
-    op = AffineFEOperator(a, l, ∆U, V)
-    ls = m.caches[1].ls
-    duh = solve(ls, op)
+    duh, op = dirichlet_projection(m.caches[6], res, jac, uh, ∆U, V, m.caches[1].ls, m.caches[8][])
+    m.caches[8][] = op
     return duh
 end
 #*******************************************************************************	
