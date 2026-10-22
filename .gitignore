@@ -6,3 +6,5 @@ docs/build/
 docs/src/index.md
 **/.DS_Store
 .vscode/
+
+CLAUDE.md
