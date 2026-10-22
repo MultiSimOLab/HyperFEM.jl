@@ -54,6 +54,9 @@ _to_number(v::AbstractVector{<:Real}) = VectorValue(v...)
 _to_space(v::Union{Number,AbstractVector{<:Real}}) = _to_number(v)
 _to_space(f) = x -> _to_number(f(x))  # Any callable accepting the coordinates `x`
 
+_to_load(::Nothing) = Λ -> 1.0
+_to_load(f) = f
+
 """
     Separable(space, load=nothing)
 
@@ -64,15 +67,16 @@ See [`Prescription`](@ref).
 struct Separable{S,L} <: Prescription
     space::S
     load::L
-    Separable(space, load=nothing) = (s = _to_space(space); new{typeof(s),typeof(load)}(s, load))
+    function Separable(space, load=nothing)
+        s = _to_space(space)
+        l = _to_load(load)
+        new{typeof(s),typeof(l)}(s, l)
+    end
 end
 
-_at_load(::Nothing, Λ) = 1.0
-_at_load(f, Λ) = f(Λ)
+(p::Separable{<:Number})(Λ, incr=0.0) = p.space * p.load(Λ)
 
-(p::Separable{<:Number})(Λ) = p.space * _at_load(p.load, Λ)
-
-(p::Separable)(Λ) = x -> p.space(x) * _at_load(p.load, Λ)
+(p::Separable)(Λ, incr=0.0) = x -> p.space(x) * p.load(Λ)
 
 """
     NonSeparable(f)
@@ -84,7 +88,7 @@ struct NonSeparable{F} <: Prescription
     f::F
 end
 
-(p::NonSeparable)(Λ) = x -> _to_number(p.f(x, Λ))
+(p::NonSeparable)(Λ, incr=0.0) = x -> _to_number(p.f(x, Λ))
 
 """
     Parametric(g)
@@ -96,7 +100,7 @@ struct Parametric{G} <: Prescription
     g::G
 end
 
-(p::Parametric)(Λ) = p.g(Λ)
+(p::Parametric)(Λ, incr=0.0) = p.g(Λ, incr)
 
 """
     central_difference(f, Λ; h=1e-6)
@@ -163,7 +167,7 @@ BoundaryCondition(tag::String, value, load=nothing; kwargs...) = BoundaryConditi
 
 get_tags(bc::BoundaryCondition) = bc.tag
 get_masks(bc::BoundaryCondition) = bc.mask
-get_space_functions(bc::BoundaryCondition, Λ::Real) = bc.value(Λ)
+get_space_functions(bc::BoundaryCondition, Λ::Real, Λinner::Real) = bc.value(Λ, Λinner)
 get_time_derivative(bc::BoundaryCondition, Λ::Real; backend=central_difference) = _derivative(bc.value, Λ, backend)
 is_active(bc::BoundaryCondition, Λ) = is_active(bc.activity, Λ)
 
@@ -218,7 +222,7 @@ Values prescribed at `Λ`, one per condition, in the format accepted by Gridap:
 a constant (`Real` or `VectorValue`, both `Number`s), a function of the
 coordinates `x -> value`, or a Gridap object such as a `CellField` or an `Interpolable`.
 """
-get_space_functions(bc::BoundaryConditions, Λ::Real) = map(c -> get_space_functions(c, Λ), bc.conditions)
+get_space_functions(bc::BoundaryConditions, Λ::Real, Λinner::Real) = map(c -> get_space_functions(c, Λ, Λinner), bc.conditions)
 
 """
     get_time_derivative(bc, Λ; backend=central_difference)
