@@ -1,6 +1,5 @@
 
 abstract type TimedependentCondition end
-abstract type DirichletCoupling end
 
 
 struct MultiFieldTC{A} <: TimedependentCondition
@@ -42,11 +41,21 @@ end
 """
     Prescription
 
-What is prescribed on a boundary, as a function of the load parameter `Λ`.
-`p(Λ)` returns an object accepted by Gridap for a single tag:
+What is prescribed on a boundary. `p(Λ, τ)` returns an object accepted by Gridap for a single tag:
 a `Number`/`VectorValue`, a function of the coordinates `x -> value`, or a `CellField`.
+
+Two parameters are passed by the drivers:
+- `Λ`, the **load**: the parameter of the loading programme of the whole simulation. `Separable` and
+  `NonSeparable` prescribe values as functions of it.
+- `τ`, the **stage**: the parameter of the solver, the one `res(τ)` and `jac(τ)` receive. A `Coupling`
+  prescribes the state of another problem as a function of it.
+
+They coincide in a static or monolithic solve; in a staggered loop `Λ` runs over the ramp of the step
+while `τ` runs from 0 to 1 inside it (see `StaggeredModel`). `p(Λ)` is `p(Λ, Λ)`.
 """
 abstract type Prescription end
+
+(p::Prescription)(Λ) = p(Λ, Λ)
 
 _to_number(v::Number) = v
 _to_number(v::AbstractVector{<:Real}) = VectorValue(v...)
@@ -70,9 +79,9 @@ end
 _at_load(::Nothing, Λ) = 1.0
 _at_load(f, Λ) = f(Λ)
 
-(p::Separable{<:Number})(Λ) = p.space * _at_load(p.load, Λ)
+(p::Separable{<:Number})(Λ, τ) = p.space * _at_load(p.load, Λ)
 
-(p::Separable)(Λ) = x -> p.space(x) * _at_load(p.load, Λ)
+(p::Separable)(Λ, τ) = x -> p.space(x) * _at_load(p.load, Λ)
 
 """
     NonSeparable(f)
@@ -84,19 +93,22 @@ struct NonSeparable{F} <: Prescription
     f::F
 end
 
-(p::NonSeparable)(Λ) = x -> _to_number(p.f(x, Λ))
+(p::NonSeparable)(Λ, τ) = x -> _to_number(p.f(x, Λ))
 
 """
-    Parametric(g)
+    Coupling(g)
 
-Prescribed object `g(Λ)`, which can be anything accepted by Gridap for a single tag
-(e.g. a `CellField` or a function of `x`). See [`Prescription`](@ref)
+The state of another problem prescribed on a boundary: `g(τ)` returns a field (`FEFunction`, `CellField`,
+`Interpolable`) or a function of `x`, evaluated at the stage parameter `τ` of the solver, the same one
+`res(τ)` receives. In a staggered loop `g` typically interpolates between the previous and the current
+stage of the other field, `τ -> uh⁻ + (uh⁺ - uh⁻) * τ`, and the field may live only on the faces of the
+tag (an `FESpace` on an interface). See [`Prescription`](@ref).
 """
-struct Parametric{G} <: Prescription
+struct Coupling{G} <: Prescription
     g::G
 end
 
-(p::Parametric)(Λ) = p.g(Λ)
+(p::Coupling)(Λ, τ) = p.g(τ)
 
 """
     central_difference(f, Λ; h=1e-6)
@@ -119,13 +131,18 @@ function _derivative(p::NonSeparable, Λ, d)
     x -> d(λ -> p(λ)(x), Λ)
 end
 
-function _derivative(p::Parametric, Λ, d)
-    if p(Λ) isa Function
-        x -> d(λ -> p(λ)(x), Λ)
+# A coupling depends on the stage parameter only
+function _derivative(p::Coupling, τ, d)
+    if p.g(τ) isa Function
+        x -> d(t -> p.g(t)(x), τ)
     else
-        d(p.g, Λ)  # Number and CellField support subtraction
+        d(p.g, τ)  # Number and CellField support subtraction
     end
 end
+
+_parameter(::Prescription, Λ, τ) = Λ
+_parameter(::Coupling, Λ, τ) = τ
+
 
 
 #*******************************************************************************
@@ -163,8 +180,9 @@ BoundaryCondition(tag::String, value, load=nothing; kwargs...) = BoundaryConditi
 
 get_tags(bc::BoundaryCondition) = bc.tag
 get_masks(bc::BoundaryCondition) = bc.mask
-get_space_functions(bc::BoundaryCondition, Λ::Real) = bc.value(Λ)
-get_time_derivative(bc::BoundaryCondition, Λ::Real; backend=central_difference) = _derivative(bc.value, Λ, backend)
+get_space_functions(bc::BoundaryCondition, Λ::Real, τ::Real=Λ) = bc.value(Λ, τ)
+get_time_derivative(bc::BoundaryCondition, Λ::Real, τ::Real=Λ; backend=central_difference) =
+    _derivative(bc.value, _parameter(bc.value, Λ, τ), backend)
 is_active(bc::BoundaryCondition, Λ) = is_active(bc.activity, Λ)
 
 
@@ -212,22 +230,24 @@ function get_masks(bc::BoundaryConditions)
 end
 
 """
-    get_space_functions(bc::BoundaryConditions, Λ::Real)
+    get_space_functions(bc::BoundaryConditions, Λ::Real, τ::Real=Λ)
 
-Values prescribed at `Λ`, one per condition, in the format accepted by Gridap:
-a constant (`Real` or `VectorValue`, both `Number`s), a function of the
+Values prescribed at the load `Λ` and the stage `τ` (see [`Prescription`](@ref)), one per condition, in
+the format accepted by Gridap: a constant (`Real` or `VectorValue`, both `Number`s), a function of the
 coordinates `x -> value`, or a Gridap object such as a `CellField` or an `Interpolable`.
 """
-get_space_functions(bc::BoundaryConditions, Λ::Real) = map(c -> get_space_functions(c, Λ), bc.conditions)
+get_space_functions(bc::BoundaryConditions, Λ::Real, τ::Real=Λ) = map(c -> get_space_functions(c, Λ, τ), bc.conditions)
 
 """
-    get_time_derivative(bc, Λ; backend=central_difference)
+    get_time_derivative(bc, Λ, τ=Λ; backend=central_difference)
 
-Derivative of the prescribed values with respect to `Λ`, in the same format as `get_space_functions`.
-`backend(f, Λ)` differentiates a function of `Λ`. `CellField`s returned by a `Parametric` prescription
-require a backend supporting them, such as the default `central_difference`.
+Derivative of the prescribed values with respect to their parameter (`Λ` for `Separable` and
+`NonSeparable`, `τ` for `Coupling`), in the same format as `get_space_functions`. `backend(f, Λ)`
+differentiates a function of one parameter. `CellField`s returned by a `Coupling` require a backend
+supporting them, such as the default `central_difference`.
 """
-get_time_derivative(bc::BoundaryConditions, Λ::Real; kwargs...) = map(c -> get_time_derivative(c, Λ; kwargs...), bc.conditions)
+get_time_derivative(bc::BoundaryConditions, Λ::Real, τ::Real=Λ; kwargs...) =
+    map(c -> get_time_derivative(c, Λ, τ; kwargs...), bc.conditions)
 
 
 """
@@ -251,69 +271,16 @@ Base.getindex(bc::MultiFieldBoundaryConditions, i) = bc.fields[i]
 
 
 #*******************************************************************************
-#    					 Legacy constructors
-#*******************************************************************************
-
-"Load function of a legacy condition, replaceable in place by `updateBC!`."
-mutable struct LegacyLoad
-    f::Any
-end
-
-(l::LegacyLoad)(Λ) = l.f(Λ)
-
-_legacy_condition(tag, value, timestep) = BoundaryCondition(tag, _legacy_prescription(value, timestep))
-
-# `timestep === nothing` means `value` is a generator `Λ -> object`. Couplings ignore `timestep`.
-function _legacy_prescription(value, timestep)
-    value === DirichletCoupling && return Parametric(LegacyCoupling(nothing))
-    value isa InterpolableBC && return Parametric(LegacyCoupling(value.Interpolable))
-    isnothing(timestep) && return Parametric(value)
-    Separable(value, LegacyLoad(timestep))
-end
-
-function _legacy_conditions(tags::Vector{String}, values, timesteps)
-    @assert length(tags) == length(values) == length(timesteps)
-    BoundaryConditions(map(_legacy_condition, tags, values, timesteps))
-end
-
-"""
-    DirichletBC(tags, values, timesteps)
-
-Legacy constructor, returning `BoundaryConditions`. `values[i]` is multiplied by `timesteps[i](Λ)`,
-unless `timesteps[i] === nothing`; then `values[i]` is a generator `Λ -> object`.
-"""
-DirichletBC(tags::Vector{String}, values, timesteps) = _legacy_conditions(tags, values, timesteps)
-DirichletBC(tags::Vector{String}, values) = _legacy_conditions(tags, values, [Λ -> 1.0 for _ in tags])
-
-"Legacy constructor, returning `BoundaryConditions`. See `DirichletBC`."
-NeumannBC(tags::Vector{String}, values, timesteps) = _legacy_conditions(tags, values, timesteps)
-
-"""
-    updateBC!(bc, values, timesteps)
-
-Legacy interface for `StaggeredModel`: replace the load function of each condition built by
-`DirichletBC` or `NeumannBC` with `timesteps[i]`. `values` is only checked for its length.
-"""
-function updateBC!(bc::BoundaryConditions, values, timesteps)
-    @assert length(bc) == length(values) == length(timesteps)
-    for (c, timestep) in zip(bc.conditions, timesteps)
-        c.value isa Separable{<:Any,LegacyLoad} && (c.value.load.f = timestep)
-    end
-    bc
-end
-
-# Legacy field access by `StaggeredModel`: `bc.caches` is only used for its length.
-Base.getproperty(bc::BoundaryConditions, s::Symbol) = s === :caches ? getfield(bc, :conditions) : getfield(bc, s)
-
-
-#*******************************************************************************
 #    					 Neumann conditions
 #*******************************************************************************
 
 """
-    residual_Neumann(...)::Function
+    residual_Neumann(bc, v, dΓ, Λ)
 
-Return the Neumann residual as a FUNCTION.
+Neumann contribution `-∑ ∫(v ⋅ fᵢ) dΓᵢ` to the residual at the load `Λ`, one term per condition of `bc`
+(`dΓ` from [`get_Neumann_dΓ`](@ref)). Inside a staggered loop the load is not the parameter of `res(τ)`:
+give the conditions to the model (`neumann = NeumannConditions(model, bc, degree)`) and the driver adds
+this term at the right load.
 """
 function residual_Neumann(bc::BoundaryConditions, dΓ::Vector, Λ::Float64)
     v -> mapreduce((fi, dΓi) -> ∫(v ⋅ fi)dΓi, +, get_space_functions(bc, Λ), dΓ; init=DomainContribution())
@@ -344,52 +311,21 @@ function get_Neumann_dΓ(model, bc::MultiFieldBoundaryConditions, degree::Int)
     [get_Neumann_dΓ(model, bc_i, degree) for bc_i in bc]
 end
 
-
-#*******************************************************************************
-#    					 Dirichlet coupling
-#*******************************************************************************
-
-# Legacy couplings. New code can prescribe `Parametric(Λ -> Interpolable(uh))` instead.
-
 """
-Placeholder of a legacy `DirichletCoupling`, filled in place by `InterpolableBC!`.
-Until then, it prescribes the coordinates `x`, which `InterpolableBC` reads back.
+    NeumannConditions(model, bc, degree)
+
+Neumann conditions of a field with their boundary measures, to be given to a computational model
+(`neumann=`), which adds `residual_Neumann` to its residual at the load of every step.
 """
-mutable struct LegacyCoupling
-    Interpolable::Any
+struct NeumannConditions{B<:BoundaryConditions,D}
+    bc::B
+    dΓ::D
 end
 
-(c::LegacyCoupling)(Λ) = isnothing(c.Interpolable) ? identity : _evaluator(c.Interpolable(Λ))
+NeumannConditions(model, bc::BoundaryConditions, degree::Int) = NeumannConditions(bc, get_Neumann_dΓ(model, bc, degree))
 
-_evaluator(f) = x -> evaluate(f, x)
+residual_Neumann(n::NeumannConditions, v, Λ) = residual_Neumann(n.bc, v, n.dΓ, Λ)
 
-struct InterpolableBC{A,B,C} <: DirichletCoupling
-    coords::A
-    Interpolable::B
-    caches::C
-    function InterpolableBC(U::TrialFESpace, bc::BoundaryConditions, interface_tags::String, Interpolable::B) where {B}
-        dcmask = findall(x -> x == interface_tags, get_tags(bc))
-        dim = num_point_dims(get_triangulation(U))
-        mask = U.space.dirichlet_dof_tag .== dcmask[1]
-        vals = U.dirichlet_values[mask]
-        Interface_coords_ = reshape(vals, dim, :)'
-        coords = VectorValue.(eachrow(Interface_coords_))
-        v = evaluate(Interpolable(1.0), coords)
-        bc_values = reduce(vcat, map(x -> get_array(x), v))
-        caches = (bc_values, mask)
-        new{typeof(coords),B,typeof(caches)}(coords, Interpolable, caches)
-    end
-end
-
-function (obj::InterpolableBC)(Λ::Float64=1.0)
-    bc_values = obj.caches[1]
-    bc_values .= reduce(vcat, map(x -> get_array(x), evaluate(obj.Interpolable(Λ), obj.coords)))
-end
-
-function InterpolableBC!(U::TrialFESpace, bc::BoundaryConditions, interface_tags::String, Interpolable)
-    obj = InterpolableBC(U, bc, interface_tags, Interpolable)
-    coupling = bc[findfirst(==(interface_tags), get_tags(bc))].value
-    @assert coupling isa Parametric{LegacyCoupling} "Tag $interface_tags was not declared as a DirichletCoupling"
-    coupling.g.Interpolable = Interpolable
-    return obj
-end
+"Residual function `res` with the Neumann term of `n` at the load `Λ` added (`n === nothing`: `res`)."
+with_neumann(res, ::Nothing, Λ) = res
+with_neumann(res, n::NeumannConditions, Λ) = (u, v) -> res(u, v) + residual_Neumann(n, v, Λ)

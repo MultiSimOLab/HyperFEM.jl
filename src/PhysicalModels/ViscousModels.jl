@@ -6,12 +6,12 @@ using ..TensorAlgebra
 # Visco elastic models
 # =====================
 
-struct ViscousIncompressible <: Visco
-  elasto::Elasto
+struct ViscousIncompressible{E<:Elasto} <: Visco
+  elasto::E
   τ::Float64
-  Δt::Ref{Float64}
-  function ViscousIncompressible(elasto; τ::Float64)
-    new(elasto, τ, 0)
+  Δt::Base.RefValue{Float64}
+  function ViscousIncompressible(elasto::E; τ::Float64) where {E<:Elasto}
+    new{E}(elasto, τ, Ref(0.0))
   end
 end
 
@@ -55,8 +55,8 @@ function Dissipation(obj::ViscousIncompressible)
   D(F, Fn, A) = ViscousDissipation(obj, Se, ∂Se∂Ce, F, Fn, A)
 end
 
-struct NVisco{N} <: Visco 
-  branches::NTuple{N,Visco}
+struct NVisco{N,B<:NTuple{N,Visco}} <: Visco
+  branches::B
 end
 
 function NVisco(branches::Vararg{Visco})
@@ -79,14 +79,22 @@ function Base.foreach(f, obj::NVisco, rest...)
   foreach(f, obj.branches, rest...)
 end
 
+# Sum of f(g, A) over tuples, unrolled by the compiler (allocation-free).
+# Like zip, it stops at the shortest tuple.
+@inline _sum_branches(f, ::Tuple{}, ::Tuple{}, acc) = acc
+@inline _sum_branches(f, ::Tuple{}, ::Tuple, acc) = acc
+@inline _sum_branches(f, ::Tuple, ::Tuple{}, acc) = acc
+@inline _sum_branches(f, gs::Tuple, As::Tuple, acc) =
+  _sum_branches(f, Base.tail(gs), Base.tail(As), acc + f(first(gs), first(As)))
+
 function (obj::NVisco)()
-  DΨv   = map(b -> b(),  obj)
-  Ψα    = getindex.(DΨv, 1)
-  ∂ΨαF  = getindex.(DΨv, 2)
-  ∂ΨαFF = getindex.(DΨv, 3)
-  Ψ(F, Fn, A...)     = mapreduce((Ψi, Ai) -> Ψi(F, Fn, Ai), +, Ψα, A; init=0)
-  ∂Ψ∂F(F, Fn, A...)  = mapreduce((∂ΨiF, Ai) -> ∂ΨiF(F, Fn, Ai), +, ∂ΨαF, A; init=zerotensor3)
-  ∂Ψ∂FF(F, Fn, A...) = mapreduce((∂ΨiFF, Ai) -> ∂ΨiFF(F, Fn, Ai), +, ∂ΨαFF, A; init=zerotensor9)
+  DΨv   = map(b -> b(), obj)
+  Ψα    = map(d -> d[1], DΨv)
+  ∂ΨαF  = map(d -> d[2], DΨv)
+  ∂ΨαFF = map(d -> d[3], DΨv)
+  Ψ(F, Fn, A::Vararg{Any,N})     where N = _sum_branches((Ψi, Ai) -> Ψi(F, Fn, Ai), Ψα, A, 0.0)
+  ∂Ψ∂F(F, Fn, A::Vararg{Any,N})  where N = _sum_branches((∂ΨiF, Ai) -> ∂ΨiF(F, Fn, Ai), ∂ΨαF, A, zerotensor3)
+  ∂Ψ∂FF(F, Fn, A::Vararg{Any,N}) where N = _sum_branches((∂ΨiFF, Ai) -> ∂ΨiFF(F, Fn, Ai), ∂ΨαFF, A, zerotensor9)
   (Ψ, ∂Ψ∂F, ∂Ψ∂FF)
 end
 
@@ -114,33 +122,34 @@ end
 
 function Dissipation(obj::NVisco)
   Dα = map(Dissipation, obj)
-  D(F, Fn, A...) = mapreduce((Di, Ai) -> Di(F, Fn, Ai), +, Dα, A)
+  D(F, Fn, A::Vararg{Any,N}) where N = _sum_branches((Di, Ai) -> Di(F, Fn, Ai), Dα, A, 0.0)
 end
 
-struct GeneralizedMaxwell{E<:Elasto} <: ViscoElastic{E}
+struct GeneralizedMaxwell{E<:Elasto,B<:NVisco} <: ViscoElastic{E}
   longterm::E
-  branches::NVisco{N} where N
-  Δt::Ref{Float64}
+  branches::B
+  Δt::Base.RefValue{Float64}
   function GeneralizedMaxwell(longTerm::E, branches::Vararg{Visco}) where {E<:Elasto}
-    new{E}(longTerm,NVisco(branches),0)
+    nvisco = NVisco(branches)
+    new{E,typeof(nvisco)}(longTerm, nvisco, Ref(0.0))
   end
 end
 
 function (obj::GeneralizedMaxwell{<:IsoElastic})()
   Ψe, ∂ΨeF, ∂ΨeFF = obj.longterm()
   Ψv, ∂ΨvF, ∂ΨvFF = obj.branches()
-  Ψ(F, Fn, A...)     = Ψe(F) + Ψv(F, Fn, A...)
-  ∂Ψ∂F(F, Fn, A...)  = ∂ΨeF(F) + ∂ΨvF(F, Fn, A...)
-  ∂Ψ∂FF(F, Fn, A...) = ∂ΨeFF(F) + ∂ΨvFF(F, Fn, A...)
+  Ψ(F, Fn, A::Vararg{Any,N})     where N = Ψe(F) + Ψv(F, Fn, A...)
+  ∂Ψ∂F(F, Fn, A::Vararg{Any,N})  where N = ∂ΨeF(F) + ∂ΨvF(F, Fn, A...)
+  ∂Ψ∂FF(F, Fn, A::Vararg{Any,N}) where N = ∂ΨeFF(F) + ∂ΨvFF(F, Fn, A...)
   (Ψ, ∂Ψ∂F, ∂Ψ∂FF)
 end
 
 function (obj::GeneralizedMaxwell{<:AnisoElastic})()
   Ψe, ∂ΨeF, ∂ΨeFF = obj.longterm()
   Ψv, ∂ΨvF, ∂ΨvFF = obj.branches()
-  Ψ(F, n, Fn, A...)     = Ψe(F, n) + Ψv(F, Fn, A...)
-  ∂Ψ∂F(F, n, Fn, A...)  = ∂ΨeF(F, n) + ∂ΨvF(F, Fn, A...)
-  ∂Ψ∂FF(F, n, Fn, A...) = ∂ΨeFF(F, n) + ∂ΨvFF(F, Fn, A...)
+  Ψ(F, n, Fn, A::Vararg{Any,N})     where N = Ψe(F, n) + Ψv(F, Fn, A...)
+  ∂Ψ∂F(F, n, Fn, A::Vararg{Any,N})  where N = ∂ΨeF(F, n) + ∂ΨvF(F, Fn, A...)
+  ∂Ψ∂FF(F, n, Fn, A::Vararg{Any,N}) where N = ∂ΨeFF(F, n) + ∂ΨvFF(F, Fn, A...)
   (Ψ, ∂Ψ∂F, ∂Ψ∂FF)
 end
 
@@ -179,7 +188,7 @@ end
 
 function Dissipation(obj::GeneralizedMaxwell{<:AnisoElastic})
   Dvis = Dissipation(obj.branches)
-  D(F, n, Fn, A...) = Dvis(F, Fn, A...)
+  D(F, n, Fn, A::Vararg{Any,N}) where N = Dvis(F, Fn, A...)
 end
 
 
@@ -362,7 +371,7 @@ function ∂Ce_∂C(::ViscousIncompressible, γα, ∂Se∂Ce_, invUvn, Ce, Ce_t
   K[10, 1:9] = get_array(K21)[:]  # There is no need to transpose the vector
   F = [get_array(F1); (get_array(F2)[:])']
   ∂u∂C = K \ F
-  ∂Ce∂C = ∂u∂C[1:9, 1:9]
+  ∂Ce∂C = ∂u∂C[SOneTo(9), SOneTo(9)]  # Static slice (SMatrix), not a Matrix
   return TensorValue(∂Ce∂C)
 end
 

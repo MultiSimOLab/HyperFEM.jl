@@ -29,17 +29,10 @@ function static_mechanical_neumann_simulation(; writevtk=false, verbose=false)
   dΩ = Measure(Ω, degree)
 
   # Dirichlet conditions 
-  dir_u_tags = ["fixed"]
-  dir_u_values = [[0.0, 0.0, 0.0]]
-  dir_u_timesteps = [EvolutionFunctions.constant()]
-  D_bc = DirichletBC(dir_u_tags, dir_u_values, dir_u_timesteps)
+  D_bc = BoundaryConditions(BoundaryCondition("fixed", [0.0, 0.0, 0.0], EvolutionFunctions.constant()))
 
-  # Neumann conditions 
-  neu_F_tags = ["force"]
-  neu_F_values = [[0.0, 0.0, -1e-3]]
-  neu_F_timesteps = [EvolutionFunctions.ramp()]
-  N_bc = NeumannBC(neu_F_tags, neu_F_values, neu_F_timesteps)
-  dΓ = get_Neumann_dΓ(geometry, N_bc, degree)
+  # Neumann conditions: given to the model, which adds them to the residual at the load of every step
+  N_bc = NeumannConditions(geometry, BoundaryConditions(BoundaryCondition("force", [0.0, 0.0, -1e-3], EvolutionFunctions.ramp())), degree)
 
   #  FE spaces
   reffeu = ReferenceFE(lagrangian, VectorValue{3,Float64}, order)
@@ -48,13 +41,13 @@ function static_mechanical_neumann_simulation(; writevtk=false, verbose=false)
 
   #  residual and jacobian function of load factor
   k = Kinematics(Mechano, Solid)
-  res(Λ) = (u, v) -> residual(physmodel, k, u, v, dΩ) + residual_Neumann(N_bc, v, dΓ, Λ)
+  res(Λ) = (u, v) -> residual(physmodel, k, u, v, dΩ)
   jac(Λ) = (u, du, v) -> jacobian(physmodel, k, u, du, v, dΩ)
 
   ls = LUSolver()
   nls = NewtonSolver(ls; maxiter=20, atol=1.e-10, rtol=1.e-8, verbose=verbose)
 
-  comp_model = StaticNonlinearModel(res, jac, U, V, D_bc; nls=nls)
+  comp_model = StaticNonlinearModel(res, jac, U, V, D_bc; neumann=N_bc, nls=nls)
 
   function driverpost_mech(post)
     if writevtk

@@ -41,12 +41,11 @@ function visco_elastic_simulation(; t_end=2, writevtk=false, verbose=false)
 
   # Dirichlet boundary conditions
   strain = 0.5
-  D_bc = DirichletBC(
-    ["corner1", "corner2", "fixed", "moving"],
-    [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [long * strain, 0.0, 0.0]],
-    [constant(), constant(), constant(), triangular(10/t_end)])
-  dirichlet_masks = [
-    [true, true, true], [true, false, true], [true, false, false], [true, false, false]]
+  D_bc = BoundaryConditions(
+    BoundaryCondition("corner1", [0.0, 0.0, 0.0], constant(); mask=(true, true, true)),
+    BoundaryCondition("corner2", [0.0, 0.0, 0.0], constant(); mask=(true, false, true)),
+    BoundaryCondition("fixed", [0.0, 0.0, 0.0], constant(); mask=(true, false, false)),
+    BoundaryCondition("moving", [long * strain, 0.0, 0.0], triangular(10/t_end); mask=(true, false, false)))
 
   # Setup integration
   order = 1
@@ -61,7 +60,7 @@ function visco_elastic_simulation(; t_end=2, writevtk=false, verbose=false)
 
   # FE spaces
   reffe = ReferenceFE(lagrangian, VectorValue{3,Float64}, order)
-  Vu = TestFESpace(model, reffe, D_bc, dirichlet_masks=dirichlet_masks, conformity=:H1)
+  Vu = TestFESpace(model, reffe, D_bc, conformity=:H1)
   VL2 = FESpace(Ω, reffe, conformity=:L2)
   Uu = TrialFESpace(Vu, D_bc, 0.0)
   Uun = TrialFESpace(Vu, D_bc, 0.0)

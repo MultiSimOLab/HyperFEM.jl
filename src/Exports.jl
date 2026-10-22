@@ -127,7 +127,7 @@ end
 @publish ComputationalModels Prescription
 @publish ComputationalModels Separable
 @publish ComputationalModels NonSeparable
-@publish ComputationalModels Parametric
+@publish ComputationalModels Coupling
 @publish ComputationalModels BoundaryCondition
 @publish ComputationalModels BoundaryConditions
 @publish ComputationalModels MultiFieldBoundaryConditions
@@ -136,10 +136,11 @@ end
 @publish ComputationalModels get_space_functions
 @publish ComputationalModels get_time_derivative
 @publish ComputationalModels central_difference
-@publish ComputationalModels  DirichletBC
-@publish ComputationalModels  NeumannBC
 @publish ComputationalModels  get_Neumann_dΓ
 @publish ComputationalModels  residual_Neumann
+@publish ComputationalModels  NeumannConditions
+@publish ComputationalModels  dirichlet_applicator
+@publish ComputationalModels  DirichletApplicator
 @publish ComputationalModels  NothingBC
 @publish ComputationalModels  MultiFieldBC
 @publish ComputationalModels  SingleFieldTC
@@ -148,6 +149,7 @@ end
 @publish ComputationalModels  get_state
 @publish ComputationalModels  get_measure
 @publish ComputationalModels  get_spaces
+@publish ComputationalModels  get_applicators
 @publish ComputationalModels  get_trial_space
 @publish ComputationalModels  get_test_space
 @publish ComputationalModels  get_assemblers
@@ -157,7 +159,6 @@ end
 @publish ComputationalModels  solve!
 @publish ComputationalModels  dirichlet_preconditioning!
 @publish ComputationalModels  GmshDiscreteModel
-@publish ComputationalModels  updateBC!
 @publish ComputationalModels update_velocity!
 @publish ComputationalModels update_displacements!
 @publish ComputationalModels  PostProcessor
@@ -174,10 +175,7 @@ end
 @publish ComputationalModels  interpolate_L2_tensor
 @publish ComputationalModels  interpolate_L2_vector
 @publish ComputationalModels  interpolate_L2_scalar
-@publish ComputationalModels  DirichletCoupling
 @publish ComputationalModels  evaluate!
-@publish ComputationalModels  InterpolableBC
-@publish ComputationalModels  InterpolableBC!
 @publish ComputationalModels  TrialFESpace! # Exporting internal function of Gridap
 @publish ComputationalModels interpolate_L2_field
 @publish ComputationalModels L2_projection
