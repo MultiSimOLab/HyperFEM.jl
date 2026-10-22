@@ -50,6 +50,7 @@ export contraction_IP_JPKL
 export contraction_IP_PJKL
 export contraction_IJK_KLP
 export push_forward_C_to_F
+export regularize_hessian
 
 export Box
 export Ellipsoid
@@ -69,5 +70,7 @@ include("TensorsDefinitions.jl")
 include("Operations.jl")
 
 include("Functions.jl")
+
+include("SymmetricEigen.jl")
 
 end
