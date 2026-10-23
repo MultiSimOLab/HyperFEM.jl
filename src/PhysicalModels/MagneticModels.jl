@@ -24,7 +24,7 @@ end
 
 struct Magnetic <: Magneto
   μ::Float64
-  αr::Ref{Float64}
+  αr::Base.RefValue{Float64}
   χe::Float64  
   Magnetic(; μ0::Float64, αr::Float64, χe::Float64=0.0) = new(μ0, Ref(αr), χe)
 end
@@ -122,7 +122,7 @@ end
 
 struct HardMagnetic <: Magneto
   μ::Float64
-  αr::Ref{Float64}
+  αr::Base.RefValue{Float64}
   χe::Float64
   χr::Float64
   χt::Float64
@@ -172,7 +172,7 @@ end
 
 struct HardMagnetic2D <: Magneto
   μ::Float64
-  αr::Ref{Float64}
+  αr::Base.RefValue{Float64}
   χe::Float64
   χr::Float64
   χt::Float64

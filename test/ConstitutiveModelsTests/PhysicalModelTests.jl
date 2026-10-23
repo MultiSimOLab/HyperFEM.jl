@@ -930,6 +930,38 @@ end
   @test norm(∂Ψφφ(F(∇u), H0(∇φ), N)) == 1.7771608829110207e-6
 end
 
+"""
+Bytes allocated by `f(args...)`, excluding compilation (warm-up call), measured
+inside a specialized function.
+"""
+function hard_magnetic_allocations(f::G, args::Vararg{Any,N}) where {G,N}
+  f(args...)
+  @allocated f(args...)
+end
+
+@testset "HardMagnetic allocations and αr update" begin
+  # `αr` is stored in a concrete `Base.RefValue{Float64}`: the constitutive functions are
+  # type-stable and allocation-free, and still read the current value of `αr` at each call.
+  cases = (
+    (MooneyRivlin2D(λ=3.0, μ1=1.0, μ2=2.0), HardMagnetic2D(μ0=1.2566e-6, αr=40e-3, χe=0.0, χr=8.0; βmok=1.0, βcoup=1.0),
+     I2 + 1e-3 * TensorValue(1.0, 2.0, 3.0, 4.0), VectorValue(1.0, 2.0), VectorValue(0.0, 1.0)),
+    (MooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0), HardMagnetic(μ0=1.2566e-6, αr=40e-3, χe=0.0, χr=8.0; βmok=1.0, βcoup=1.0),
+     I3 + 1e-3 * TensorValue(1.0:9.0...), VectorValue(1.0, 2.0, 3.0), VectorValue(0.0, 0.0, 1.0)))
+  for (mech, mag, F, ℋ₀, N) in cases
+    funcs = (mech + mag)()
+    for f in funcs
+      @inferred f(F, ℋ₀, N)
+      @test hard_magnetic_allocations(f, F, ℋ₀, N) == 0
+    end
+    Ψ = funcs[1]
+    Ψ1 = Ψ(F, ℋ₀, N)
+    mag.αr = 2 * mag.αr
+    @test Ψ(F, ℋ₀, N) != Ψ1
+    mag.αr = mag.αr / 2
+    @test Ψ(F, ℋ₀, N) == Ψ1
+  end
+end
+
 
 
 
