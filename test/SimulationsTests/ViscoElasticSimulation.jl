@@ -67,7 +67,7 @@ function visco_elastic_simulation(; backend=:gridap, t_end=2, writevtk=false, ve
 
   uh = FEFunction(Uu, zero_free_values(Uu))
   unh = FEFunction(Uun, zero_free_values(Uun))
-  state_vars = CellState(cons_model, dΩ)
+  state_vars = CellState(cons_model, dΩ; backend)      # :kernel → KernelStates, updated by the engine
   F,_,_ = get_Kinematics(k)
   Fnh = F∘∇(unh)'
 
@@ -88,7 +88,7 @@ function visco_elastic_simulation(; backend=:gridap, t_end=2, writevtk=false, ve
     σΓ1 = sum(∫(σh11)dΓ1) / sum(∫(1.0)dΓ1)
     push!(σΓ, σΓ1)
     push!(λx, 1.0 + component_LInf(uh, :x, Ω) / long)
-    update_state!(cons_model, state_vars, F∘(∇(uh)'), F∘(∇(unh)'))
+    update_state!(cons_model, state_vars, F∘(∇(uh)'), F∘(∇(unh)'); backend)
   end
 
   post_model = PostProcessor(comp_model, driverpost; is_vtk=writevtk, filepath=simdir)

@@ -3,16 +3,16 @@
 # Common functions
 # ===================
 
-function Gridap.CellData.CellState(obj::ThermoMechano, args...)
-  CellState(obj.mechano, args...)
+function Gridap.CellData.CellState(obj::ThermoMechano, args...; kwargs...)
+  CellState(obj.mechano, args...; kwargs...)
 end
 
 function initialize_state(obj::TM) where {TM<:ThermoMechano}
   initialize_state(obj.mechano)
 end
 
-function Gridap.CellData.update_state!(obj::TM, state, F, θ, args...) where {TM<:ThermoMechano}
-  update_state!(obj.mechano, state, F, args...)
+function Gridap.CellData.update_state!(obj::TM, state, F, θ, args...; kwargs...) where {TM<:ThermoMechano}
+  update_state!(obj.mechano, state, F, args...; kwargs...)
 end
 
 function update_time_step!(obj::TM, Δt::Float64) where {TM<:ThermoMechano}

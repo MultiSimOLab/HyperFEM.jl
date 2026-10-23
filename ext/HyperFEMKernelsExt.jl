@@ -5,7 +5,7 @@ module HyperFEMKernelsExt
 # steps only re-capture the weak form for the new load factor with `update`.
 
 using HyperFEM
-using HyperFEMKernels: KernelOperator, update
+using HyperFEMKernels: KernelOperator, update, KernelState, KernelUpdater
 using Gridap.FESpaces: FEFunction
 using Gridap.Algebra: AffineOperator, residual, jacobian, zero_initial_guess, solve
 
@@ -29,5 +29,11 @@ function HyperFEM.ComputationalModels.dirichlet_projection(::Val{:kernel}, res, 
     dx = solve(ls, AffineOperator(A, b))
     FEFunction(∆U, dx), op
 end
+
+# State variables: `CellState(model, dΩ; backend = :kernel)` stores them as dense `KernelState`s, whose
+# updates run with the engine automatically; `update_state!(model, ...; backend = :kernel)` runs the
+# update with the engine for Gridap's `CellState`s too.
+HyperFEM.PhysicalModels._new_state(::Val{:kernel}, v, points) = KernelState(v, points)
+HyperFEM.PhysicalModels._state_updater(::Val{:kernel}, f) = KernelUpdater(f)
 
 end # module
