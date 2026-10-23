@@ -442,11 +442,79 @@ end
 
 
 
-#*******************************************************************************	
+#*******************************************************************************
 #    					 StaticLinearModel
-#*******************************************************************************	
+#*******************************************************************************
 
+"""
+    linear_system(backend, bf, lf, U, V, assem) -> (K, b, op)
 
+Matrix `K` of the bilinear form `bf` and vector `b` of the linear form `lf`, with the Dirichlet lift of
+`U` (the Dirichlet values of `U` are moved to the right-hand side), as Gridap's `AffineFEOperator`.
+With `lf === nothing` only `K` is assembled and `b` is allocated and zeroed. `op` is the operator
+of the backend (`nothing` for `:gridap`), handed back to [`linear_system!`](@ref) and
+[`load_vector!`](@ref) so that a backend can reuse its structure. `Val(:kernel)` is provided by
+the HyperFEMKernels extension (`using HyperFEMKernels`).
+"""
+function linear_system(::Val{:gridap}, bf, lf, U, V, assem)
+    if lf === nothing
+        K = assemble_matrix(bf, assem, U, V)
+        b = allocate_in_range(K)
+        fill!(b, zero(eltype(b)))
+    else
+        op = AffineFEOperator(bf, lf, U, V, assem)
+        K, b = get_matrix(op), get_vector(op)
+    end
+    K, b, nothing
+end
+linear_system(::Val{B}, bf, lf, U, V, assem) where {B} =
+    error("HyperFEM: backend :$B is not available; for :kernel load HyperFEMKernels (`using HyperFEMKernels`)")
+
+"""
+    linear_system!(backend, K, b, bf, lf, U, V, assem, op) -> op
+
+Re-assembles in place the system of [`linear_system`](@ref): `K` and `b` with the current Dirichlet
+values of `U`, or only `K` when `lf === nothing`. Returns the operator to hand back in the next call.
+"""
+function linear_system!(::Val{:gridap}, K, b, bf, lf, U, V, assem, op)
+    if lf === nothing
+        assemble_matrix!(bf, K, assem, U, V)
+    else
+        u = get_trial_fe_basis(U)
+        v = get_fe_basis(V)
+        data = collect_cell_matrix_and_vector(U, V, bf(u, v), lf(v), zero(U))
+        assemble_matrix_and_vector!(K, b, assem, data)
+    end
+    nothing
+end
+linear_system!(::Val{B}, K, b, bf, lf, U, V, assem, op) where {B} =
+    error("HyperFEM: backend :$B is not available; for :kernel load HyperFEMKernels (`using HyperFEMKernels`)")
+
+"""
+    load_vector!(backend, b, lf, U, V, assem, op) -> op
+
+Vector of the linear form `lf` alone (no Dirichlet lift), as Gridap's `assemble_vector!`; used for
+the right-hand sides of a [`StaticLinearModel`](@ref) with several linear forms. Returns the operator
+to hand back in the next call.
+"""
+function load_vector!(::Val{:gridap}, b, lf, U, V, assem, op)
+    assemble_vector!(lf, b, assem, V)
+    nothing
+end
+load_vector!(::Val{B}, b, lf, U, V, assem, op) where {B} =
+    error("HyperFEM: backend :$B is not available; for :kernel load HyperFEMKernels (`using HyperFEMKernels`)")
+
+"""
+    StaticLinearModel(lf, bf, U, V, dirichlet; assem_U, ls, xh, backend=:gridap)
+    StaticLinearModel(bf, U, V, dirichlet; assem_U, ls, xh, backend=:gridap)
+    StaticLinearModel(lfs::Vector, bf, U0, V0, dirichlet; assem_U0, ls, backend=:gridap)
+
+Linear problem `bf(u, v) = lf(v)`. The first form assembles matrix and vector at construction; the
+second only the matrix (the right-hand side is given to `solve!` or built by the model's functors);
+the third solves one matrix for several right-hand sides `lfs` on the repeated spaces of `U0`, `V0`.
+`backend` selects who assembles (see [`linear_system`](@ref)): `:gridap` (default) or `:kernel`
+(HyperFEMKernels extension, `using HyperFEMKernels`).
+"""
 struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
     lf::A
     bf::B
@@ -458,17 +526,16 @@ struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
         lf::Function, bf::Function, U, V, dirbc;
         assem_U=SparseMatrixAssembler(U, V),
         ls::LinearSolver=LUSolver(),
-        xh::FEFunction=FEFunction(U, zero_free_values(U)))
+        xh::FEFunction=FEFunction(U, zero_free_values(U)),
+        backend::Symbol=:gridap)
 
         spaces = (U, V)
-        op = AffineFEOperator(bf, lf, U, V, assem_U)
-        K, b = get_matrix(op), get_vector(op)
+        K, b, op = linear_system(Val(backend), bf, lf, U, V, assem_U)
         x = get_free_dof_values(xh)
         # x = allocate_in_domain(K)
         fill!(x, zero(eltype(x)))
         ns = numerical_setup(symbolic_setup(ls, K), K)
-        caches = (ns, K, b, x, assem_U)
-
+        caches = (ns, K, b, x, assem_U, Val(backend), Ref{Any}(op))
 
         A, B, C = typeof(lf), typeof(bf), typeof(spaces)
         D, E = typeof(dirbc), typeof(caches)
@@ -480,19 +547,18 @@ struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
     function StaticLinearModel(
         lf::Vector{<:Function}, bf::Function, U0, V0, dirbc;
         assem_U0=SparseMatrixAssembler(U0, V0),
-        ls::LinearSolver=LUSolver())
+        ls::LinearSolver=LUSolver(),
+        backend::Symbol=:gridap)
 
         nblocks = length(lf)
         U, V = repeat_spaces(nblocks, U0, V0)
         spaces = (U, V)
         ##  cache
-        K = assemble_matrix(bf, assem_U0, U0, V0) # 1D
-        b = allocate_in_range(K)
-        fill!(b, zero(eltype(b))) # 1D
+        K, b, op = linear_system(Val(backend), bf, nothing, U0, V0, assem_U0) # 1D
         x = repeated_allocate_in_domain(nblocks, K)
         fill!(x, zero(eltype(x))) # nD
         ns = numerical_setup(symbolic_setup(ls, K), K) # 1D
-        caches = (ns, K, b, x, assem_U0)
+        caches = (ns, K, b, x, assem_U0, Val(backend), Ref{Any}(op))
 
         A, B, C = Vector{<:Function}, typeof(bf), typeof(spaces)
         D, E = typeof(dirbc), typeof(caches)
@@ -505,17 +571,16 @@ struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
         bf::Function, U, V, dirbc;
         assem_U=SparseMatrixAssembler(U, V),
         ls::LinearSolver=LUSolver(),
-        xh::FEFunction=FEFunction(U, zero_free_values(U)))
+        xh::FEFunction=FEFunction(U, zero_free_values(U)),
+        backend::Symbol=:gridap)
 
         spaces = (U, V)
-        K = assemble_matrix(bf, assem_U, U, V)
-        b = allocate_in_range(K)
-        fill!(b, zero(eltype(b)))
+        K, b, op = linear_system(Val(backend), bf, nothing, U, V, assem_U)
         x = get_free_dof_values(xh)
         # x = allocate_in_domain(K)
         fill!(x, zero(eltype(x)))
         ns = numerical_setup(symbolic_setup(ls, K), K) # 1D
-        caches = (ns, K, b, x, assem_U)
+        caches = (ns, K, b, x, assem_U, Val(backend), Ref{Any}(op))
 
         A, B, C = Nothing, typeof(bf), typeof(spaces)
         D, E = typeof(dirbc), typeof(caches)
@@ -530,7 +595,7 @@ struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
         ns, K, b, _, assem_U = m.caches
         b .= x
         if Assembly
-            assemble_matrix!(bf, K, assem_U, U, V)
+            assemble_stiffness!(m, bf, U, V, assem_U)
         end
         numerical_setup!(ns, K)
         Algebra.solve!(x, ns, b)
@@ -539,12 +604,12 @@ struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
 
     function (m::StaticLinearModel)(xh::SingleFieldFEFunction; Measure=nothing, Assembly=false, kwargs...)
         x_ = get_free_dof_values(xh)
-        _, V = m.spaces
+        U, V = m.spaces
         bf = m.bf
         ns, K, b, _, assem_U = m.caches
         assemble_vector!((v) -> ∫(xh * v)Measure, b, assem_U, V)
         if Assembly
-            assemble_matrix!(bf, K, assem_U, U, V)
+            assemble_stiffness!(m, bf, U, V, assem_U)
         end
         numerical_setup!(ns, K)
         Algebra.solve!(x_, ns, b)
@@ -555,6 +620,15 @@ struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
 
 end
 
+# Backend of the model and its operator (`caches[6]`, `caches[7]`)
+get_backend(m::StaticLinearModel) = m.caches[6]
+
+# Matrix only, with the backend of the model
+function assemble_stiffness!(m::StaticLinearModel, bf, U, V, assem)
+    op = m.caches[7]
+    op[] = linear_system!(get_backend(m), m.caches[2], m.caches[3], bf, nothing, U, V, assem, op[])
+end
+
 
 function solve!(m::StaticLinearModel; Assembly=true, post=PostProcessor())
 
@@ -562,15 +636,9 @@ function solve!(m::StaticLinearModel; Assembly=true, post=PostProcessor())
     U, V = m.spaces
     bf = m.bf
     lf = m.lf
-    ns, K, b, x, assem_U = m.caches
+    ns, K, b, x, assem_U, backend, op = m.caches
     if Assembly
-        u = get_trial_fe_basis(U)
-        v = get_fe_basis(V)
-        uhd = zero(U)
-        matcontribs = bf(u, v)
-        veccontribs = lf(v)
-        data = collect_cell_matrix_and_vector(U, V, matcontribs, veccontribs, uhd)
-        assemble_matrix_and_vector!(K, b, assem_U, data)
+        op[] = linear_system!(backend, K, b, bf, lf, U, V, assem_U, op[])
     end
     numerical_setup!(ns, K)
     Algebra.solve!(x, ns, b)
@@ -589,7 +657,7 @@ function solve!(m::StaticLinearModel, b::Vector{Float64}; Assembly=true, post=Po
     bf = m.bf
     ns, K, _, x, assem_U = m.caches
     if Assembly
-        assemble_matrix!(bf, K, assem_U, U, V)
+        assemble_stiffness!(m, bf, U, V, assem_U)
     end
     numerical_setup!(ns, K)
     Algebra.solve!(x, ns, b)
@@ -607,16 +675,16 @@ function solve!(m::StaticLinearModel{Vector{<:Function},<:Any,<:Any,<:Any,<:Any}
     V0 = V[1]
     bf = m.bf
     lf = m.lf
-    ns, K, b, x, assem_U0 = m.caches
+    ns, K, b, x, assem_U0, backend, op = m.caches
 
     if Assembly
-        assemble_matrix!(bf, K, assem_U0, U0, V0)
+        assemble_stiffness!(m, bf, U0, V0, assem_U0)
     end
 
     numerical_setup!(ns, K)
 
     map(blocks(x), lf) do xi, li
-        assemble_vector!(li, b, assem_U0, V0)
+        op[] = load_vector!(backend, b, li, U0, V0, assem_U0, op[])
         Algebra.solve!(xi, ns, b)
     end
     post(1.0)
@@ -629,5 +697,3 @@ get_state(m::StaticLinearModel) = FEFunction(get_trial_space(m), m.caches[4])
 get_measure(m::StaticLinearModel) = m.biform.dΩ
 get_spaces(m::StaticLinearModel) = m.spaces
 get_assemblers(m::StaticLinearModel) = (m.caches[5], m.plb_caches[2], m.adj_caches[4])
-
-
