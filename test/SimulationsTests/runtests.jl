@@ -22,6 +22,8 @@ include("StaggeredElectroMechanicalSimulation.jl")
 include("StaggeredViscoElectricSimulation.jl")
 include("StokesSimulation.jl")
 include("MeshMovementSimulation.jl")
+include("TurekNavierStokesSimulation.jl")
+include("HMREVacuumSimulation.jl")
 
 "Runs `simulate(backend)` for every backend of TEST_BACKENDS: Dict backend => result."
 run_backends(simulate) = Dict(b => simulate(b) for b in TEST_BACKENDS)
@@ -121,6 +123,35 @@ end
       end
     end
     agree(r, identity)
+  end
+
+  @testset "TurekNavierStokes" begin
+    # DFG 2D-1 (Re = 20), P1-P1 SUPG/PSPG/LSIC, BDF2 Oseen, StaticLinearModel re-assembled at every step
+    r = run_backends(b -> turek_navier_stokes_simulation(; backend=b))
+    for (b, s) in r
+      @testset "$b" begin
+        @test isapprox(norm(s.x), 13.67687986714, rtol=1e-8)
+        @test isapprox(s.cD, 5.5795, rtol=0.03)      # DFG reference values (fine meshes, P2-P1)
+        @test isapprox(s.Δp, 0.1175, rtol=0.02)
+      end
+    end
+    agree(r, s -> s.x)
+    agree(r, s -> s.cD_history)
+  end
+
+  @testset "HMREVacuum" begin
+    # staggered magneto-mechanics with the vacuum (three problems, Coupling, Maxwell traction), φbot = 520 V, 4 steps
+    r = run_backends(b -> hmre_vacuum_simulation(; backend=b))
+    for (b, s) in r
+      @testset "$b" begin
+        @test isapprox(norm(s.φ), 2.0940145799e4, rtol=1e-6)
+        @test isapprox(norm(s.u_solid), 1.0426282896e-1, rtol=1e-6)
+        @test isapprox(norm(s.u_vacuum), 2.4014448097e-1, rtol=1e-6)
+      end
+    end
+    agree(r, s -> s.φ)
+    agree(r, s -> s.u_solid)
+    agree(r, s -> s.u_vacuum)
   end
 
 end
