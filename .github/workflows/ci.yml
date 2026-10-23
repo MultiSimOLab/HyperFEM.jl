@@ -36,7 +36,7 @@ jobs:
       - uses: julia-actions/cache@v3
       - name: Clone HyperFEMKernels next to HyperFEM (kernel backend of the simulation tests)
         run: git clone --depth 1 https://github.com/MultiSimOLab/HyperFEMKernels.jl ../HyperFEMKernels.jl
-      - name: Run tests with both backends (HyperFEMKernels is not registered: developed in the test environment)
+      - name: Run tests with both backends (HyperFEMKernels, not registered, developed in the test environment)
         shell: julia --color=yes --check-bounds=yes --project=test {0}
         run: |
           using Pkg
@@ -69,7 +69,7 @@ jobs:
           Pkg.resolve() # fail here if the lower bound is not installable
       - name: Clone HyperFEMKernels next to HyperFEM (kernel backend of the simulation tests)
         run: git clone --depth 1 https://github.com/MultiSimOLab/HyperFEMKernels.jl ../HyperFEMKernels.jl
-      - name: Run tests with both backends (HyperFEMKernels is not registered: developed in the test environment)
+      - name: Run tests with both backends (HyperFEMKernels, not registered, developed in the test environment)
         shell: julia --color=yes --check-bounds=yes --project=test {0}
         run: |
           using Pkg, TOML
