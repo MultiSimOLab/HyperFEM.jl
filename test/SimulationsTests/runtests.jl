@@ -24,6 +24,7 @@ include("StokesSimulation.jl")
 include("MeshMovementSimulation.jl")
 include("TurekNavierStokesSimulation.jl")
 include("HMREVacuumSimulation.jl")
+include("ThirdMediumContactSimulation.jl")
 
 "Runs `simulate(backend)` for every backend of TEST_BACKENDS: Dict backend => result."
 run_backends(simulate) = Dict(b => simulate(b) for b in TEST_BACKENDS)
@@ -152,6 +153,24 @@ end
     agree(r, s -> s.φ)
     agree(r, s -> s.u_solid)
     agree(r, s -> s.u_vacuum)
+  end
+
+  @testset "ThirdMediumContact" begin
+    # piston benchmark (Faltus, Amato, Horák 2026): double-clamped beam buckling against a third medium, weighted jump
+    # of ∇u on the skeleton of the third medium, injectivity-preserving line search; 15 increments up to u_y = 1.5 d
+    r = run_backends(b -> thirdmedium_contact_simulation(; backend=b))
+    for (b, s) in r
+      @testset "$b" begin
+        @test length(s.Λ) == 15 && s.Λ[end] ≈ 1.0
+        @test isapprox(norm(s.u), 2.479372626098216, rtol=1e-8)
+        @test isapprox(s.fpiston[end], 7.039427782245141, rtol=1e-8)
+        @test isapprox(s.fclamp[end], 7.039054101423267, rtol=1e-8)
+        @test s.fpiston[10] < 6.6 && s.fpiston[11] > 7.0        # buckling between u_y = 1.0 d and 1.1 d
+        @test all(abs.(s.fpiston .- s.fclamp) .< 1e-3 .* s.fpiston)   # equilibrium of the beam
+      end
+    end
+    agree(r, s -> s.u)
+    agree(r, s -> s.fpiston)
   end
 
 end
