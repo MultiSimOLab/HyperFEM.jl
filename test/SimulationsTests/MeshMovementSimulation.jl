@@ -7,7 +7,7 @@ using HyperFEM
 # stages), imposed on the interface of the air as a `Coupling` of the stage parameter. With
 # `interface_field = true` the two stages live only on the faces of the interface (an FESpace on its
 # BoundaryTriangulation, as in the staggered solid–vacuum problems), and must give the same solution.
-function mesh_movement_simulation(; verbose=false, interface_field=false)
+function mesh_movement_simulation(; backend=:gridap, verbose=false, interface_field=false)
 
   meshfile = "test_BC2.msh"
   geomodel = GmshDiscreteModel(projdir("test/models/" * meshfile))
@@ -95,7 +95,7 @@ function mesh_movement_simulation(; verbose=false, interface_field=false)
   nls_vacmech = Newton_RaphsonSolver(LUSolver(); maxiter=10, rtol=2, verbose=verbose, linesearch=linesearch)
 
   xh = FEFunction(Uu, zero_free_values(Uu))
-  comp_model_vacmech = StaticNonlinearModel(res_vacmech, jac_vacmech, Uu, Vu, Du_air; nls=nls_vacmech, xh=xh)
+  comp_model_vacmech = StaticNonlinearModel(res_vacmech, jac_vacmech, Uu, Vu, Du_air; nls=nls_vacmech, xh=xh, backend=backend)
   args_vacmech = Dict(:stepping => (nsteps=1, maxbisec=5), :ProjectDirichlet => true)
 
   nsteps = 10

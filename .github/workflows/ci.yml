@@ -19,7 +19,7 @@ jobs:
   test:
     name: Tests
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -34,13 +34,20 @@ jobs:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
       - uses: julia-actions/cache@v3
-      - uses: julia-actions/julia-buildpkg@v1
-      - uses: julia-actions/julia-runtest@v1
+      - name: Clone HyperFEMKernels next to HyperFEM (kernel backend of the simulation tests)
+        run: git clone --depth 1 https://github.com/MultiSimOLab/HyperFEMKernels.jl ../HyperFEMKernels.jl
+      - name: Run tests with both backends (HyperFEMKernels is not registered: developed in the test environment)
+        shell: julia --color=yes --check-bounds=yes --project=test {0}
+        run: |
+          using Pkg
+          Pkg.develop([PackageSpec(path="."), PackageSpec(path="../HyperFEMKernels.jl")])
+          Pkg.instantiate()
+          include(joinpath(pwd(), "test", "runtests.jl"))
 
   lowest-gridap: # downgrade compatibility: the lowest Gridap allowed by [compat] must still work
     name: Lowest Gridap
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v7
@@ -60,5 +67,13 @@ jobs:
           println("Gridap compat \"$spec\" -> pinning to =$lowest")
           Pkg.compat("Gridap", "=$lowest")
           Pkg.resolve() # fail here if the lower bound is not installable
-      - uses: julia-actions/julia-buildpkg@v1
-      - uses: julia-actions/julia-runtest@v1
+      - name: Clone HyperFEMKernels next to HyperFEM (kernel backend of the simulation tests)
+        run: git clone --depth 1 https://github.com/MultiSimOLab/HyperFEMKernels.jl ../HyperFEMKernels.jl
+      - name: Run tests with both backends (HyperFEMKernels is not registered: developed in the test environment)
+        shell: julia --color=yes --check-bounds=yes --project=test {0}
+        run: |
+          using Pkg, TOML
+          Pkg.develop([PackageSpec(path="."), PackageSpec(path="../HyperFEMKernels.jl")])
+          Pkg.compat("Gridap", TOML.parsefile("Project.toml")["compat"]["Gridap"])
+          Pkg.instantiate()
+          include(joinpath(pwd(), "test", "runtests.jl"))
