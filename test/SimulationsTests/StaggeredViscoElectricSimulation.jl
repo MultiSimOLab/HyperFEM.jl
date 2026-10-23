@@ -6,7 +6,7 @@ using GridapSolvers.NonlinearSolvers
 using Gridap.FESpaces
 
 
-function staggered_visco_electric_simulation(; t_end=0.5, writevtk=false, verbose=false)
+function staggered_visco_electric_simulation(; backend=:gridap, t_end=0.5, writevtk=false, verbose=false)
 
   pname = stem(@__FILE__)
   folder = projdir("data", "sims", pname)
@@ -74,7 +74,7 @@ function staggered_visco_electric_simulation(; t_end=0.5, writevtk=false, verbos
 
   Fh  = F∘∇(uh⁺)'
   Fh⁻ = F∘∇(uh⁻)'
-  A   = CellState(cons_model, dΩ)
+  A   = CellState(cons_model, dΩ; backend)
 
   # Electrical staggered step
   res_elec(Λ) = (φ, vφ) -> residual(cons_model, Electro, (ku, ke), (uh⁺, φ), vφ, dΩ, 0.0, Fh⁻, A...)
@@ -87,7 +87,11 @@ function staggered_visco_electric_simulation(; t_end=0.5, writevtk=false, verbos
   # nonlinear solver electro
   ls = LUSolver()
   nls = NewtonSolver(ls; maxiter=20, atol=1e-6, rtol=1e-6, verbose=verbose)
-  solver = FESolver(nls)
+  # operator of each step through the drivers' hook: Gridap's FEOperator (:gridap) or a KernelOperator reused
+  # with `update` (:kernel, HyperFEMKernels)
+  build_operator = HyperFEM.ComputationalModels.build_operator
+  assem_φ, assem_u = SparseMatrixAssembler(Uφ, Vφ), SparseMatrixAssembler(Uu, Vu)
+  op_elec = op_mec = nothing
 
   # Postprocessor to save results
   function driverpost(pvd, step, time)
@@ -113,16 +117,16 @@ function staggered_visco_electric_simulation(; t_end=0.5, writevtk=false, verbos
       TrialFESpace!(Uu, dirichlet_u, time)
       
       verbose && println("Electric staggered step")
-      op_elec = FEOperator(res_elec(time), jac_elec(time), Uφ, Vφ)
-      solve!(φh⁺, solver, op_elec)
+      op_elec = build_operator(Val(backend), res_elec(time), jac_elec(time), Uφ, Vφ, assem_φ, op_elec)
+      solve!(get_free_dof_values(φh⁺), nls, op_elec)
 
       verbose && println("Mechanical staggered step")
-      op_mec = FEOperator(res_mec(time), jac_mec(time), Uu, Vu)
-      solve!(uh⁺, solver, op_mec)
+      op_mec = build_operator(Val(backend), res_mec(time), jac_mec(time), Uu, Vu, assem_u, op_mec)
+      solve!(get_free_dof_values(uh⁺), nls, op_mec)
       
       driverpost(pvd, step, time)
 
-      update_state!(cons_model, A, Fh, Fh⁻)
+      update_state!(cons_model, A, Fh, Fh⁻; backend)
       TrialFESpace!(Uφ⁻, dirichlet_φ, time)
       TrialFESpace!(Uu⁻, dirichlet_u, time)
       φ⁻ .= get_free_dof_values(φh⁺)
