@@ -125,7 +125,7 @@ dirichlet_projection(::Val{B}, res, jac, uh, ∆U, V, ls, previous) where {B} =
 `BoundaryConditions` of `U`; `neumann`, if any, the [`NeumannConditions`](@ref) added to the residual by
 the driver at the load of every step. The model owns the Dirichlet applicators of its spaces
 (`get_applicators`: those of `U`, `∆U` and the space of `xh⁻`). `backend` selects the algebraic operator
-(see [`build_operator`](@ref)).
+(see `build_operator`).
 """
 struct StaticNonlinearModel{A,B,C,D,E,F,G} <: ComputationalModel
     res::A
@@ -452,8 +452,8 @@ end
 Matrix `K` of the bilinear form `bf` and vector `b` of the linear form `lf`, with the Dirichlet lift of
 `U` (the Dirichlet values of `U` are moved to the right-hand side), as Gridap's `AffineFEOperator`.
 With `lf === nothing` only `K` is assembled and `b` is allocated and zeroed. `op` is the operator
-of the backend (`nothing` for `:gridap`), handed back to [`linear_system!`](@ref) and
-[`load_vector!`](@ref) so that a backend can reuse its structure. `Val(:kernel)` is provided by
+of the backend (`nothing` for `:gridap`), handed back to `linear_system!` and
+`load_vector!` so that a backend can reuse its structure. `Val(:kernel)` is provided by
 the HyperFEMKernels extension (`using HyperFEMKernels`).
 """
 function linear_system(::Val{:gridap}, bf, lf, U, V, assem)
@@ -473,7 +473,7 @@ linear_system(::Val{B}, bf, lf, U, V, assem) where {B} =
 """
     linear_system!(backend, K, b, bf, lf, U, V, assem, op) -> op
 
-Re-assembles in place the system of [`linear_system`](@ref): `K` and `b` with the current Dirichlet
+Re-assembles in place the system of `linear_system`: `K` and `b` with the current Dirichlet
 values of `U`, or only `K` when `lf === nothing`. Returns the operator to hand back in the next call.
 """
 function linear_system!(::Val{:gridap}, K, b, bf, lf, U, V, assem, op)
@@ -512,7 +512,7 @@ load_vector!(::Val{B}, b, lf, U, V, assem, op) where {B} =
 Linear problem `bf(u, v) = lf(v)`. The first form assembles matrix and vector at construction; the
 second only the matrix (the right-hand side is given to `solve!` or built by the model's functors);
 the third solves one matrix for several right-hand sides `lfs` on the repeated spaces of `U0`, `V0`.
-`backend` selects who assembles (see [`linear_system`](@ref)): `:gridap` (default) or `:kernel`
+`backend` selects who assembles (see `linear_system`): `:gridap` (default) or `:kernel`
 (HyperFEMKernels extension, `using HyperFEMKernels`).
 """
 struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
