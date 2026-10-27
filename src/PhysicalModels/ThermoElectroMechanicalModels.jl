@@ -1,14 +1,14 @@
 
-function Gridap.CellData.CellState(obj::ThermoElectroMechano, args...)
-  CellState(obj.mechano, args...)
+function Gridap.CellData.CellState(obj::ThermoElectroMechano, args...; kwargs...)
+  CellState(obj.mechano, args...; kwargs...)
 end
 
 function initialize_state(obj::ThermoElectroMechano)
   initialize_state(obj.mechano)
 end
 
-function Gridap.CellData.update_state!(obj::ThermoElectroMechano, state, F, E, θ, args...)
-  update_state!(obj.mechano, state, F, args...)
+function Gridap.CellData.update_state!(obj::ThermoElectroMechano, state, F, E, θ, args...; kwargs...)
+  update_state!(obj.mechano, state, F, args...; kwargs...)
 end
 
 function update_time_step!(obj::ThermoElectroMechano, Δt::Float64)

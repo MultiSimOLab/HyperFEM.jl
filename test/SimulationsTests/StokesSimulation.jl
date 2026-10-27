@@ -5,7 +5,7 @@ using Gridap.FESpaces
 using HyperFEM
  
 
-function stokes_simulation(; writevtk=false, verbose=false)
+function stokes_simulation(; backend=:gridap, writevtk=false, verbose=false)
 
   pname = "Stokes"
   simdir = projdir("data", "sims", pname)
@@ -50,7 +50,7 @@ function stokes_simulation(; writevtk=false, verbose=false)
   μ = 1.0
   a((u, p), (v, q)) = ∫((μ * (ε ∘ (∇(u))) - p * I) ⊙ (ε ∘ (∇(v))))dΩ - ∫(q * (I ⊙ (ε ∘ (∇(u)))))dΩ
   l((v, q)) = 0.0
-  compmodel = StaticLinearModel(l, a, U, V, D_bc)
+  compmodel = StaticLinearModel(l, a, U, V, D_bc; backend)
 
   xh = get_state(compmodel)
   # Postprocessor to save results

@@ -27,22 +27,22 @@ function update_time_step!(obj::ViscousIncompressible, Δt::Float64)
   obj.Δt[] = Δt
 end
 
-function Gridap.CellData.CellState(::ViscousIncompressible, F0::TensorValue, points::Measure)
+function Gridap.CellData.CellState(::ViscousIncompressible, F0::TensorValue, points::Measure; backend=:gridap)
   v = VectorValue(F0..., 0.0)
-  CellState(v, points)
+  new_state(v, points, backend)
 end
 
-function Gridap.CellData.CellState(obj::ViscousIncompressible, points::Measure)
-  CellState(obj, I3, points)
+function Gridap.CellData.CellState(obj::ViscousIncompressible, points::Measure; backend=:gridap)
+  CellState(obj, I3, points; backend)
 end
 
 function initialize_state(::ViscousIncompressible)
   VectorValue(I3..., 0.0)
 end
 
-function Gridap.CellData.update_state!(obj::ViscousIncompressible, A, F, Fn)
-  state_updater(Aᵅ, Fᵅ, Fnᵅ) = (true, return_mapping(obj, Fᵅ, Fnᵅ, Aᵅ))
-  update_state!(state_updater, A, F, Fn)
+function Gridap.CellData.update_state!(obj::ViscousIncompressible, A, F, Fn; backend=:gridap)
+  updater(Aᵅ, Fᵅ, Fnᵅ) = (true, return_mapping(obj, Fᵅ, Fnᵅ, Aᵅ))
+  update_state!(state_updater(updater, backend), A, F, Fn)
 end
 
 function return_mapping(obj::ViscousIncompressible, F, Fn, A)
@@ -103,17 +103,17 @@ function update_time_step!(obj::NVisco, Δt::Float64)
   Δt
 end
 
-function Gridap.CellData.CellState(obj::NVisco, args...)
-  map(b -> CellState(b, args...), obj)
+function Gridap.CellData.CellState(obj::NVisco, args...; kwargs...)
+  map(b -> CellState(b, args...; kwargs...), obj)
 end
 
 function initialize_state(obj::NVisco)
   map(initialize_state, obj)
 end
 
-function Gridap.CellData.update_state!(obj::NVisco, states, F, Fn)
+function Gridap.CellData.update_state!(obj::NVisco, states, F, Fn; kwargs...)
   @assert length(obj) == length(states)
-  map((b, s) -> update_state!(b, s, F, Fn), obj, states)
+  map((b, s) -> update_state!(b, s, F, Fn; kwargs...), obj, states)
 end
 
 function return_mapping(obj::NVisco, F, Fn, A...)
@@ -158,20 +158,20 @@ function update_time_step!(obj::GeneralizedMaxwell, Δt::Float64)
   update_time_step!(obj.branches, Δt)
 end
 
-function Gridap.CellData.CellState(obj::GeneralizedMaxwell, args...)
-  CellState(obj.branches, args...)
+function Gridap.CellData.CellState(obj::GeneralizedMaxwell, args...; kwargs...)
+  CellState(obj.branches, args...; kwargs...)
 end
 
 function initialize_state(obj::GeneralizedMaxwell)
   initialize_state(obj.branches)
 end
 
-function Gridap.CellData.update_state!(obj::GeneralizedMaxwell{<:IsoElastic}, states, F, Fn)
-  update_state!(obj.branches, states, F, Fn)
+function Gridap.CellData.update_state!(obj::GeneralizedMaxwell{<:IsoElastic}, states, F, Fn; kwargs...)
+  update_state!(obj.branches, states, F, Fn; kwargs...)
 end
 
-function Gridap.CellData.update_state!(obj::GeneralizedMaxwell{<:AnisoElastic}, states, F, n, Fn)
-  update_state!(obj.branches, states, F, Fn)
+function Gridap.CellData.update_state!(obj::GeneralizedMaxwell{<:AnisoElastic}, states, F, n, Fn; kwargs...)
+  update_state!(obj.branches, states, F, Fn; kwargs...)
 end
 
 function return_mapping(obj::GeneralizedMaxwell{<:IsoElastic}, F, Fn, A...)

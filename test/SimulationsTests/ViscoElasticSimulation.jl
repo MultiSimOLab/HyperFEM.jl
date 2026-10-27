@@ -6,7 +6,7 @@ using HyperFEM
 using HyperFEM.DiscreteModeling.EvolutionFunctions
 using HyperFEM.ComputationalModels.PostMetrics
 
-function visco_elastic_simulation(; t_end=2, writevtk=false, verbose=false)
+function visco_elastic_simulation(; backend=:gridap, t_end=2, writevtk=false, verbose=false)
   simdir = projdir("data", "sims", stem(@__FILE__))
   writevtk && setupfolder(simdir)
 
@@ -67,7 +67,7 @@ function visco_elastic_simulation(; t_end=2, writevtk=false, verbose=false)
 
   uh = FEFunction(Uu, zero_free_values(Uu))
   unh = FEFunction(Uun, zero_free_values(Uun))
-  state_vars = CellState(cons_model, dΩ)
+  state_vars = CellState(cons_model, dΩ; backend)      # :kernel → KernelStates, updated by the engine
   F,_,_ = get_Kinematics(k)
   Fnh = F∘∇(unh)'
 
@@ -76,7 +76,7 @@ function visco_elastic_simulation(; t_end=2, writevtk=false, verbose=false)
 
   ls = LUSolver()
   nls = NewtonSolver(ls; maxiter=20, atol=1.e-6, rtol=1.e-6, verbose=verbose)
-  comp_model = StaticNonlinearModel(res, jac, Uu, Vu, D_bc; nls=nls, xh=uh, xh⁻=unh)
+  comp_model = StaticNonlinearModel(res, jac, Uu, Vu, D_bc; nls=nls, xh=uh, xh⁻=unh, backend=backend)
 
   λx = Float64[]
   σΓ = Float64[]
@@ -88,7 +88,7 @@ function visco_elastic_simulation(; t_end=2, writevtk=false, verbose=false)
     σΓ1 = sum(∫(σh11)dΓ1) / sum(∫(1.0)dΓ1)
     push!(σΓ, σΓ1)
     push!(λx, 1.0 + component_LInf(uh, :x, Ω) / long)
-    update_state!(cons_model, state_vars, F∘(∇(uh)'), F∘(∇(unh)'))
+    update_state!(cons_model, state_vars, F∘(∇(uh)'), F∘(∇(unh)'); backend)
   end
 
   post_model = PostProcessor(comp_model, driverpost; is_vtk=writevtk, filepath=simdir)

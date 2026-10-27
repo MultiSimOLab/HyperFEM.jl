@@ -6,7 +6,7 @@ using Gridap.FESpaces
 using HyperFEM
 
 
-function static_mechanical_neumann_simulation(; writevtk=false, verbose=false)
+function static_mechanical_neumann_simulation(; backend=:gridap, writevtk=false, verbose=false)
 
   pname = "StaticMechanical"
   simdir = projdir("data", "sims", pname)
@@ -47,7 +47,7 @@ function static_mechanical_neumann_simulation(; writevtk=false, verbose=false)
   ls = LUSolver()
   nls = NewtonSolver(ls; maxiter=20, atol=1.e-10, rtol=1.e-8, verbose=verbose)
 
-  comp_model = StaticNonlinearModel(res, jac, U, V, D_bc; neumann=N_bc, nls=nls)
+  comp_model = StaticNonlinearModel(res, jac, U, V, D_bc; neumann=N_bc, nls=nls, backend=backend)
 
   function driverpost_mech(post)
     if writevtk

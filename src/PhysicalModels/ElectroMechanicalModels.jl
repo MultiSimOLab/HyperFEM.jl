@@ -73,16 +73,16 @@ function update_time_step!(obj::ElectroMechModel, Δt::Float64)
   update_time_step!(obj.mechano, Δt)
 end
 
-function Gridap.CellData.CellState(obj::ElectroMechModel, args...)
-  CellState(obj.mechano, args...)
+function Gridap.CellData.CellState(obj::ElectroMechModel, args...; kwargs...)
+  CellState(obj.mechano, args...; kwargs...)
 end
 
 function initialize_state(obj::ElectroMechModel)
   initialize_state(obj.mechano)
 end
 
-function Gridap.CellData.update_state!(obj::ElectroMechModel, state, F, E, args...)
-  update_state!(obj.mechano, state, F, args...)
+function Gridap.CellData.update_state!(obj::ElectroMechModel, state, F, E, args...; kwargs...)
+  update_state!(obj.mechano, state, F, args...; kwargs...)
 end
 
 function Dissipation(obj::ElectroMechModel)
