@@ -39,3 +39,18 @@ end
   Ah2 = interpolate_L2_field(∇u, dΩ, Ω)
   @test get_free_dof_values(Ah2) ≈ get_free_dof_values(Ah)
 end
+
+
+@testset "interpolate_L2_field order" begin
+  V2 = FESpace(model, ReferenceFE(lagrangian, VectorValue{3,Float64}, 2))
+  u2(x) = VectorValue(x[1]^2, x[2] * x[3], x[3])
+  u2h = interpolate(u2, V2)
+  dΩ4 = Measure(Ω, 4)
+  Ah = interpolate_L2_field(∇(u2h), dΩ4; order=2)
+  # A linear gradient is exactly represented with order 2
+  @test sum(∫((Ah - ∇(u2)) ⊙ (Ah - ∇(u2)))dΩ4) < 1e-20
+  # The default order is 1
+  Ah1 = interpolate_L2_field(∇(u2h), dΩ4)
+  @test length(get_free_dof_values(Ah1)) < length(get_free_dof_values(Ah))
+  @test_throws ArgumentError interpolate_L2_field(∇(u2h), dΩ4; order=0)
+end
