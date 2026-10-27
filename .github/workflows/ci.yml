@@ -34,15 +34,8 @@ jobs:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
       - uses: julia-actions/cache@v3
-      - name: Clone HyperFEMKernels next to HyperFEM (kernel backend of the simulation tests)
-        run: git clone --depth 1 https://github.com/MultiSimOLab/HyperFEMKernels.jl ../HyperFEMKernels.jl
-      - name: Run tests with both backends (HyperFEMKernels, not registered, developed in the test environment)
-        shell: julia --color=yes --check-bounds=yes --project=test {0}
-        run: |
-          using Pkg
-          Pkg.develop([PackageSpec(path="."), PackageSpec(path="../HyperFEMKernels.jl")])
-          Pkg.instantiate()
-          include(joinpath(pwd(), "test", "runtests.jl"))
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1 # both backends; HyperFEMKernels from the General registry (test/Project.toml)
 
   lowest-gridap: # downgrade compatibility: the lowest Gridap allowed by [compat] must still work
     name: Lowest Gridap
@@ -67,13 +60,27 @@ jobs:
           println("Gridap compat \"$spec\" -> pinning to =$lowest")
           Pkg.compat("Gridap", "=$lowest")
           Pkg.resolve() # fail here if the lower bound is not installable
-      - name: Clone HyperFEMKernels next to HyperFEM (kernel backend of the simulation tests)
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
+
+  kernels-dev: # early warning: HyperFEM against the development version (main) of HyperFEMKernels; does not block
+    name: HyperFEMKernels main (non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      - name: Clone HyperFEMKernels main next to HyperFEM
         run: git clone --depth 1 https://github.com/MultiSimOLab/HyperFEMKernels.jl ../HyperFEMKernels.jl
-      - name: Run tests with both backends (HyperFEMKernels, not registered, developed in the test environment)
+      - name: Run tests with HyperFEMKernels main
         shell: julia --color=yes --check-bounds=yes --project=test {0}
         run: |
-          using Pkg, TOML
+          using Pkg
           Pkg.develop([PackageSpec(path="."), PackageSpec(path="../HyperFEMKernels.jl")])
-          Pkg.compat("Gridap", TOML.parsefile("Project.toml")["compat"]["Gridap"])
           Pkg.instantiate()
           include(joinpath(pwd(), "test", "runtests.jl"))

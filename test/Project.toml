@@ -10,7 +10,5 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 
-# HyperFEMKernels (kernel backend of the simulation tests) is not registered yet: taken from the clone next to
-# HyperFEM.jl (read through [sources]; the CI clones it there and develops it explicitly in the test environment).
-[sources]
-HyperFEMKernels = {path = "../../HyperFEMKernels.jl"}
+[compat]
+HyperFEMKernels = "0.1"
