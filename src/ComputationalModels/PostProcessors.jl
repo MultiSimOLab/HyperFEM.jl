@@ -205,34 +205,41 @@ function interpolate_L2_scalar(x, Ω, dΩ, Γ=Ω)
 end
 
 
-function get_cell_field_type(f::CellField, dΩ::Measure)
+function _get_cell_field_type(f::CellField, dΩ::Measure)
   pts = get_cell_points(dΩ)
   f_x = f(pts)
   T = eltype(Gridap.Arrays.testitem(f_x))
   return T
 end
 
+function _get_triangulation(dΩ::Measure)
+  get_triangulation(Gridap.CellData.get_cell_quadrature(dΩ))
+end
 
 """
-    interpolate_L2_field(x, dΩ, [Ω₂], [T])
+    interpolate_L2_field(x, dΩ, [Ω₂], [T]; [order=1])
 
-Interpolate an L2 field into an H1 field.
-The field `x` is first projected onto a piecewise-constant space defined over the
-triangulation of the measure `dΩ`, and then interpolated into a continuous space.
+Interpolate an L2 field of order n-1 into an H1 field of order n.
+The field `x` is first projected onto a discontinuous space of order `order-1` defined
+over the triangulation of the measure `dΩ`, and then interpolated into a continuous
+space of order `order`.
 The type of the field is inferred from the cell field `x` and the measure `dΩ`.
+The `order` should match the order of the space from which `x` is derived, e.g. the
+order of `uh` if `x` is a function of `∇(uh)`. By default, `order=1`.
 Optionally, a destination triangulation `Ω₂` can be specified, being different
-from the triangulation of `dΩ`.
+from the underlying triangulation of `dΩ`.
 """
-function interpolate_L2_field(x, dΩ::Measure, Ω₂::Triangulation=get_triangulation(Gridap.CellData.get_cell_quadrature(dΩ)), T::Type=get_cell_field_type(x, dΩ))
+function interpolate_L2_field(x, dΩ::Measure, Ω₂::Triangulation=_get_triangulation(dΩ), T::Type=_get_cell_field_type(x, dΩ); order::Int=1)
+  order ≥ 1 || throw(ArgumentError("The order must be greater or equal than 1. Got $order"))
   Ω₁ = get_triangulation(Gridap.CellData.get_cell_quadrature(dΩ))
-  refL2 = ReferenceFE(lagrangian, T, 0)
-  reffe = ReferenceFE(lagrangian, T, 1)
+  refL2 = ReferenceFE(lagrangian, T, order - 1)
+  reffe = ReferenceFE(lagrangian, T, order)
   VL2 = FESpace(Ω₁, refL2, conformity=:L2)
   VH1 = FESpace(Ω₂, reffe, conformity=:H1)
   interpolate_everywhere(L2_projection(x, VL2, dΩ), VH1)
 end
 
-function interpolate_L2_field(x, Ω, dΩ::Measure, T::Type=get_cell_field_type(x, dΩ))
+function interpolate_L2_field(x, Ω, dΩ::Measure, T::Type=_get_cell_field_type(x, dΩ))
   @warn "interpolate_L2_field: This signature is kept for direct compatibility with `interpolate_L2_scalar/vector/tensor` and it will be removed after release 0.0.7. The domain `Ω` can be removed from the list of arguments." maxlog=1
   refL2 = ReferenceFE(lagrangian, T, 0)
   reffe = ReferenceFE(lagrangian, T, 1)
