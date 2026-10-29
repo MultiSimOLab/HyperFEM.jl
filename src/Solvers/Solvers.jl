@@ -4,6 +4,7 @@ using IterativeSolvers
 using Gridap
 using Gridap.Algebra
 using Gridap.CellData
+using Gridap.Arrays: array_cache, getindex!
 using LinearAlgebra
 using Printf
 using AbstractTrees
@@ -25,13 +26,26 @@ export get_tolerances
 export linear_converged
 export numerical_setup_state
 export numerical_setup_state!
-export Injectivity_Preserving_LS
+export FullStepLS
+export BacktrackingLS
+export InjectivityLS
+export LineSearch
 export Roman_LS
+export Injectivity_Preserving_LS
 export update_cellstate!
+export injectivity_step
+export ModelOperator
+export backend_operator
+export energy
+export max_step
 export search!
 export AbstractLineSearch
 
+import HyperFEM.WeakForms: energy
+
 include("LinearSolvers.jl")
+include("Injectivity.jl")
+include("ModelOperator.jl")
 include("LineSearches.jl")
 include("NonlinearSolvers.jl")
 

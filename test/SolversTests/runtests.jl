@@ -12,4 +12,8 @@ using Test
     include("AllocationTests.jl")
   end
 
+  @time begin
+    include("LineSearchTests.jl")
+  end
+
 end

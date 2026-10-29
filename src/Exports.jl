@@ -205,9 +205,17 @@ end
 @publish Solvers linear_converged
 @publish Solvers numerical_setup_state
 @publish Solvers numerical_setup_state!
+@publish Solvers FullStepLS
+@publish Solvers BacktrackingLS
+@publish Solvers InjectivityLS
 @publish Solvers Injectivity_Preserving_LS
 @publish Solvers Roman_LS
 @publish Solvers update_cellstate!
+@publish Solvers injectivity_step
+@publish Solvers ModelOperator
+@publish Solvers backend_operator
+@publish Solvers energy
+@publish Solvers max_step
 @publish Solvers search!
 @publish Solvers AbstractLineSearch
 

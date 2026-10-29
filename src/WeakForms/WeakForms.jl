@@ -6,10 +6,19 @@ using HyperFEM.PhysicalModels
 
 export residual
 export jacobian
+export energy
 export mass_term
 export (+)
 
 import Gridap.Algebra:residual,jacobian
+
+"""
+    energy(op, x)
+
+Incremental energy of an operator at the state `x` (see `HyperFEM.Solvers.ModelOperator`); the
+methods for the physical models follow.
+"""
+function energy end
 import Base: +
 
 # ===================

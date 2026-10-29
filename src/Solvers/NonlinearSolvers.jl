@@ -126,13 +126,15 @@ end
 
 """
     NewtonRaphson(ls; maxiter=100, atol=1e-12, rtol=1e-6, ctol=0.0, verbose=0, name="Newton-Raphson",
-                  linesearch=LineSearch())
+                  linesearch=FullStepLS())
 
 Newton–Raphson solver of HyperFEM, a Gridap `NonlinearSolver`. `ls` is the linear solver of the
 tangent systems (any Gridap `LinearSolver`; see [`numerical_setup_state!`](@ref) for solvers whose setup
 depends on the current state `x`).
 The stopping criteria are those of [`NewtonTolerances`](@ref); `linesearch` chooses the step length
-along the Newton direction (see `LineSearches.jl`); `verbose` as in [`NewtonLog`](@ref).
+along the Newton direction ([`FullStepLS`](@ref), [`BacktrackingLS`](@ref), [`InjectivityLS`](@ref));
+a failed line search stops the solve (`:linesearch_failed`, the driver then bisects the load step);
+`verbose` as in [`NewtonLog`](@ref).
 
 The former name `Newton_RaphsonSolver` is deprecated and kept as an alias for one release.
 """
@@ -144,7 +146,7 @@ struct NewtonRaphson{L<:Algebra.LinearSolver,S<:AbstractLineSearch} <: Algebra.N
 end
 
 function NewtonRaphson(ls::Algebra.LinearSolver; maxiter=100, atol=1e-12, rtol=1.e-6, ctol=0.0, verbose=0,
-                       name="Newton-Raphson", linesearch::AbstractLineSearch=LineSearch())
+                       name="Newton-Raphson", linesearch::AbstractLineSearch=FullStepLS())
   tols = NewtonTolerances(; maxiter, atol, rtol, ctol)
   log = NewtonLog(; maxiter, verbose, name)
   NewtonRaphson(ls, tols, log, linesearch)
@@ -255,12 +257,16 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op)
       break
     end
 
-    α = search!(linesearch, w, op, x, dx, b)    # on return b = R(x + α dx)
+    α = search!(linesearch, w, op, x, dx, b)    # on return b = R(x + α dx); α = 0 is a failure
     x .+= α .* dx
     r = norm(b)
     _record!(log, r, α)
     _print_row(log, r, r0, α, time() - t0)
 
+    if α == 0
+      reason = :linesearch_failed
+      break
+    end
     reason = _check(tols, r, r0)
     if reason === :running && log.num_iters >= tols.maxiter
       reason = :maxiter

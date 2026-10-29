@@ -128,15 +128,22 @@ dirichlet_projection(::Val{B}, res, jac, uh, ∆U, V, ls, previous) where {B} =
     error("HyperFEM: backend :$B is not available; for :compiled load HyperFEMKernels (`using HyperFEMKernels`)")
 
 """
-    StaticNonlinearModel(res, jac, U, V, dirichlet; neumann=nothing, nls, xh, xh⁻, backend=:lazy)
+    StaticNonlinearModel(res, jac, U, V, dirichlet; neumann=nothing, nls, xh, xh⁻, backend=:lazy,
+                         injectivity=nothing)
 
 `res(τ)` and `jac(τ)` are functions of the stage parameter τ of the solver. `dirichlet` are the
 `BoundaryConditions` of `U`; `neumann`, if any, the [`NeumannConditions`](@ref) added to the residual by
 the driver at the load of every step. The model owns the Dirichlet applicators of its spaces
 (`get_applicators`: those of `U`, `∆U` and the space of `xh⁻`). `backend` selects the algebraic operator
 (see `build_operator`).
+
+`injectivity` is the measure whose quadrature points must keep `det F > 0` (`dΩ`, or `(dΩ, i)` when
+the displacement is the field `i` of a multi-field space); it gives the injectivity step of
+[`InjectivityLS`](@ref) and the safe load factor of the Dirichlet projection (see
+[`injectivity_step`](@ref)). The solver receives the operator of the backend wrapped in a
+[`ModelOperator`](@ref) with these hooks.
 """
-struct StaticNonlinearModel{A,B,C,D,E,F,G} <: ComputationalModel
+struct StaticNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
     res::A
     jac::B
     spaces::C
@@ -144,6 +151,7 @@ struct StaticNonlinearModel{A,B,C,D,E,F,G} <: ComputationalModel
     neumann::E
     applicators::F
     caches::G
+    hooks::H
 
     function StaticNonlinearModel(
         res::Function, jac::Function, U, V, dirbc;
@@ -152,7 +160,8 @@ struct StaticNonlinearModel{A,B,C,D,E,F,G} <: ComputationalModel
         nls::NonlinearSolver=NewtonRaphson(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
         xh::FEFunction=FEFunction(U, zero_free_values(U)),
         xh⁻::FEFunction=FEFunction(U, zero_free_values(U)),
-        backend::Symbol=:lazy)
+        backend::Symbol=:lazy,
+        injectivity=nothing)
 
         ∆U = TrialFESpace(U, dirbc, 0.0)
         Un = get_fe_space(xh⁻)
@@ -162,18 +171,47 @@ struct StaticNonlinearModel{A,B,C,D,E,F,G} <: ComputationalModel
         spaces = (U, V, ∆U, Un)
         x = get_free_dof_values(xh)
         x⁻ = get_free_dof_values(xh⁻)
-        # x⁻ = zero_free_values(U)
+        hooks = (injectivity=_injectivity_hook(injectivity),)
         _res = with_neumann(res(1.0), neumann, 1.0)
         _jac = jac(1.0)
         op = build_operator(Val(backend), _res, _jac, U, V, assem_U, nothing)
-        nls_cache = instantiate_caches(x, nls, op)
+        nls_cache = instantiate_caches(x, nls, model_operator(hooks, spaces, op))
         caches = (nls, nls_cache, x, x⁻, assem_U, Val(backend), Ref{Any}(op), Ref{Any}(nothing))
 
         A, B, C = typeof(res), typeof(jac), typeof(spaces)
-        D, E, F, G = typeof(dirbc), typeof(neumann), typeof(applicators), typeof(caches)
-        return new{A,B,C,D,E,F,G}(res, jac, spaces, dirbc, neumann, applicators, caches)
+        D, E, F, G, H = typeof(dirbc), typeof(neumann), typeof(applicators), typeof(caches), typeof(hooks)
+        return new{A,B,C,D,E,F,G,H}(res, jac, spaces, dirbc, neumann, applicators, caches, hooks)
     end
 end
+
+_injectivity_hook(::Nothing) = nothing
+_injectivity_hook(dΩ::Measure) = (dΩ, nothing)
+_injectivity_hook(inj::Tuple{Measure,Int}) = inj
+_injectivity_hook(inj) = error("HyperFEM: `injectivity` must be a Measure or a tuple (Measure, field index); got $(typeof(inj))")
+
+_field(uh, ::Nothing) = uh
+_field(uh, i::Int) = uh[i]
+
+"""
+    injectivity_step(m::StaticNonlinearModel, xh, dxh, β, jmin) -> α
+
+Injectivity step of the model (`injectivity = …`) from the state `xh` along the increment `dxh`.
+"""
+function Solvers.injectivity_step(m::StaticNonlinearModel, xh, dxh, β, jmin)
+    inj = m.hooks.injectivity
+    inj === nothing && error("HyperFEM: the model has no `injectivity = …` measure for the injectivity step")
+    injectivity_step(inj[1], _field(xh, inj[2]), _field(dxh, inj[2]), β, jmin)
+end
+
+# The operator handed to the Newton: the operator of the backend with the hooks of the model
+function model_operator(hooks, spaces, op)
+    U, V = spaces[1], spaces[2]
+    inj = hooks.injectivity
+    ms = inj === nothing ? nothing :
+        (x, dx, β, jmin) -> injectivity_step(inj[1], _field(FEFunction(U, x), inj[2]), _field(FEFunction(V, dx), inj[2]), β, jmin)
+    ModelOperator(op; max_step=ms)
+end
+model_operator(m::StaticNonlinearModel, op) = model_operator(m.hooks, m.spaces, op)
 
 # Getters
 get_state(m::StaticNonlinearModel) = FEFunction(get_trial_space(m), m.caches[3])
@@ -237,7 +275,7 @@ function solve!(m::StaticNonlinearModel;
         jac = m.jac(Λ)
         op = build_operator(m.caches[6], res, jac, U, V, assem_U, m.caches[7][])
         m.caches[7][] = op
-        Algebra.solve!(x, nls, op, nls_cache)
+        Algebra.solve!(x, nls, model_operator(m, op), nls_cache)
         if !nls_converged(nls)
             @warn "Bisection performed!"
             # back to the last converged step: state, load factor (∆Λ already includes α) and the Dirichlet
@@ -283,13 +321,17 @@ function post_solve!(pvd, x, Λ, Λ_, m, filePath)
     return pvd
 end
 
-function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, ::NewtonRaphson, load=identity)
+function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, nls::NewtonRaphson, load=identity)
     duh = get_dirichlet_preconditioner(m, Λ, ∆Λ, load)
-    # update step
-    α = update_cellstate!(m.caches[1].linesearch, get_state(m), duh)
-    x .+= α * get_free_dof_values(duh)
+    # safe load factor: the injectivity step of the line search along the Dirichlet increment
+    α = dirichlet_step(nls.linesearch, m, get_state(m), duh)
+    x .+= α .* get_free_dof_values(duh)
     return α
 end
+
+# Safe load factor of the Dirichlet projection for each line search
+dirichlet_step(ls::Solvers.AbstractLineSearch, m, xh, dxh) = update_cellstate!(ls, xh, dxh)
+dirichlet_step(ls::InjectivityLS, m, xh, dxh) = injectivity_step(m, xh, dxh, ls.β, ls.jmin)
 
 function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, ::Any, load=identity)
     duh = get_dirichlet_preconditioner(m, Λ, ∆Λ, load)
