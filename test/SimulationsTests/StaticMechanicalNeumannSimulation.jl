@@ -6,7 +6,7 @@ using Gridap.FESpaces
 using HyperFEM
 
 
-function static_mechanical_neumann_simulation(; backend=:gridap, writevtk=false, verbose=false)
+function static_mechanical_neumann_simulation(; backend=:lazy, writevtk=false, verbose=false)
 
   pname = "StaticMechanical"
   simdir = projdir("data", "sims", pname)

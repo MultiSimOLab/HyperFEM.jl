@@ -24,7 +24,7 @@ using HyperFEM
 using LinearAlgebra
 
 
-function thirdmedium_contact_simulation(; backend=:gridap, uy_max=0.15, nsteps=15, maxbisec=5, verbose=false,
+function thirdmedium_contact_simulation(; backend=:lazy, uy_max=0.15, nsteps=15, maxbisec=5, verbose=false,
                                           writevtk=false, vtkevery=10)
   geomodel = GmshDiscreteModel(joinpath(@__DIR__, "..", "models", "Piston_1.msh"))
 

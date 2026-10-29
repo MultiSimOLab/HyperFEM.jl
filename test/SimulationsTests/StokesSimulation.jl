@@ -5,7 +5,7 @@ using Gridap.FESpaces
 using HyperFEM
  
 
-function stokes_simulation(; backend=:gridap, writevtk=false, verbose=false)
+function stokes_simulation(; backend=:lazy, writevtk=false, verbose=false)
 
   pname = "Stokes"
   simdir = projdir("data", "sims", pname)

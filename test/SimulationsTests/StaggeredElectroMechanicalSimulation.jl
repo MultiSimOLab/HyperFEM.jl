@@ -3,7 +3,7 @@ using HyperFEM
 using HyperFEM: jacobian
 
 
-function staggered_electro_mechanical_simulation(; backend=:gridap, writevtk=false, verbose=false)
+function staggered_electro_mechanical_simulation(; backend=:lazy, writevtk=false, verbose=false)
   
   # Problem name
   pname = stem(@__FILE__)

@@ -35,15 +35,15 @@ function initialize_state(::ViscousPolyconvex)
   I3
 end
 
-function Gridap.CellData.CellState(::ViscousPolyconvex, Cv₀::TensorValue, points::Measure; backend=:gridap)
+function Gridap.CellData.CellState(::ViscousPolyconvex, Cv₀::TensorValue, points::Measure; backend=:lazy)
   new_state(Cv₀, points, backend)
 end
 
-function Gridap.CellData.CellState(obj::ViscousPolyconvex, points::Measure; backend=:gridap)
+function Gridap.CellData.CellState(obj::ViscousPolyconvex, points::Measure; backend=:lazy)
   CellState(obj, I3, points; backend)
 end
 
-function Gridap.CellData.update_state!(obj::ViscousPolyconvex, A, F, Fn; backend=:gridap)
+function Gridap.CellData.update_state!(obj::ViscousPolyconvex, A, F, Fn; backend=:lazy)
   updater(Aᵅ, Fᵅ, Fnᵅ) = (true, return_mapping(obj, Fᵅ, Fnᵅ, Aᵅ))
   update_state!(state_updater(updater, backend), A, F, Fn)
 end

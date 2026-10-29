@@ -6,7 +6,7 @@ using GridapSolvers.NonlinearSolvers
 using Gridap.FESpaces
 
 
-function staggered_visco_electric_simulation(; backend=:gridap, t_end=0.5, writevtk=false, verbose=false)
+function staggered_visco_electric_simulation(; backend=:lazy, t_end=0.5, writevtk=false, verbose=false)
 
   pname = stem(@__FILE__)
   folder = projdir("data", "sims", pname)
@@ -87,8 +87,8 @@ function staggered_visco_electric_simulation(; backend=:gridap, t_end=0.5, write
   # nonlinear solver electro
   ls = LUSolver()
   nls = NewtonSolver(ls; maxiter=20, atol=1e-6, rtol=1e-6, verbose=verbose)
-  # operator of each step through the drivers' hook: Gridap's FEOperator (:gridap) or a KernelOperator reused
-  # with `update` (:kernel, HyperFEMKernels)
+  # operator of each step through the drivers' hook: Gridap's FEOperator (:lazy) or a KernelOperator reused
+  # with `update` (:compiled, HyperFEMKernels)
   build_operator = HyperFEM.ComputationalModels.build_operator
   assem_φ, assem_u = SparseMatrixAssembler(Uφ, Vφ), SparseMatrixAssembler(Uu, Vu)
   op_elec = op_mec = nothing

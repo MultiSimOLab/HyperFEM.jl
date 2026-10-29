@@ -7,7 +7,7 @@ using HyperFEM
 # stages), imposed on the interface of the air as a `Coupling` of the stage parameter. With
 # `interface_field = true` the two stages live only on the faces of the interface (an FESpace on its
 # BoundaryTriangulation, as in the staggered solid–vacuum problems), and must give the same solution.
-function mesh_movement_simulation(; backend=:gridap, verbose=false, interface_field=false)
+function mesh_movement_simulation(; backend=:lazy, verbose=false, interface_field=false)
 
   meshfile = "test_BC2.msh"
   geomodel = GmshDiscreteModel(projdir("test/models/" * meshfile))

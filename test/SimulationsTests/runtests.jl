@@ -4,16 +4,17 @@ using LinearAlgebra
 using Test
 
 # Each simulation file defines a function whose default arguments are the CI configuration and whose `backend`
-# keyword selects who assembles: `:gridap` (Gridap's FEOperator) or `:kernel` (HyperFEMKernels, loaded below).
+# keyword selects who assembles: `:lazy` (Gridap's lazy evaluation, FEOperator) or `:compiled` (the weak form
+# compiled into fused kernels by HyperFEMKernels, loaded below).
 # Every simulation runs with every backend of TEST_BACKENDS; the reference values are checked for each backend,
-# and the results of the other backends are compared with those of :gridap.
+# and the results of the other backends are compared with those of :lazy.
 #
 # TEST_BACKENDS comes from the environment variable HYPERFEM_TEST_BACKENDS (comma separated; default
-# "gridap,kernel"), e.g. HYPERFEM_TEST_BACKENDS=gridap for a quick run without the kernel backend.
+# "lazy,compiled"), e.g. HYPERFEM_TEST_BACKENDS=lazy for a quick run without HyperFEMKernels.
 # The same functions are benchmarked in benchmark/SimulationsBenchmarks/benchmarks.jl
-const TEST_BACKENDS = Tuple(Symbol.(strip.(split(get(ENV, "HYPERFEM_TEST_BACKENDS", "gridap,kernel"), ","))))
-all(b -> b in (:gridap, :kernel), TEST_BACKENDS) || error("HYPERFEM_TEST_BACKENDS: unknown backend in $TEST_BACKENDS")
-:kernel in TEST_BACKENDS && @eval using HyperFEMKernels      # activates the extension HyperFEMKernelsExt
+const TEST_BACKENDS = Tuple(Symbol.(strip.(split(get(ENV, "HYPERFEM_TEST_BACKENDS", "lazy,compiled"), ","))))
+all(b -> b in (:lazy, :compiled), TEST_BACKENDS) || error("HYPERFEM_TEST_BACKENDS: unknown backend in $TEST_BACKENDS")
+:compiled in TEST_BACKENDS && @eval using HyperFEMKernels      # activates the extension HyperFEMKernelsExt
 
 include("ViscoElasticSimulation.jl")
 include("StaticMechanicalDirichletSimulation.jl")
@@ -32,15 +33,15 @@ run_backends(simulate) = Dict(b => simulate(b) for b in TEST_BACKENDS)
 """
     agree(results, f; rtol=1e-10)
 
-Each backend against :gridap: `‖f(r_backend) - f(r_gridap)‖ ≤ rtol ‖f(r_gridap)‖`. Same problem, same Newton
+Each backend against :lazy: `‖f(r_backend) - f(r_lazy)‖ ≤ rtol ‖f(r_lazy)‖`. Same problem, same Newton
 histories; what differs is the rounding of the assembly and of the LU.
 """
 function agree(results, f; rtol=1e-10)
-  haskey(results, :gridap) || return
-  ref = f(results[:gridap])
+  haskey(results, :lazy) || return
+  ref = f(results[:lazy])
   for (b, r) in results
-    b === :gridap && continue
-    @testset "$b vs gridap" begin
+    b === :lazy && continue
+    @testset "$b vs lazy" begin
       @test norm(f(r) - ref) ≤ rtol * norm(ref)
     end
   end
@@ -119,7 +120,7 @@ end
     ri = run_backends(b -> mesh_movement_simulation(; backend=b, interface_field=true))   # stages living only on the interface
     for b in TEST_BACKENDS
       @testset "$b" begin
-        @test isapprox(norm(r[b]), 2.8132015601158087, rtol=b === :gridap ? 1e-14 : 1e-10)
+        @test isapprox(norm(r[b]), 2.8132015601158087, rtol=b === :lazy ? 1e-14 : 1e-10)
         @test isapprox(ri[b], r[b], rtol=1e-12)
       end
     end
