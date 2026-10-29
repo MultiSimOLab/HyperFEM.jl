@@ -10,7 +10,7 @@
 #                     w·q(du,v) + (∂w/∂F : ∇du)·q(u,v) (not symmetric). P1 only: the Hessian terms of the original
 #                     script (volume and jump of ∇∇u) vanish for P1 and are not included.
 #   Loading         : vertical displacement of the piston, uy_max in nsteps increments
-#   Solver          : NewtonRaphson with Injectivity_Preserving_LS
+#   Solver          : NewtonRaphson with InjectivityLS (exact injectivity step, backtracking on |R·dx|)
 #
 # The test is reduced: uy_max = 0.15 (1.5d) in 15 increments, past the buckling of the beam at u_y ≈ 1.05d (the
 # full benchmark goes to 15d in 1000 increments, `thirdmedium_contact_simulation(uy_max=1.5, nsteps=1000)`).
@@ -112,13 +112,11 @@ function thirdmedium_contact_simulation(; backend=:lazy, uy_max=0.15, nsteps=15,
     end
   end
 
-  # Solver
-  α_state    = CellState(1.0, dΩdomain)
-  linesearch = Injectivity_Preserving_LS(α_state, Uu, Vu; maxiter=20, αmin=1e-16, ρ=0.5, c=0.95, β=1 - 1e-6)
-  # ctol = 0: the curvature criterion of the former solver (absolute, |b·dx| < 1e-10) never fired in this run; the
-  # criterion is now relative to the first iteration, so it is disabled to keep the references
-  nls        = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-8, rtol=1e-4, ctol=0.0, verbose=verbose, linesearch=linesearch)
-  comp_model = StaticNonlinearModel(res, jac, Uu, Vu, D_bc; nls=nls, xh=uh, backend=backend)
+  # Solver: injectivity-preserving line search with the exact root of det(F + α ∇δu) over the quadrature
+  # points of dΩdomain (solid and third medium), then backtracking on |R·dx|
+  linesearch = InjectivityLS(maxiter=20, αmin=1e-16, ρ=0.5, c=0.95, β=1 - 1e-6)
+  nls        = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-8, rtol=1e-4, verbose=verbose, linesearch=linesearch)
+  comp_model = StaticNonlinearModel(res, jac, Uu, Vu, D_bc; nls=nls, xh=uh, backend=backend, injectivity=dΩdomain)
   post_model = PostProcessor(comp_model, driverpost; is_vtk=false, filepath=simdir)
   solve!(comp_model; stepping=(nsteps=nsteps, maxbisec=maxbisec), post=post_model)
 
