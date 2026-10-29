@@ -27,6 +27,7 @@ export ARAP2D_regularized
 export NonlinearARAP2D
 export VolumetricEnergy
 export CoerciveVolumetric
+export LogBarrier
 export MooneyRivlin3D
 export MooneyRivlin2D
 export NonlinearMooneyRivlin3D

@@ -43,6 +43,7 @@ end
 @publish PhysicalModels IncompressibleNeoHookean2D_CV
 @publish PhysicalModels VolumetricEnergy
 @publish PhysicalModels CoerciveVolumetric
+@publish PhysicalModels LogBarrier
 @publish PhysicalModels MooneyRivlin3D
 @publish PhysicalModels MooneyRivlin2D
 @publish PhysicalModels NonlinearMooneyRivlin3D

@@ -63,6 +63,45 @@ function (obj::CoerciveVolumetric)(::Float64=1.0)
 end
 
 
+"""
+    LogBarrier(; κ, p=2)
+
+Volumetric barrier
+
+```math
+\\Psi = \\frac{\\kappa}{2p} (\\ln J)^{2p}
+```
+
+negligible at moderate `J` and steep as `J → 0` (the third medium of contact problems, with
+`κ = kb·μ·fc` and `p = 2`); `Ψ`, `∂Ψ/∂F` and `∂²Ψ/∂F∂F` are `NaN` for `J ≤ 0`, so that a trial state
+with inverted elements is rejected by an energy line search. 2D and 3D (`∂H/∂F` dispatched on the
+dimension). Composes with any `IsoElastic` model (`ARAP2D(μ=…) + LogBarrier(κ=…, p=2)`).
+"""
+struct LogBarrier <: Volumetric
+  κ::Float64
+  p::Int
+  function LogBarrier(; κ::Float64, p::Int=2)
+    p >= 1 || throw(ArgumentError("LogBarrier: p must be ≥ 1"))
+    new(κ, p)
+  end
+end
+
+_lnJ(J) = J > 0 ? log(J) : oftype(J, NaN)
+_∂H∂F(F::TensorValue{2,2}) = _∂H∂F_2D()
+_∂H∂F(F::TensorValue{3,3}) = ×ᵢ⁴(F)
+
+function (obj::LogBarrier)(::Float64=1.0)
+  κ, p = obj.κ, obj.p
+  J(F) = det(F)
+  H(F) = det(F) * inv(F)'
+  Ψ(F) = (κ / (2p)) * _lnJ(J(F))^(2p)
+  ∂Ψ_∂J(F) = κ * _lnJ(J(F))^(2p - 1) / J(F)
+  ∂Ψ2_∂J2(F) = κ * ((2p - 1) * _lnJ(J(F))^(2p - 2) - _lnJ(J(F))^(2p - 1)) / J(F)^2
+  ∂Ψu(F) = ∂Ψ_∂J(F) * H(F)
+  ∂Ψuu(F) = ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂J(F) * _∂H∂F(F)
+  return (Ψ, ∂Ψu, ∂Ψuu)
+end
+
 # ============================================
 # Regularization of Mechanical models
 # ============================================
