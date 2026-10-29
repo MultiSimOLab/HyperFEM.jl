@@ -12,14 +12,41 @@ function solve!(::ComputationalModel, ::Float64)
     @abstractmethod
 end
 
-# Convergence and step messages of the nonlinear solver of a model. HyperFEM's `NewtonRaphson` answers
-# through its log; other solvers add their own methods (GridapSolvers' `NewtonSolver` through the
+# Convergence, verbosity and step messages of the nonlinear solver of a model. HyperFEM's `NewtonRaphson`
+# answers through its log; other solvers add their own methods (GridapSolvers' `NewtonSolver` through the
 # extension HyperFEMGridapSolversExt, deprecated).
 nls_converged(nls::NewtonRaphson) = Solvers.converged(nls)
 nls_message(nls::NewtonRaphson, msg) = Solvers.verbosity(nls) >= 1 && print(msg)
+nls_verbosity(nls::NewtonRaphson) = Solvers.verbosity(nls)
 nls_converged(nls::NonlinearSolver) = error("HyperFEM: the drivers cannot tell whether $(typeof(nls)) converged; " *
     "use NewtonRaphson or add a method of HyperFEM.ComputationalModels.nls_converged")
 nls_message(::NonlinearSolver, msg) = nothing
+nls_verbosity(::NonlinearSolver) = 0
+nls_reset!(nls::NewtonRaphson) = Solvers.reset!(nls.log)
+nls_reset!(::NonlinearSolver) = nothing
+
+# Output of the incremental drivers: `verbose = 1` one line per attempt and a summary of the run;
+# `verbose ≥ 2` a header per step before solving (the solver prints its iterations) and the summary.
+function step_header(v::Int, n::Int, Λ, ΔΛ)
+    v >= 2 || return
+    printstyled(@sprintf("━━ Step %d ━━ Λ = %.4f  ΔΛ = %.4f ━━\n", n, Λ, ΔΛ); bold=true)
+end
+function step_line(v::Int, nls::NewtonRaphson, n::Int, Λ, ΔΛ, ok::Bool, t)
+    v == 1 || return
+    r = residual_history(nls)[end]
+    np = count(==(:projected), mode_history(nls))
+    @printf("step %4d  Λ = %.4f  ΔΛ = %.4f  it = %3d  ‖R‖ = %.3e  ", n, Λ, ΔΛ, num_iterations(nls), r)
+    printstyled(ok ? "✓" : "✗ → bisect"; color=ok ? :green : :yellow)
+    np > 0 && print("  (projected $np)")
+    @printf("  %.2f s\n", t)
+end
+step_line(v::Int, ::NonlinearSolver, n, Λ, ΔΛ, ok, t) = nothing
+function run_summary(v::Int, nls::NewtonRaphson, Λ, nsteps::Int, nbisect::Int, t)
+    v >= 1 || return
+    @printf("Λ = %.4f reached: %d steps, %d bisections, %.2f s\n", Λ, nsteps, nbisect, t)
+    print_summary(nls.log)
+end
+run_summary(v::Int, ::NonlinearSolver, Λ, nsteps, nbisect, t) = nothing
 
 
 #*******************************************************************************	
@@ -255,6 +282,9 @@ function solve!(m::StaticNonlinearModel;
     app_U, _, app_Un = m.applicators
     TrialFESpace!(U, app_U, load(0.0); stage=0.0)
     nls, nls_cache, x, x⁻, assem_U = m.caches[1:5]
+    verbose = nls_verbosity(nls)
+    nls_reset!(nls)
+    t_run = time()
 
     Λ = 0.0
     ∆Λ = 1.0 / stepping[:nsteps]
@@ -289,8 +319,12 @@ function solve!(m::StaticNonlinearModel;
         jac = m.jac(Λ)
         op = build_operator(m.caches[6], res, jac, U, V, assem_U, m.caches[7][])
         m.caches[7][] = op
+        step_header(verbose, Λ_ + 1, Λ, ∆Λ)
+        t_step = time()
         Algebra.solve!(x, nls, model_operator(m, op, Λ, load(Λ)), nls_cache)
-        if !nls_converged(nls)
+        ok = nls_converged(nls)
+        step_line(verbose, nls, Λ_ + 1, Λ, ∆Λ, ok, time() - t_step)
+        if !ok
             @warn "Bisection performed!"
             # back to the last converged step: state, load factor (∆Λ already includes α) and the Dirichlet
             # values of U, so that the next attempt (and its Dirichlet projection) starts from a consistent state
@@ -300,7 +334,6 @@ function solve!(m::StaticNonlinearModel;
             TrialFESpace!(U, app_U, load(Λ); stage=Λ)
             nbisect += 1
         else
-            nls_message(nls, "\nSTEP: $Λ_, Λ: $Λ\n")
             Λ_ += 1
             # Write to PVD
             post(Λ)
@@ -316,6 +349,7 @@ function solve!(m::StaticNonlinearModel;
 
     end
 
+    run_summary(verbose, nls, Λ, Λ_, nbisect, time() - t_run)
     vtk_save(post)
 
     return x, flagconv

@@ -13,6 +13,7 @@ import Gridap: solve!
 using BlockArrays
 
 using LinearAlgebra
+using Printf
 using WriteVTK
 
 using GridapGmsh 

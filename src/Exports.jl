@@ -224,6 +224,11 @@ end
 @publish Solvers ConsistentTangent
 @publish Solvers HybridTangent
 @publish Solvers mode_history
+@publish Solvers print_summary
+@publish Solvers reason_text
+@publish Solvers linear_info
+@publish Solvers linesearch_info
+@publish Solvers injectivity_limit
 @publish Solvers search!
 @publish Solvers AbstractLineSearch
 

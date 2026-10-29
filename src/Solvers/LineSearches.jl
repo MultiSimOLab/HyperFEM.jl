@@ -58,8 +58,9 @@ struct BacktrackingLS <: AbstractLineSearch
   αmin::Float64
   ρ::Float64
   c::Float64
+  last::Base.RefValue{Tuple{Float64,Int}}   # (initial step, reductions) of the last search, for the output
   function BacktrackingLS(; maxiter::Integer=50, αmin::Real=1e-16, ρ::Real=0.5, c::Real=0.95)
-    new(maxiter, αmin, ρ, c)
+    new(maxiter, αmin, ρ, c, Ref((1.0, 0)))
   end
 end
 
@@ -77,8 +78,11 @@ function search!(obj::BacktrackingLS, w, op, x, dx, b)
     α *= ρ
     m += 1
   end
+  obj.last[] = (1.0, m)
   return α
 end
+
+linesearch_info(obj::BacktrackingLS) = "$(obj.last[][2]) reductions"
 
 function (obj::BacktrackingLS)(x::AbstractVector, dx::AbstractVector, b::AbstractVector, op::NonlinearOperator)
   search!(obj, similar(x), op, x, dx, b)
@@ -113,23 +117,24 @@ struct InjectivityLS <: AbstractLineSearch
   maxiter::Int
   αmin::Float64
   ftol::Float64
+  last::Base.RefValue{Tuple{Float64,Int,Bool}}   # (injectivity step, reductions, accepted) of the last search
   function InjectivityLS(; jmin::Real=0.0, armijo::Bool=false, c1::Real=1e-4, ftol::Real=1e-12, β::Real=1 - 1e-6,
                          ρ::Real=0.5, c::Real=0.95, maxiter::Integer=50, αmin::Real=1e-16)
     0 <= jmin || throw(ArgumentError("InjectivityLS: jmin must be ≥ 0"))
     0 < β <= 1 || throw(ArgumentError("InjectivityLS: β must be in (0, 1]"))
     0 < ρ < 1 || throw(ArgumentError("InjectivityLS: ρ must be in (0, 1)"))
-    new(jmin, armijo, c1, β, ρ, c, maxiter, αmin, ftol)
+    new(jmin, armijo, c1, β, ρ, c, maxiter, αmin, ftol, Ref((1.0, 0, true)))
   end
 end
 
 function search!(obj::InjectivityLS, w, op, x, dx, b)
-  α = max_step(op, x, dx, obj.β, obj.jmin)
+  αinj = α = max_step(op, x, dx, obj.β, obj.jmin)
+  m = 0
   if obj.armijo
     g = -dot(b, dx)                       # R(x)·dx (b = -R(x) on entry)
     ok = false
     if g < 0
       E0 = energy(op, x)
-      m = 0
       while m < obj.maxiter
         w .= x .+ α .* dx
         Eα = energy(op, w)
@@ -141,6 +146,7 @@ function search!(obj::InjectivityLS, w, op, x, dx, b)
         m += 1
       end
     end
+    obj.last[] = (αinj, m, ok)
     if !ok
       residual!(b, op, x)
       return 0.0
@@ -149,19 +155,28 @@ function search!(obj::InjectivityLS, w, op, x, dx, b)
     return α
   else
     R₀ = abs(dot(b, dx))
-    m = 0
     while true
       _trial_residual!(b, w, op, x, dx, α)
       R = abs(dot(b, dx))
-      R <= obj.c * R₀ && return α
+      if R <= obj.c * R₀
+        obj.last[] = (αinj, m, true)
+        return α
+      end
       α *= obj.ρ
       m += 1
       if m >= obj.maxiter || α <= obj.αmin
+        obj.last[] = (αinj, m, false)
         residual!(b, op, x)
         return 0.0
       end
     end
   end
+end
+
+injectivity_limit(obj::InjectivityLS) = obj.last[][1]
+function linesearch_info(obj::InjectivityLS)
+  αinj, m, ok = obj.last[]
+  "injectivity step $(@sprintf("%.4f", αinj)), $(m) reductions" * (ok ? "" : ", rejected") * (obj.armijo ? " (Armijo)" : "")
 end
 
 

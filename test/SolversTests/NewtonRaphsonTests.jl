@@ -120,7 +120,7 @@ end
   nls = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-10, rtol=1e-8, verbose=2)
   m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=nls)
   out = capture_stdout(() -> solve!(m; stepping=(nsteps=1, maxbisec=0)))
-  @test occursin("‖R‖", out) && occursin("converged", out) && occursin("STEP: 0", out)
+  @test occursin("‖R‖", out) && occursin("converged", out) && occursin("Step 1", out)
   nls = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-10, rtol=1e-8, verbose=0)
   m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=nls)
   out = capture_stdout(() -> solve!(m; stepping=(nsteps=1, maxbisec=0)))

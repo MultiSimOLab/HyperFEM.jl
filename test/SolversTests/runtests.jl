@@ -24,4 +24,8 @@ using Test
     include("HybridTests.jl")
   end
 
+  @time begin
+    include("VerboseTests.jl")
+  end
+
 end

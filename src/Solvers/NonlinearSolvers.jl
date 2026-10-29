@@ -29,7 +29,9 @@ History of a [`NewtonRaphson`](@ref) solve: residual norms `residuals[1:num_iter
 `:linear_failed`, or `:running` while solving). The storage is allocated once and reused by every
 solve; counters over the whole run (`nsolves`, `niters`, `nswitches`, `t_solve`) accumulate until
 `reset!`. Verbosity: `0` silent, `1` a line per load step (printed by the drivers), `2` a row per
-Newton iteration, `3` line-search detail.
+Newton iteration (step, ‖R‖, ‖R‖/‖R₀‖, α — marked † when limited by the injectivity step —, tangent,
+linear solver, time), switches and failures as indented lines and a closing ✓/✗ line, `3` the detail of
+every line search. [`print_summary`](@ref) prints the counters of a run.
 """
 mutable struct NewtonLog
   const residuals::Vector{Float64}
@@ -39,14 +41,22 @@ mutable struct NewtonLog
   reason::Symbol
   const verbose::Int
   const name::String
-  # counters over the whole run (reset with `reset!`)
+  # counters over the whole run (reset with `reset!`): solves, iterations, projected iterations, switches,
+  # and the time split of the solves: assembly of the tangent, setup of the linear solver (factorisation),
+  # linear solves, line searches (with their residuals), total
   nsolves::Int
   niters::Int
+  nprojected::Int
   nswitches::Int
+  t_assembly::Float64
+  t_setup::Float64
+  t_linear::Float64
+  t_linesearch::Float64
   t_solve::Float64
   function NewtonLog(; maxiter::Integer=100, verbose=0, name::AbstractString="Newton-Raphson")
     v = _verbose_level(verbose)
-    new(zeros(maxiter + 1), zeros(maxiter + 1), fill(:consistent, maxiter + 1), 0, :running, v, String(name), 0, 0, 0, 0.0)
+    new(zeros(maxiter + 1), zeros(maxiter + 1), fill(:consistent, maxiter + 1), 0, :running, v, String(name),
+        0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0)
   end
 end
 
@@ -71,7 +81,12 @@ verbosity(log::NewtonLog) = log.verbose
 function reset!(log::NewtonLog)
   log.nsolves = 0
   log.niters = 0
+  log.nprojected = 0
   log.nswitches = 0
+  log.t_assembly = 0.0
+  log.t_setup = 0.0
+  log.t_linear = 0.0
+  log.t_linesearch = 0.0
   log.t_solve = 0.0
   log
 end
@@ -96,6 +111,7 @@ end
   log.modes[n] = mode
   log.num_iters = n
   log.niters += 1
+  mode === :projected && (log.nprojected += 1)
   log
 end
 
@@ -106,21 +122,32 @@ end
   :running
 end
 
-# Printing (verbose ≥ 2): one row per iteration, a closing line with the stop reason.
+# Printing (verbose ≥ 2): a row per iteration, switches and failures as indented lines, a closing line
+# with the stop reason. Colours only on a terminal (`printstyled` is plain text on files and in CI).
+_mark(ok::Bool) = ok ? "✓" : "✗"
+_styled(s, color) = (printstyled(s; color=color); nothing)
+
 function _print_header(log::NewtonLog, r0)
   log.verbose >= 2 || return
-  @printf("  %4s  %11s  %11s  %8s  %-10s  %8s\n", "it", "‖R‖", "‖R‖/‖R₀‖", "α", "tangent", "t[s]")
+  @printf("  %4s  %11s  %11s  %9s  %-10s  %-12s  %8s\n", "it", "‖R‖", "‖R‖/‖R₀‖", "α", "tangent", "linear", "t[s]")
   @printf("  %4d  %11.3e  %11.3e\n", 0, r0, 1.0)
 end
 
-function _print_row(log::NewtonLog, r, r0, α, mode, t)
+function _print_row(log::NewtonLog, r, r0, α, limited::Bool, mode, linear::String, t)
   log.verbose >= 2 || return
-  @printf("  %4d  %11.3e  %11.3e  %8.4f  %-10s  %8.3f\n", log.num_iters, r, r / r0, α, mode, t)
+  αs = @sprintf("%8.4f", α) * (limited ? "†" : " ")
+  @printf("  %4d  %11.3e  %11.3e  %9s  %-10s  %-12s  %8.3f\n", log.num_iters, r, r / r0, αs, mode, linear, t)
+end
+
+function _print_detail(log::NewtonLog, ls)
+  log.verbose >= 3 || return
+  info = linesearch_info(ls)
+  isempty(info) || println("        line search: ", info)
 end
 
 function _print_switch(log::NewtonLog, to::Symbol, r)
   log.verbose >= 2 || return
-  println("        → $(to) tangent (‖R‖ = $(@sprintf("%.3e", r)))")
+  _styled("        → $(to) tangent (‖R‖ = $(@sprintf("%.3e", r)))\n", :yellow)
 end
 
 const _REASON_TEXT = Dict(
@@ -133,11 +160,58 @@ const _REASON_TEXT = Dict(
   :linear_failed => "linear solver did not converge",
 )
 
+reason_text(reason::Symbol) = get(_REASON_TEXT, reason, string(reason))
+
 function _print_end(log::NewtonLog)
   log.verbose >= 2 || return
-  mark = converged(log) ? "✓" : "✗"
-  println("  $mark $(log.name): $(get(_REASON_TEXT, log.reason, string(log.reason))) after $(log.num_iters) iterations, ‖R‖ = $(@sprintf("%.3e", log.residuals[log.num_iters+1]))")
+  ok = converged(log)
+  _styled("  $(_mark(ok)) ", ok ? :green : :red)
+  println("$(log.name): $(reason_text(log.reason)) after $(log.num_iters) iterations, ‖R‖ = $(@sprintf("%.3e", log.residuals[log.num_iters+1]))")
 end
+
+"""
+    print_summary(log::NewtonLog; io=stdout)
+
+Counters of the run since the last `reset!`: solves, iterations (share with the projected tangent,
+switches) and the time split of the solves (assembly, factorisation / setup, linear solves, line
+searches). The drivers print it at the end of `solve!` with `verbose ≥ 1`.
+"""
+function print_summary(log::NewtonLog; io=stdout)
+  n = max(log.niters, 1)
+  pproj = 100 * log.nprojected / n
+  rest = log.t_solve - log.t_assembly - log.t_setup - log.t_linear - log.t_linesearch
+  println(io, "  $(log.name): $(log.nsolves) solves, $(log.niters) iterations ($(@sprintf("%.0f", pproj)) % projected, $(log.nswitches) switches)")
+  @printf(io, "  time %.2f s: assembly %.2f, setup %.2f, linear solve %.2f, line search %.2f, other %.2f\n",
+          log.t_solve, log.t_assembly, log.t_setup, log.t_linear, log.t_linesearch, max(rest, 0.0))
+end
+
+# Name of the linear solver in the rows (plus the iterations and residual of an iterative one, `linear_info`)
+_linear_name(ls::Algebra.LinearSolver) = string(nameof(typeof(ls)))
+_linear_name(::Algebra.LUSolver) = "LU"
+_linear_name(::Algebra.BackslashSolver) = "backslash"
+
+"""
+    linear_info(ns) -> String
+
+Iterations and residual of the last solve of an iterative linear solver, for the verbose output
+(`""` for direct solvers; specialised by the iterative solvers' setups).
+"""
+linear_info(::Algebra.NumericalSetup) = ""
+
+"""
+    linesearch_info(ls) -> String
+
+Detail of the last search of a line search for the verbose output (`verbose = 3`); `""` by default.
+"""
+linesearch_info(::AbstractLineSearch) = ""
+
+"""
+    injectivity_limit(ls) -> Float64
+
+Injectivity step the last search started from (`NaN` for line searches without an injectivity test),
+to mark in the output the steps limited by it.
+"""
+injectivity_limit(::AbstractLineSearch) = NaN
 
 
 # ------------------------------------------------------------------------------------------------
@@ -279,11 +353,18 @@ end
 
 function Algebra.solve!(x::AbstractVector, nls::NewtonRaphson, op::Algebra.NonlinearOperator, cache::NewtonCache)
   A, b, ns = cache.A, cache.b, cache.ns
+  log = nls.log
+  t1 = time()
   residual!(b, op, x)
   set_tangent!(op, :consistent)
   jacobian!(A, op, x)
+  t2 = time()
   numerical_setup_state!(ns, A, x)
+  t3 = time()
+  log.t_assembly += t2 - t1
+  log.t_setup += t3 - t2
   _solve_nr!(x, cache, nls, op)
+  log.t_solve += t3 - t1
   return cache
 end
 
@@ -312,6 +393,7 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op)
   A, b, dx, ns, w = cache.A, cache.b, cache.dx, cache.ns, cache.w
   log, tols, linesearch, tangent = nls.log, nls.tols, nls.linesearch, nls.tangent
   t0 = time()
+  lname = log.verbose >= 2 ? _linear_name(nls.ls) : ""
 
   mode = _start_mode(tangent)           # the tangent in A was assembled in this mode
   r_sw = 0.0                            # ‖R‖ at the last switch to the projected tangent
@@ -327,7 +409,9 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op)
   while reason === :running
     # linearised problem: A dx = -R
     rmul!(b, -1)
+    t1 = time()
     solve!(dx, ns, b)
+    log.t_linear += time() - t1
     if !linear_converged(ns)
       reason = :linear_failed
       break
@@ -349,11 +433,16 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op)
       mode = next
     end
 
+    t1 = time()
     α = search!(linesearch, w, op, x, dx, b)    # on return b = R(x + α dx); α = 0 is a failure
+    log.t_linesearch += time() - t1
     x .+= α .* dx
     r = norm(b)
     _record!(log, r, α, mode)
-    _print_row(log, r, r0, α, mode, time() - t0)
+    if log.verbose >= 2
+      _print_row(log, r, r0, α, α == injectivity_limit(linesearch), mode, lname * linear_info(ns), time() - t0)
+      _print_detail(log, linesearch)
+    end
 
     if α == 0
       planb = _on_failure(tangent, mode)
@@ -373,8 +462,12 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op)
     end
     if reason === :running
       set_tangent!(op, mode)
+      t1 = time()
       jacobian!(A, op, x)
+      t2 = time()
       numerical_setup_state!(ns, A, x)
+      log.t_assembly += t2 - t1
+      log.t_setup += time() - t2
     end
   end
 

@@ -43,6 +43,11 @@ export TangentStrategy
 export ConsistentTangent
 export HybridTangent
 export mode_history
+export print_summary
+export reason_text
+export linear_info
+export linesearch_info
+export injectivity_limit
 export search!
 export AbstractLineSearch
 
