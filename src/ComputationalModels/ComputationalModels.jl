@@ -11,8 +11,6 @@ using Gridap.FESpaces: get_assembly_strategy
 import Gridap: solve!
 
 using BlockArrays
-using GridapSolvers
-using GridapSolvers.LinearSolvers, GridapSolvers.NonlinearSolvers, GridapSolvers.BlockSolvers
 
 using LinearAlgebra
 using WriteVTK

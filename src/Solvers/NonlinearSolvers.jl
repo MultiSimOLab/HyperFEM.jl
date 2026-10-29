@@ -129,7 +129,8 @@ end
                   linesearch=LineSearch())
 
 Newton–Raphson solver of HyperFEM, a Gridap `NonlinearSolver`. `ls` is the linear solver of the
-tangent systems (any Gridap `LinearSolver`; its `numerical_setup!` receives the current state `x`).
+tangent systems (any Gridap `LinearSolver`; see [`numerical_setup_state!`](@ref) for solvers whose setup
+depends on the current state `x`).
 The stopping criteria are those of [`NewtonTolerances`](@ref); `linesearch` chooses the step length
 along the Newton direction (see `LineSearches.jl`); `verbose` as in [`NewtonLog`](@ref).
 
@@ -179,7 +180,7 @@ function NewtonCache(x::AbstractVector, nls::NewtonRaphson, op::Algebra.Nonlinea
   dx = allocate_in_domain(A)
   fill!(dx, zero(eltype(dx)))
   ss = symbolic_setup(nls.ls, A)
-  ns = numerical_setup(ss, A, x)
+  ns = numerical_setup_state(ss, A, x)
   NewtonCache(A, b, dx, ns)
 end
 
@@ -193,10 +194,22 @@ function Algebra.solve!(x::AbstractVector, nls::NewtonRaphson, op::Algebra.Nonli
   A, b, ns = cache.A, cache.b, cache.ns
   residual!(b, op, x)
   jacobian!(A, op, x)
-  numerical_setup!(ns, A, x)
+  numerical_setup_state!(ns, A, x)
   _solve_nr!(x, cache, nls, op)
   return cache
 end
+
+"""
+    numerical_setup_state(ss, A, x) -> ns
+    numerical_setup_state!(ns, A, x)
+
+Numerical setup of the linear solver for the tangent `A` at the current state `x` of the Newton
+iteration. By default `x` is dropped (Gridap's `numerical_setup(ss, A)` / `numerical_setup!(ns, A)`);
+linear solvers whose setup depends on the state (preconditioners built from the state, matrix-free
+operators) specialise these two methods for their setup types.
+"""
+numerical_setup_state(ss::Algebra.SymbolicSetup, A, x) = numerical_setup(ss, A)
+numerical_setup_state!(ns::Algebra.NumericalSetup, A, x) = numerical_setup!(ns, A)
 
 """
     linear_converged(ns) -> Bool
@@ -251,7 +264,7 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op)
     end
     if reason === :running
       jacobian!(A, op, x)
-      numerical_setup!(ns, A, x)
+      numerical_setup_state!(ns, A, x)
     end
   end
 

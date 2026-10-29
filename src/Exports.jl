@@ -203,6 +203,8 @@ end
 @publish Solvers verbosity
 @publish Solvers get_tolerances
 @publish Solvers linear_converged
+@publish Solvers numerical_setup_state
+@publish Solvers numerical_setup_state!
 @publish Solvers Injectivity_Preserving_LS
 @publish Solvers Roman_LS
 @publish Solvers update_cellstate!

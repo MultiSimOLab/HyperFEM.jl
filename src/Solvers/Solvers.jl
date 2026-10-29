@@ -23,6 +23,8 @@ export stop_reason
 export verbosity
 export get_tolerances
 export linear_converged
+export numerical_setup_state
+export numerical_setup_state!
 export Injectivity_Preserving_LS
 export Roman_LS
 export update_cellstate!

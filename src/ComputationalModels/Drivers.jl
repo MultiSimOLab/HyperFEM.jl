@@ -13,12 +13,13 @@ function solve!(::ComputationalModel, ::Float64)
 end
 
 # Convergence and step messages of the nonlinear solver of a model. HyperFEM's `NewtonRaphson` answers
-# through its log; other solvers (e.g. GridapSolvers' `NewtonSolver`) add their own methods.
+# through its log; other solvers add their own methods (GridapSolvers' `NewtonSolver` through the
+# extension HyperFEMGridapSolversExt, deprecated).
 nls_converged(nls::NewtonRaphson) = Solvers.converged(nls)
 nls_message(nls::NewtonRaphson, msg) = Solvers.verbosity(nls) >= 1 && print(msg)
-nls_converged(nls::NewtonSolver) = GridapSolvers.SolverInterfaces.converged(nls.log.tols, nls.log.num_iters,
-    nls.log.residuals[nls.log.num_iters+1], nls.log.residuals[nls.log.num_iters+1] / nls.log.residuals[1])
-nls_message(nls::NewtonSolver, msg) = GridapSolvers.SolverInterfaces.print_message(nls.log, msg)
+nls_converged(nls::NonlinearSolver) = error("HyperFEM: the drivers cannot tell whether $(typeof(nls)) converged; " *
+    "use NewtonRaphson or add a method of HyperFEM.ComputationalModels.nls_converged")
+nls_message(::NonlinearSolver, msg) = nothing
 
 
 #*******************************************************************************	
