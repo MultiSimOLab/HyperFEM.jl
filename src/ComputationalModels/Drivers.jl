@@ -240,11 +240,13 @@ function solve!(m::StaticNonlinearModel;
         Algebra.solve!(x, nls, op, nls_cache)
         if !nls_converged(nls)
             @warn "Bisection performed!"
+            # back to the last converged step: state, load factor (∆Λ already includes α) and the Dirichlet
+            # values of U, so that the next attempt (and its Dirichlet projection) starts from a consistent state
             x .= x⁻
-            Λ -= α * ∆Λ
+            Λ -= ∆Λ
             ∆Λ = ∆Λ / 2
+            TrialFESpace!(U, app_U, load(Λ); stage=Λ)
             nbisect += 1
-            # @assert(nbisect <= stepping[:maxbisec], "Maximum number of bisections reached")
         else
             nls_message(nls, "\nSTEP: $Λ_, Λ: $Λ\n")
             Λ_ += 1
