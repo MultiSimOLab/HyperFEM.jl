@@ -329,3 +329,7 @@ residual_Neumann(n::NeumannConditions, v, Λ) = residual_Neumann(n.bc, v, n.dΓ,
 "Residual function `res` with the Neumann term of `n` at the load `Λ` added (`n === nothing`: `res`)."
 with_neumann(res, ::Nothing, Λ) = res
 with_neumann(res, n::NeumannConditions, Λ) = (u, v) -> res(u, v) + residual_Neumann(n, v, Λ)
+
+"Energy function `e` with the work of the Neumann loads of `n` at the load `Λ` added, `-∑ ∫(u ⋅ fᵢ) dΓᵢ`."
+with_neumann_energy(e, ::Nothing, Λ) = e
+with_neumann_energy(e, n::NeumannConditions, Λ) = u -> e(u) + residual_Neumann(n, u, Λ)

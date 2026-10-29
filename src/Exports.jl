@@ -215,7 +215,7 @@ end
 @publish Solvers injectivity_step
 @publish Solvers ModelOperator
 @publish Solvers backend_operator
-@publish Solvers energy
+@publish WeakForms energy
 @publish Solvers max_step
 @publish Solvers search!
 @publish Solvers AbstractLineSearch

@@ -129,7 +129,7 @@ dirichlet_projection(::Val{B}, res, jac, uh, ∆U, V, ls, previous) where {B} =
 
 """
     StaticNonlinearModel(res, jac, U, V, dirichlet; neumann=nothing, nls, xh, xh⁻, backend=:lazy,
-                         injectivity=nothing)
+                         injectivity=nothing, energy=nothing)
 
 `res(τ)` and `jac(τ)` are functions of the stage parameter τ of the solver. `dirichlet` are the
 `BoundaryConditions` of `U`; `neumann`, if any, the [`NeumannConditions`](@ref) added to the residual by
@@ -140,8 +140,12 @@ the driver at the load of every step. The model owns the Dirichlet applicators o
 `injectivity` is the measure whose quadrature points must keep `det F > 0` (`dΩ`, or `(dΩ, i)` when
 the displacement is the field `i` of a multi-field space); it gives the injectivity step of
 [`InjectivityLS`](@ref) and the safe load factor of the Dirichlet projection (see
-[`injectivity_step`](@ref)). The solver receives the operator of the backend wrapped in a
-[`ModelOperator`](@ref) with these hooks.
+[`injectivity_step`](@ref)). `energy(τ) = u -> ∫(…)dΩ + …` is the total potential energy of the
+model whose first variation is `res(τ)`: the stored energy of every subdomain (`energy(model, km, u, dΩ)`
+of `WeakForms`) plus the regularisation terms; the driver adds the work of the Neumann loads. It is
+the energy of the Armijo line search (`InjectivityLS(armijo = true)`), for minimisation problems
+only. The solver receives the operator of the backend wrapped in a [`ModelOperator`](@ref) with
+these hooks.
 """
 struct StaticNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
     res::A
@@ -161,7 +165,8 @@ struct StaticNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
         xh::FEFunction=FEFunction(U, zero_free_values(U)),
         xh⁻::FEFunction=FEFunction(U, zero_free_values(U)),
         backend::Symbol=:lazy,
-        injectivity=nothing)
+        injectivity=nothing,
+        energy=nothing)
 
         ∆U = TrialFESpace(U, dirbc, 0.0)
         Un = get_fe_space(xh⁻)
@@ -171,11 +176,11 @@ struct StaticNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
         spaces = (U, V, ∆U, Un)
         x = get_free_dof_values(xh)
         x⁻ = get_free_dof_values(xh⁻)
-        hooks = (injectivity=_injectivity_hook(injectivity),)
+        hooks = (injectivity=_injectivity_hook(injectivity), energy=energy)
         _res = with_neumann(res(1.0), neumann, 1.0)
         _jac = jac(1.0)
         op = build_operator(Val(backend), _res, _jac, U, V, assem_U, nothing)
-        nls_cache = instantiate_caches(x, nls, model_operator(hooks, spaces, op))
+        nls_cache = instantiate_caches(x, nls, model_operator(hooks, spaces, neumann, op, 1.0, 1.0))
         caches = (nls, nls_cache, x, x⁻, assem_U, Val(backend), Ref{Any}(op), Ref{Any}(nothing))
 
         A, B, C = typeof(res), typeof(jac), typeof(spaces)
@@ -203,15 +208,21 @@ function Solvers.injectivity_step(m::StaticNonlinearModel, xh, dxh, β, jmin)
     injectivity_step(inj[1], _field(xh, inj[2]), _field(dxh, inj[2]), β, jmin)
 end
 
-# The operator handed to the Newton: the operator of the backend with the hooks of the model
-function model_operator(hooks, spaces, op)
+# The operator handed to the Newton: the operator of the backend with the hooks of the model at the
+# stage Λ and the load loadΛ of the step
+function model_operator(hooks, spaces, neumann, op, Λ, loadΛ)
     U, V = spaces[1], spaces[2]
     inj = hooks.injectivity
     ms = inj === nothing ? nothing :
         (x, dx, β, jmin) -> injectivity_step(inj[1], _field(FEFunction(U, x), inj[2]), _field(FEFunction(V, dx), inj[2]), β, jmin)
-    ModelOperator(op; max_step=ms)
+    en = hooks.energy === nothing ? nothing : _energy_function(with_neumann_energy(hooks.energy(Λ), neumann, loadΛ), U)
+    ModelOperator(op; max_step=ms, energy=en)
 end
-model_operator(m::StaticNonlinearModel, op) = model_operator(m.hooks, m.spaces, op)
+model_operator(m::StaticNonlinearModel, op, Λ=1.0, loadΛ=1.0) = model_operator(m.hooks, m.spaces, m.neumann, op, Λ, loadΛ)
+
+# Energy of the model at the free values x (Gridap's lazy evaluation for every backend; the engine's
+# scalar functionals are a follow-up of HyperFEMKernels)
+_energy_function(e, U) = x -> sum(e(FEFunction(U, x)))
 
 # Getters
 get_state(m::StaticNonlinearModel) = FEFunction(get_trial_space(m), m.caches[3])
@@ -275,7 +286,7 @@ function solve!(m::StaticNonlinearModel;
         jac = m.jac(Λ)
         op = build_operator(m.caches[6], res, jac, U, V, assem_U, m.caches[7][])
         m.caches[7][] = op
-        Algebra.solve!(x, nls, model_operator(m, op), nls_cache)
+        Algebra.solve!(x, nls, model_operator(m, op, Λ, load(Λ)), nls_cache)
         if !nls_converged(nls)
             @warn "Bisection performed!"
             # back to the last converged step: state, load factor (∆Λ already includes α) and the Dirichlet

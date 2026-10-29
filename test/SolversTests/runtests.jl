@@ -16,4 +16,8 @@ using Test
     include("LineSearchTests.jl")
   end
 
+  @time begin
+    include("EnergyTests.jl")
+  end
+
 end

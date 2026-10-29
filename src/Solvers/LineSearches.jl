@@ -86,7 +86,7 @@ end
 
 
 """
-    InjectivityLS(; jmin=0.0, armijo=false, c1=1e-4, β=1-1e-6, ρ=0.5, c=0.95, maxiter=50, αmin=1e-16)
+    InjectivityLS(; jmin=0.0, armijo=false, c1=1e-4, ftol=1e-12, β=1-1e-6, ρ=0.5, c=0.95, maxiter=50, αmin=1e-16)
 
 Injectivity-preserving line search: the step starts from the exact injectivity limit — `β` times
 the smallest root of `det(I + ∇u + α ∇δu) = jmin` over the quadrature points of the model
@@ -95,7 +95,9 @@ and is then reduced by `ρ` until it is accepted:
 
 - `armijo = false`: backtracking on `|R(x + α dx)·dx| ≤ c |R(x)·dx|` (at most `maxiter` reductions);
 - `armijo = true`: Armijo on the incremental energy of the model (`energy = …` in the driver),
-  `E(x + α dx) ≤ E(x) + c1 α R(x)·dx`, a non-finite energy counting as a rejection.
+  `E(x + α dx) ≤ E(x) + c1 α R(x)·dx`, a non-finite energy counting as a rejection; a change of the
+  energy below `ftol |E(x)|` cannot be resolved in floating point (near convergence) and the step is
+  accepted.
 
 Exhausting the reductions, or (Armijo) a direction that is not of descent (`R·dx ≥ 0`), is a
 failure: `α = 0`, the residual left at `x`, and the Newton reacts according to its tangent strategy.
@@ -110,12 +112,13 @@ struct InjectivityLS <: AbstractLineSearch
   c::Float64
   maxiter::Int
   αmin::Float64
-  function InjectivityLS(; jmin::Real=0.0, armijo::Bool=false, c1::Real=1e-4, β::Real=1 - 1e-6, ρ::Real=0.5,
-                         c::Real=0.95, maxiter::Integer=50, αmin::Real=1e-16)
+  ftol::Float64
+  function InjectivityLS(; jmin::Real=0.0, armijo::Bool=false, c1::Real=1e-4, ftol::Real=1e-12, β::Real=1 - 1e-6,
+                         ρ::Real=0.5, c::Real=0.95, maxiter::Integer=50, αmin::Real=1e-16)
     0 <= jmin || throw(ArgumentError("InjectivityLS: jmin must be ≥ 0"))
     0 < β <= 1 || throw(ArgumentError("InjectivityLS: β must be in (0, 1]"))
     0 < ρ < 1 || throw(ArgumentError("InjectivityLS: ρ must be in (0, 1)"))
-    new(jmin, armijo, c1, β, ρ, c, maxiter, αmin)
+    new(jmin, armijo, c1, β, ρ, c, maxiter, αmin, ftol)
   end
 end
 
@@ -130,7 +133,7 @@ function search!(obj::InjectivityLS, w, op, x, dx, b)
       while m < obj.maxiter
         w .= x .+ α .* dx
         Eα = energy(op, w)
-        if isfinite(Eα) && Eα <= E0 + obj.c1 * α * g
+        if isfinite(Eα) && (Eα <= E0 + obj.c1 * α * g || abs(Eα - E0) <= obj.ftol * abs(E0))
           ok = true
           break
         end
