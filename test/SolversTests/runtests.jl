@@ -8,4 +8,8 @@ using Test
     include("NewtonRaphsonTests.jl")
   end
 
+  @time begin
+    include("AllocationTests.jl")
+  end
+
 end

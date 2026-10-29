@@ -28,6 +28,8 @@ export numerical_setup_state!
 export Injectivity_Preserving_LS
 export Roman_LS
 export update_cellstate!
+export search!
+export AbstractLineSearch
 
 include("LinearSolvers.jl")
 include("LineSearches.jl")

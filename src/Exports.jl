@@ -208,6 +208,8 @@ end
 @publish Solvers Injectivity_Preserving_LS
 @publish Solvers Roman_LS
 @publish Solvers update_cellstate!
+@publish Solvers search!
+@publish Solvers AbstractLineSearch
 
 @publish IO setupfolder
 @publish IO projdir

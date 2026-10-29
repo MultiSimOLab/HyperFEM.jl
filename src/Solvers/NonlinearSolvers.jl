@@ -161,18 +161,21 @@ verbosity(nls::NewtonRaphson) = verbosity(nls.log)
 get_tolerances(nls::NewtonRaphson) = nls.tols
 
 """
-    NewtonCache(A, b, dx, ns)
+    NewtonCache(A, b, dx, ns[, w])
 
-Work data of a [`NewtonRaphson`](@ref) solve: tangent `A`, residual `b`, increment `dx` and the
-numerical setup `ns` of the linear solver. Parametric so that the matrix may be any operator a
-linear solver accepts (e.g. a matrix-free Jacobian).
+Work data of a [`NewtonRaphson`](@ref) solve: tangent `A`, residual `b`, increment `dx`, the
+numerical setup `ns` of the linear solver and the work vector `w` of the line searches. Parametric
+so that the matrix may be any operator a linear solver accepts (e.g. a matrix-free Jacobian).
 """
 struct NewtonCache{TA,TB,TNS<:Algebra.NumericalSetup}
   A::TA
   b::TB
   dx::TB
   ns::TNS
+  w::TB
 end
+
+NewtonCache(A, b, dx, ns) = NewtonCache(A, b, dx, ns, similar(dx))
 
 function NewtonCache(x::AbstractVector, nls::NewtonRaphson, op::Algebra.NonlinearOperator)
   b = residual(op, x)
@@ -181,7 +184,7 @@ function NewtonCache(x::AbstractVector, nls::NewtonRaphson, op::Algebra.Nonlinea
   fill!(dx, zero(eltype(dx)))
   ss = symbolic_setup(nls.ls, A)
   ns = numerical_setup_state(ss, A, x)
-  NewtonCache(A, b, dx, ns)
+  NewtonCache(A, b, dx, ns, similar(dx))
 end
 
 function Algebra.solve!(x::AbstractVector, nls::NewtonRaphson, op::Algebra.NonlinearOperator, ::Nothing)
@@ -221,7 +224,7 @@ fails the Newton iteration like a failed line search.
 linear_converged(::Algebra.NumericalSetup) = true
 
 function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op)
-  A, b, dx, ns = cache.A, cache.b, cache.dx, cache.ns
+  A, b, dx, ns, w = cache.A, cache.b, cache.dx, cache.ns, cache.w
   log, tols, linesearch = nls.log, nls.tols, nls.linesearch
   t0 = time()
 
@@ -252,8 +255,8 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op)
       break
     end
 
-    α = linesearch(x, dx, b, op)    # on return b = R(x + α dx)
-    x .+= α * dx
+    α = search!(linesearch, w, op, x, dx, b)    # on return b = R(x + α dx)
+    x .+= α .* dx
     r = norm(b)
     _record!(log, r, α)
     _print_row(log, r, r0, α, time() - t0)
