@@ -28,6 +28,9 @@ export NonlinearARAP2D
 export VolumetricEnergy
 export CoerciveVolumetric
 export LogBarrier
+export TangentSwitch
+export is_projected
+export set_projected!
 export MooneyRivlin3D
 export MooneyRivlin2D
 export NonlinearMooneyRivlin3D

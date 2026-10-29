@@ -106,25 +106,61 @@ end
 # Regularization of Mechanical models
 # ============================================
 
-struct HessianRegularization <: Mechano
+"""
+    TangentSwitch()
+
+Flag shared by the [`HessianRegularization`](@ref) wrappers of the constitutive models of a problem
+and the Newton solver (`HybridTangent`): while `is_projected(switch)` the wrapped tangents are
+projected (eigenvalues clamped from below), otherwise they are the consistent ones. The solver flips
+it with `set_projected!` through the driver (`tangent_switch = switch`); the weak form is written
+once and reads the flag at every quadrature point.
+"""
+mutable struct TangentSwitch
+  projected::Bool
+end
+TangentSwitch() = TangentSwitch(false)
+is_projected(s::TangentSwitch) = s.projected
+set_projected!(s::TangentSwitch, v::Bool) = (s.projected = v; s)
+
+"""
+    HessianRegularization(mechano; δ=1e-6, switch=nothing, symmetrize=false)
+
+Mechanical model with the material tangent `∂²Ψ/∂F∂F` of `mechano` projected at every point: its
+eigenvalues are clamped from below at `δ` (`regularize_hessian`); energy and stress are unchanged.
+With a [`TangentSwitch`](@ref) the projection applies only while `is_projected(switch)`, so that
+the hybrid Newton switches between the consistent and the projected tangent without a second weak
+form. `symmetrize = true` diagonalises `(C + Cᵀ)/2` (for tangents that are not symmetric to
+round-off); by default the upper triangle is used, as `eigen(Symmetric(C))`.
+"""
+struct HessianRegularization{S} <: Mechano
   mechano::Mechano
   δ::Float64
+  switch::S
+  symmetrize::Bool
 
-  function HessianRegularization(mechano::Mechano; δ::Float64=1.0e-6)
-    new(mechano, δ)
+  function HessianRegularization(mechano::Mechano; δ::Float64=1.0e-6, switch=nothing, symmetrize::Bool=false)
+    new{typeof(switch)}(mechano, δ, switch, symmetrize)
   end
 
-  function HessianRegularization(; mechano::Mechano, δ::Float64=1.0e-6)
-    new(mechano, δ)
+  function HessianRegularization(; mechano::Mechano, δ::Float64=1.0e-6, switch=nothing, symmetrize::Bool=false)
+    new{typeof(switch)}(mechano, δ, switch, symmetrize)
   end
+end
 
-  function (obj::HessianRegularization)(Λ::Float64=1.0)
-    Ψs, ∂Ψs, ∂2Ψs = obj.mechano()
-    δ = obj.δ
+_symmetrize(C::TensorValue{N,N}) where {N} = 0.5 * (C + C')
 
-    ∂2Ψ(F) = regularize_hessian(∂2Ψs(F), δ)
-    return (Ψs, ∂Ψs, ∂2Ψ)
-  end
+function (obj::HessianRegularization{Nothing})(Λ::Float64=1.0)
+  Ψs, ∂Ψs, ∂2Ψs = obj.mechano()
+  δ, sym = obj.δ, obj.symmetrize
+  ∂2Ψ(F) = regularize_hessian(sym ? _symmetrize(∂2Ψs(F)) : ∂2Ψs(F), δ)
+  return (Ψs, ∂Ψs, ∂2Ψ)
+end
+
+function (obj::HessianRegularization{TangentSwitch})(Λ::Float64=1.0)
+  Ψs, ∂Ψs, ∂2Ψs = obj.mechano()
+  δ, sym, switch = obj.δ, obj.symmetrize, obj.switch
+  ∂2Ψ(F) = is_projected(switch) ? regularize_hessian(sym ? _symmetrize(∂2Ψs(F)) : ∂2Ψs(F), δ) : ∂2Ψs(F)
+  return (Ψs, ∂Ψs, ∂2Ψ)
 end
 
 

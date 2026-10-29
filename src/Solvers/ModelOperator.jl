@@ -1,23 +1,28 @@
 """
-    ModelOperator(op; energy=nothing, max_step=nothing)
+    ModelOperator(op; energy=nothing, max_step=nothing, tangent_switch=nothing)
 
 Algebraic operator handed by the drivers to [`NewtonRaphson`](@ref): the operator `op` of the
 assembling backend plus the optional functions of the model that the line searches and tangent
 strategies may need, implemented by the driver for every backend:
 
 - `energy(x)`: the incremental energy whose gradient is the residual (Armijo line search);
-- `max_step(x, dx, β, jmin)`: the exact injectivity step along `dx` from `x` ([`InjectivityLS`](@ref)).
+- `max_step(x, dx, β, jmin)`: the exact injectivity step along `dx` from `x` ([`InjectivityLS`](@ref));
+- `tangent_switch`: the `TangentSwitch` shared by the `HessianRegularization` wrappers of the
+  model's constitutive laws, which [`set_tangent!`](@ref) flips between the consistent and the
+  projected tangent ([`HybridTangent`](@ref)).
 
-Residual and Jacobian calls are forwarded to `op`. [`energy`](@ref) and [`max_step`](@ref) raise a
-clear error when the model does not provide them.
+Residual and Jacobian calls are forwarded to `op`. [`energy`](@ref), [`max_step`](@ref) and
+[`set_tangent!`](@ref) raise a clear error when the model does not provide what they need.
 """
-struct ModelOperator{O<:NonlinearOperator,E,M} <: NonlinearOperator
+struct ModelOperator{O<:NonlinearOperator,E,M,T} <: NonlinearOperator
   op::O
   energy::E
   max_step::M
+  tangent_switch::T
 end
 
-ModelOperator(op::NonlinearOperator; energy=nothing, max_step=nothing) = ModelOperator(op, energy, max_step)
+ModelOperator(op::NonlinearOperator; energy=nothing, max_step=nothing, tangent_switch=nothing) =
+  ModelOperator(op, energy, max_step, tangent_switch)
 
 Algebra.residual!(b::AbstractVector, o::ModelOperator, x::AbstractVector) = residual!(b, o.op, x)
 Algebra.jacobian!(A, o::ModelOperator, x::AbstractVector) = jacobian!(A, o.op, x)
@@ -55,3 +60,17 @@ max_step(o::ModelOperator, x, dx, β, jmin) = _max_step(o.max_step, x, dx, β, j
 _max_step(::Nothing, x, dx, β, jmin) = error("HyperFEM: the model provides no injectivity step; `InjectivityLS` needs `injectivity = …` in the driver")
 _max_step(f, x, dx, β, jmin) = f(x, dx, β, jmin)
 max_step(::NonlinearOperator, x, dx, β, jmin) = error("HyperFEM: the operator provides no injectivity step; `InjectivityLS` needs a driver with `injectivity = …`")
+
+"""
+    set_tangent!(op, mode)
+
+Selects the tangent the next `jacobian!` assembles: `:consistent` or `:projected` (the clamped
+material tangents of the model). Needs the `tangent_switch` of the model in the operator for
+`:projected`; `:consistent` is always accepted.
+"""
+set_tangent!(o::ModelOperator, mode::Symbol) = _set_tangent!(o.tangent_switch, mode)
+_set_tangent!(::Nothing, mode::Symbol) = mode === :consistent ? nothing :
+  error("HyperFEM: the model provides no tangent switch; `HybridTangent` needs `tangent_switch = …` in the driver")
+_set_tangent!(s, mode::Symbol) = (set_projected!(s, mode === :projected); nothing)
+set_tangent!(::NonlinearOperator, mode::Symbol) = mode === :consistent ? nothing :
+  error("HyperFEM: the operator provides no tangent switch; `HybridTangent` needs a driver with `tangent_switch = …`")

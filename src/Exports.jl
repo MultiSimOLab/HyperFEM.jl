@@ -44,6 +44,9 @@ end
 @publish PhysicalModels VolumetricEnergy
 @publish PhysicalModels CoerciveVolumetric
 @publish PhysicalModels LogBarrier
+@publish PhysicalModels TangentSwitch
+@publish PhysicalModels is_projected
+@publish PhysicalModels set_projected!
 @publish PhysicalModels MooneyRivlin3D
 @publish PhysicalModels MooneyRivlin2D
 @publish PhysicalModels NonlinearMooneyRivlin3D
@@ -217,6 +220,10 @@ end
 @publish Solvers backend_operator
 @publish WeakForms energy
 @publish Solvers max_step
+@publish Solvers set_tangent!
+@publish Solvers ConsistentTangent
+@publish Solvers HybridTangent
+@publish Solvers mode_history
 @publish Solvers search!
 @publish Solvers AbstractLineSearch
 

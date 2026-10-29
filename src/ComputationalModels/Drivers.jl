@@ -129,7 +129,7 @@ dirichlet_projection(::Val{B}, res, jac, uh, ∆U, V, ls, previous) where {B} =
 
 """
     StaticNonlinearModel(res, jac, U, V, dirichlet; neumann=nothing, nls, xh, xh⁻, backend=:lazy,
-                         injectivity=nothing, energy=nothing)
+                         injectivity=nothing, energy=nothing, tangent_switch=nothing)
 
 `res(τ)` and `jac(τ)` are functions of the stage parameter τ of the solver. `dirichlet` are the
 `BoundaryConditions` of `U`; `neumann`, if any, the [`NeumannConditions`](@ref) added to the residual by
@@ -144,8 +144,10 @@ the displacement is the field `i` of a multi-field space); it gives the injectiv
 model whose first variation is `res(τ)`: the stored energy of every subdomain (`energy(model, km, u, dΩ)`
 of `WeakForms`) plus the regularisation terms; the driver adds the work of the Neumann loads. It is
 the energy of the Armijo line search (`InjectivityLS(armijo = true)`), for minimisation problems
-only. The solver receives the operator of the backend wrapped in a [`ModelOperator`](@ref) with
-these hooks.
+only. `tangent_switch` is the `TangentSwitch` shared by the `HessianRegularization` wrappers of the
+models in `jac`, which the hybrid Newton (`HybridTangent`) flips between the consistent and the
+projected tangent. The solver receives the operator of the backend wrapped in a
+[`ModelOperator`](@ref) with these hooks.
 """
 struct StaticNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
     res::A
@@ -166,7 +168,8 @@ struct StaticNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
         xh⁻::FEFunction=FEFunction(U, zero_free_values(U)),
         backend::Symbol=:lazy,
         injectivity=nothing,
-        energy=nothing)
+        energy=nothing,
+        tangent_switch=nothing)
 
         ∆U = TrialFESpace(U, dirbc, 0.0)
         Un = get_fe_space(xh⁻)
@@ -176,7 +179,7 @@ struct StaticNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
         spaces = (U, V, ∆U, Un)
         x = get_free_dof_values(xh)
         x⁻ = get_free_dof_values(xh⁻)
-        hooks = (injectivity=_injectivity_hook(injectivity), energy=energy)
+        hooks = (injectivity=_injectivity_hook(injectivity), energy=energy, tangent_switch=tangent_switch)
         _res = with_neumann(res(1.0), neumann, 1.0)
         _jac = jac(1.0)
         op = build_operator(Val(backend), _res, _jac, U, V, assem_U, nothing)
@@ -216,7 +219,7 @@ function model_operator(hooks, spaces, neumann, op, Λ, loadΛ)
     ms = inj === nothing ? nothing :
         (x, dx, β, jmin) -> injectivity_step(inj[1], _field(FEFunction(U, x), inj[2]), _field(FEFunction(V, dx), inj[2]), β, jmin)
     en = hooks.energy === nothing ? nothing : _energy_function(with_neumann_energy(hooks.energy(Λ), neumann, loadΛ), U)
-    ModelOperator(op; max_step=ms, energy=en)
+    ModelOperator(op; max_step=ms, energy=en, tangent_switch=hooks.tangent_switch)
 end
 model_operator(m::StaticNonlinearModel, op, Λ=1.0, loadΛ=1.0) = model_operator(m.hooks, m.spaces, m.neumann, op, Λ, loadΛ)
 

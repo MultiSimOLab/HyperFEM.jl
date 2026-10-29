@@ -91,6 +91,30 @@ end
   test_derivatives_2D_(tm, K; rtol=1e-8)
 end
 
+@testset "TangentSwitch in HessianRegularization" begin
+  model = NonlinearMooneyRivlin2D(λ=2.0, μ1=1.0, μ2=1.0, α1=1.0, α2=1.0)
+  _, _, ∂Ψuu = model()
+  F = TensorValue(1.0, 0.0, 0.0, 1.0) + TensorValue(-0.6, 0.3, 0.2, -0.5)
+  C = ∂Ψuu(F)
+  δ = 1e3                                             # above every eigenvalue: the clamp changes the tangent
+  switch = TangentSwitch()
+  _, _, ∂Ψuu_sw = HessianRegularization(model; δ=δ, switch=switch)()
+  _, _, ∂Ψuu_al = HessianRegularization(model; δ=δ)()
+  @test !is_projected(switch)
+  @test ∂Ψuu_sw(F) == C                               # consistent while the switch is off
+  set_projected!(switch, true)
+  @test is_projected(switch)
+  @test ∂Ψuu_sw(F) == ∂Ψuu_al(F) == regularize_hessian(C, δ)
+  @test ∂Ψuu_sw(F) != C                               # this tangent is indefinite: clamped
+  set_projected!(switch, false)
+  @test ∂Ψuu_sw(F) == C
+  # symmetrize: (C + Cᵀ)/2 before diagonalising; equal to round-off for a symmetric tangent
+  _, _, ∂Ψuu_sy = HessianRegularization(model; δ=δ, symmetrize=true)()
+  @test isapprox(∂Ψuu_sy(F), ∂Ψuu_al(F), rtol=1e-12)
+  # a tangent with every eigenvalue above δ is returned unchanged
+  @test HessianRegularization(model; δ=-1e3)()[3](F) == C
+end
+
 @testset "composition of HGO_1Fiber" begin
   c1 = [0.6639232500447778, 0.5532987701062146, 0.9912576142028674, 0.4951942011240962]
   c2 = [0.800583033264982, 0.3141082734275339, 0.8063905248474006, 0.5850486948450955]

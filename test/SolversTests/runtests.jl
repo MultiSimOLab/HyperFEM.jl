@@ -20,4 +20,8 @@ using Test
     include("EnergyTests.jl")
   end
 
+  @time begin
+    include("HybridTests.jl")
+  end
+
 end

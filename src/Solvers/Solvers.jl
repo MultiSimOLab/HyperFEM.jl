@@ -38,10 +38,16 @@ export ModelOperator
 export backend_operator
 export energy
 export max_step
+export set_tangent!
+export TangentStrategy
+export ConsistentTangent
+export HybridTangent
+export mode_history
 export search!
 export AbstractLineSearch
 
 import HyperFEM.WeakForms: energy
+using HyperFEM.PhysicalModels: TangentSwitch, set_projected!, is_projected
 
 include("LinearSolvers.jl")
 include("Injectivity.jl")
