@@ -1,7 +1,6 @@
 using Gridap
 using Gridap.FESpaces
 using ForwardDiff
-using GridapSolvers, GridapSolvers.NonlinearSolvers
 
 
 @testset "Boundary conditions API" begin
@@ -262,7 +261,7 @@ end
   dΩ = Measure(Triangulation(model), 2)
   res(Λ) = (u, v) -> ∫(∇(v) ⋅ ∇(u))dΩ
   jac(Λ) = (u, du, v) -> ∫(∇(v) ⋅ ∇(du))dΩ
-  nls = NewtonSolver(LUSolver(); maxiter=5, rtol=1e-10, verbose=false)
+  nls = NewtonRaphson(LUSolver(); maxiter=5, rtol=1e-10, verbose=false)
   reffe = ReferenceFE(lagrangian, Float64, 1)
   bc1 = BoundaryConditions(BoundaryCondition("bottom", 0.0), BoundaryCondition("top", 1.0, Λ -> Λ))
   V1 = TestFESpace(model, reffe, bc1)
@@ -307,7 +306,7 @@ end
   dΩ = Measure(Triangulation(model), 2)
   res(Λ) = (u, v) -> ∫(∇(v) ⋅ ∇(u))dΩ
   jac(Λ) = (u, du, v) -> ∫(∇(v) ⋅ ∇(du))dΩ
-  nls = NewtonSolver(LUSolver(); maxiter=5, rtol=1e-10, verbose=false)
+  nls = NewtonRaphson(LUSolver(); maxiter=5, rtol=1e-10, verbose=false)
   reffe = ReferenceFE(lagrangian, Float64, 1)
   bc1 = BoundaryConditions(BoundaryCondition("bottom", 0.0), BoundaryCondition("left", x -> x[2], Λ -> Λ))
   neumann1 = NeumannConditions(model, BoundaryConditions(BoundaryCondition("top", 1.0, Λ -> Λ)), 2)

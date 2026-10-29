@@ -1,7 +1,5 @@
 using Gridap
 using Gridap.FESpaces
-using GridapSolvers
-using GridapSolvers.NonlinearSolvers
 using HyperFEM
 using HyperFEM.DiscreteModeling.EvolutionFunctions
 using HyperFEM.ComputationalModels.PostMetrics
@@ -75,7 +73,7 @@ function visco_elastic_simulation(; backend=:lazy, t_end=2, writevtk=false, verb
   jac(Λ) = (u,du,v)->jacobian(cons_model, k, u, du, v, dΩ, t_end * Λ, Fnh, state_vars...)
 
   ls = LUSolver()
-  nls = NewtonSolver(ls; maxiter=20, atol=1.e-6, rtol=1.e-6, verbose=verbose)
+  nls = NewtonRaphson(ls; maxiter=20, atol=1.e-6, rtol=1.e-6, verbose=verbose)
   comp_model = StaticNonlinearModel(res, jac, Uu, Vu, D_bc; nls=nls, xh=uh, xh⁻=unh, backend=backend)
 
   λx = Float64[]

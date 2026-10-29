@@ -94,12 +94,4 @@ function instantiate_caches(x, nls::NewtonSolver, op::NonlinearOperator)
   return GridapSolvers.NonlinearSolvers.NewtonCache(A, b, dx, ns)
 end
 
-function instantiate_caches(x, nls::Newton_RaphsonSolver, op::NonlinearOperator)
-  b = residual(op, x)
-  A = jacobian(op, x)
-  dx = allocate_in_domain(A)
-  fill!(dx, zero(eltype(dx)))
-  ss = symbolic_setup(nls.ls, A)
-  ns = numerical_setup(ss, A, x)
-  return Newton_RaphsonCache(A, b, dx, ns)
-end
+instantiate_caches(x, nls::NewtonRaphson, op::NonlinearOperator) = NewtonCache(x, nls, op)

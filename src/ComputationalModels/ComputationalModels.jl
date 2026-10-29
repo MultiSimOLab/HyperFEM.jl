@@ -13,8 +13,6 @@ import Gridap: solve!
 using BlockArrays
 using GridapSolvers
 using GridapSolvers.LinearSolvers, GridapSolvers.NonlinearSolvers, GridapSolvers.BlockSolvers
-using GridapSolvers.SolverInterfaces: SolverVerboseLevel, SOLVER_VERBOSE_NONE, SOLVER_VERBOSE_LOW, SOLVER_VERBOSE_HIGH
-using GridapSolvers.SolverInterfaces: finished, print_message, converged
 
 using LinearAlgebra
 using WriteVTK

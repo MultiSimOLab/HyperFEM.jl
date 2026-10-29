@@ -12,6 +12,14 @@ function solve!(::ComputationalModel, ::Float64)
     @abstractmethod
 end
 
+# Convergence and step messages of the nonlinear solver of a model. HyperFEM's `NewtonRaphson` answers
+# through its log; other solvers (e.g. GridapSolvers' `NewtonSolver`) add their own methods.
+nls_converged(nls::NewtonRaphson) = Solvers.converged(nls)
+nls_message(nls::NewtonRaphson, msg) = Solvers.verbosity(nls) >= 1 && print(msg)
+nls_converged(nls::NewtonSolver) = GridapSolvers.SolverInterfaces.converged(nls.log.tols, nls.log.num_iters,
+    nls.log.residuals[nls.log.num_iters+1], nls.log.residuals[nls.log.num_iters+1] / nls.log.residuals[1])
+nls_message(nls::NewtonSolver, msg) = GridapSolvers.SolverInterfaces.print_message(nls.log, msg)
+
 
 #*******************************************************************************	
 #    					 StaggeredModel
@@ -140,7 +148,7 @@ struct StaticNonlinearModel{A,B,C,D,E,F,G} <: ComputationalModel
         res::Function, jac::Function, U, V, dirbc;
         neumann=nothing,
         assem_U=SparseMatrixAssembler(U, V),
-        nls::NonlinearSolver=NewtonSolver(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
+        nls::NonlinearSolver=NewtonRaphson(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
         xh::FEFunction=FEFunction(U, zero_free_values(U)),
         xh⁻::FEFunction=FEFunction(U, zero_free_values(U)),
         backend::Symbol=:lazy)
@@ -229,9 +237,7 @@ function solve!(m::StaticNonlinearModel;
         op = build_operator(m.caches[6], res, jac, U, V, assem_U, m.caches[7][])
         m.caches[7][] = op
         Algebra.solve!(x, nls, op, nls_cache)
-        r_abs = nls.log.residuals[nls.log.num_iters+1]
-        r_rel = r_abs / nls.log.residuals[1]
-        if !converged(nls.log.tols, nls.log.num_iters, r_abs, r_rel)
+        if !nls_converged(nls)
             @warn "Bisection performed!"
             x .= x⁻
             Λ -= α * ∆Λ
@@ -239,7 +245,7 @@ function solve!(m::StaticNonlinearModel;
             nbisect += 1
             # @assert(nbisect <= stepping[:maxbisec], "Maximum number of bisections reached")
         else
-            print_message(nls.log, "\nSTEP: $Λ_, Λ: $Λ\n")
+            nls_message(nls, "\nSTEP: $Λ_, Λ: $Λ\n")
             Λ_ += 1
             # Write to PVD
             post(Λ)
@@ -274,7 +280,7 @@ function post_solve!(pvd, x, Λ, Λ_, m, filePath)
     return pvd
 end
 
-function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, ::Newton_RaphsonSolver, load=identity)
+function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, ::NewtonRaphson, load=identity)
     duh = get_dirichlet_preconditioner(m, Λ, ∆Λ, load)
     # update step
     α = update_cellstate!(m.caches[1].linesearch, get_state(m), duh)
@@ -317,7 +323,7 @@ struct DynamicNonlinearModel{A,B,C,D,E,F,G} <: ComputationalModel
     function DynamicNonlinearModel(
         res::Function, jac::Function, U, Uold, V, dirbc, velocity::TimedependentCondition;
         assem_U=SparseMatrixAssembler(U, V),
-        nls::NonlinearSolver=NewtonSolver(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
+        nls::NonlinearSolver=NewtonRaphson(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
         xh::FEFunction=FEFunction(U, zero_free_values(U)))
 
         spaces = (U, V, Uold)
@@ -422,7 +428,7 @@ function solve!(m::DynamicNonlinearModel;
 
         update_velocity!(m.velocity.vh, x, x⁻, Δt)
         x⁻ .= x
-        print_message(nls.log, "\nStep: $itime, Time: $t\n")
+        nls_message(nls, "\nStep: $itime, Time: $t\n")
         post(t)
 
 

@@ -189,7 +189,20 @@ end
 @publish DiscreteModeling element_size
 
 @publish Solvers IterativeSolver
+@publish Solvers NewtonRaphson
+@publish Solvers NewtonTolerances
+@publish Solvers NewtonLog
+@publish Solvers NewtonCache
 @publish Solvers Newton_RaphsonSolver
+@publish Solvers Newton_RaphsonCache
+@publish Solvers converged
+@publish Solvers residual_history
+@publish Solvers step_history
+@publish Solvers num_iterations
+@publish Solvers stop_reason
+@publish Solvers verbosity
+@publish Solvers get_tolerances
+@publish Solvers linear_converged
 @publish Solvers Injectivity_Preserving_LS
 @publish Solvers Roman_LS
 @publish Solvers update_cellstate!

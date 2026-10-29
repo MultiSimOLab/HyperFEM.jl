@@ -27,8 +27,7 @@ Example of a Monolithic implementation for the simulation of Nonlinear ElectroMe
 
 ```julia
 using HyperFEM
-using Gridap, GridapGmsh, GridapSolvers, DrWatson
-using GridapSolvers.NonlinearSolvers
+using Gridap, GridapGmsh, DrWatson
 using Gridap.FESpaces
 using WriteVTK
 
@@ -92,7 +91,7 @@ jac(Λ)= ((u, φ), (du, dφ), (v, vφ)) -> ∫(∇(v)' ⊙ ((∂ΨFF ∘ (F∘�
                                         ∫(∇(vφ) ⋅ ((∂ΨEF ∘ (F∘∇(u)', E∘∇(φ))) ⊙ ∇(du)'))dΩ 
 # nonlinear solver
 ls = LUSolver()
-nls_ = NewtonSolver(ls; maxiter=20, atol=1.e-10, rtol=1.e-8, verbose=true)
+nls_ = NewtonRaphson(ls; maxiter=20, atol=1.e-10, rtol=1.e-8, verbose=true)
 
 # Computational model
 comp_model = StaticNonlinearModel(res, jac, U, V, D_bc; nls=nls_)
