@@ -160,16 +160,16 @@ include("PINNs.jl")
 Base.broadcastable(m::PhysicalModel) = Ref(m) # Allows to use the @. syntax for passing a single constitutive model into a vectorized function
 
 """
-    CellState(model, dΩ; backend = :gridap)
+    CellState(model, dΩ; backend = :lazy)
 
 Initialize the state variables for the given constitutive model and discretization.
 The constitutive model passed to the function will determine the type of the state variables,
 e.g., a vector, tensor, tuple of state variables...
 
-`backend = :kernel` (HyperFEMKernels loaded) stores them as `KernelState`s (dense `np × ncells`
+`backend = :compiled` (HyperFEMKernels loaded) stores them as `KernelState`s (dense `np × ncells`
 matrices) and their updates with [`update_state!`](@ref) run with the engine's kernels.
 """
-function Gridap.CellData.CellState(::PhysicalModel, args...; backend=:gridap)
+function Gridap.CellData.CellState(::PhysicalModel, args...; backend=:lazy)
   return nothing
 end
 
@@ -177,13 +177,13 @@ end
     new_state(v, points, backend)
 
 State variable with the value `v` at every point of `points` (a `Measure` or `CellPoint`), in the
-storage of `backend`: Gridap's `CellState` (`:gridap`) or the one provided by an extension
-(`:kernel` by HyperFEMKernels).
+storage of `backend`: Gridap's `CellState` (`:lazy`) or the one provided by an extension
+(`:compiled` by HyperFEMKernels).
 """
 new_state(v, points, backend::Symbol) = _new_state(Val(backend), v, points)
-_new_state(::Val{:gridap}, v, points) = CellState(v, points)
+_new_state(::Val{:lazy}, v, points) = CellState(v, points)
 _new_state(::Val{B}, v, points) where {B} =
-  error("HyperFEM: backend :$B is not available for the state variables; for :kernel load HyperFEMKernels (`using HyperFEMKernels`)")
+  error("HyperFEM: backend :$B is not available for the state variables; for :compiled load HyperFEMKernels (`using HyperFEMKernels`)")
 
 
 """
@@ -206,23 +206,23 @@ Update the state variables. The state variables must be initialized using the fu
 NOTE: The Gridap function expects the following order of arguments: `update_state!(updater, cell_states, cell_fields)`,
 hence, the order of the arguments differ from the standar energy function, like `Ψ(F, Fn, A...)`
 
-`backend = :kernel` (HyperFEMKernels loaded) runs the update with the engine's kernels whatever the
-storage of the states; states created with `CellState(model, dΩ; backend = :kernel)` use the
+`backend = :compiled` (HyperFEMKernels loaded) runs the update with the engine's kernels whatever the
+storage of the states; states created with `CellState(model, dΩ; backend = :compiled)` use the
 engine with any backend.
 """
-function Gridap.CellData.update_state!(::PhysicalModel, vars...; backend=:gridap)
+function Gridap.CellData.update_state!(::PhysicalModel, vars...; backend=:lazy)
 end
 
 """
     state_updater(f, backend)
 
-The pointwise updater `f` as executed by `backend`: `f` itself for `:gridap`, or the wrapper
-provided by an extension (`:kernel` by HyperFEMKernels).
+The pointwise updater `f` as executed by `backend`: `f` itself for `:lazy`, or the wrapper
+provided by an extension (`:compiled` by HyperFEMKernels).
 """
 state_updater(f, backend::Symbol) = _state_updater(Val(backend), f)
-_state_updater(::Val{:gridap}, f) = f
+_state_updater(::Val{:lazy}, f) = f
 _state_updater(::Val{B}, f) where {B} =
-  error("HyperFEM: backend :$B is not available for the state variables; for :kernel load HyperFEMKernels (`using HyperFEMKernels`)")
+  error("HyperFEM: backend :$B is not available for the state variables; for :compiled load HyperFEMKernels (`using HyperFEMKernels`)")
 
 
 """

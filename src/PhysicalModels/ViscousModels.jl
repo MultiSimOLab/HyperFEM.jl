@@ -27,12 +27,12 @@ function update_time_step!(obj::ViscousIncompressible, Δt::Float64)
   obj.Δt[] = Δt
 end
 
-function Gridap.CellData.CellState(::ViscousIncompressible, F0::TensorValue, points::Measure; backend=:gridap)
+function Gridap.CellData.CellState(::ViscousIncompressible, F0::TensorValue, points::Measure; backend=:lazy)
   v = VectorValue(F0..., 0.0)
   new_state(v, points, backend)
 end
 
-function Gridap.CellData.CellState(obj::ViscousIncompressible, points::Measure; backend=:gridap)
+function Gridap.CellData.CellState(obj::ViscousIncompressible, points::Measure; backend=:lazy)
   CellState(obj, I3, points; backend)
 end
 
@@ -40,7 +40,7 @@ function initialize_state(::ViscousIncompressible)
   VectorValue(I3..., 0.0)
 end
 
-function Gridap.CellData.update_state!(obj::ViscousIncompressible, A, F, Fn; backend=:gridap)
+function Gridap.CellData.update_state!(obj::ViscousIncompressible, A, F, Fn; backend=:lazy)
   updater(Aᵅ, Fᵅ, Fnᵅ) = (true, return_mapping(obj, Fᵅ, Fnᵅ, Aᵅ))
   update_state!(state_updater(updater, backend), A, F, Fn)
 end

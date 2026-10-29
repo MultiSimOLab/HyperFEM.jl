@@ -9,7 +9,7 @@ using GridapSolvers.LinearSolvers
 using HyperFEM
 using LinearAlgebra
 
-function turek_navier_stokes_simulation(; backend=:gridap, nsteps=12, dt=0.5, verbose=false)
+function turek_navier_stokes_simulation(; backend=:lazy, nsteps=12, dt=0.5, verbose=false)
   geomodel = GmshDiscreteModel(joinpath(@__DIR__, "..", "models", "turek2d.msh"))
   ρ, μ = 1.0, 1e-3                      # kg/m3, Pa s (ν = 1e-3 m2/s)
   Um, H, D = 0.3, 0.41, 0.1             # inlet peak velocity, channel height, cylinder diameter: Re = 2/3 Um D / ν = 20

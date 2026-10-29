@@ -1,7 +1,7 @@
 module HyperFEMKernelsExt
 
-# Kernel backend for HyperFEM's drivers: `StaticNonlinearModel(...; backend = :kernel)` and
-# `StaticLinearModel(...; backend = :kernel)`.
+# Compiled backend (HyperFEMKernels) for HyperFEM's drivers: `StaticNonlinearModel(...; backend = :compiled)` and
+# `StaticLinearModel(...; backend = :compiled)`.
 # The first load step builds a `KernelOperator` (tables, sparsity pattern, colouring); later
 # steps only re-capture the weak form for the new load factor with `update`.
 
@@ -11,7 +11,7 @@ using Gridap.FESpaces: FEFunction
 using Gridap.Algebra: AffineOperator, residual, jacobian, residual!, jacobian!, zero_initial_guess, solve
 using Gridap.Algebra: allocate_residual, allocate_jacobian
 
-function HyperFEM.ComputationalModels.build_operator(::Val{:kernel}, res, jac, U, V, assem, previous)
+function HyperFEM.ComputationalModels.build_operator(::Val{:compiled}, res, jac, U, V, assem, previous)
     previous isa KernelOperator ? update(previous, res, jac) : KernelOperator(res, jac, U, V)
 end
 
@@ -20,7 +20,7 @@ end
 # j(du, ddu, v) = jac(uh, ddu, v), evaluated at du = 0: the residual there is res(uh, v) plus the
 # contribution of the Dirichlet increment stored in ∆U, and the Jacobian is the tangent. The
 # operator of the previous step is reused (`update`): same spaces, pattern and colouring.
-function HyperFEM.ComputationalModels.dirichlet_projection(::Val{:kernel}, res, jac, uh, ∆U, V, ls, previous)
+function HyperFEM.ComputationalModels.dirichlet_projection(::Val{:compiled}, res, jac, uh, ∆U, V, ls, previous)
     r(du, v) = jac(uh, du, v) + res(uh, v)
     j(du, ddu, v) = jac(uh, ddu, v)
     op = previous isa KernelOperator ? update(previous, r, j) : KernelOperator(r, j, ∆U, V)
@@ -32,7 +32,7 @@ function HyperFEM.ComputationalModels.dirichlet_projection(::Val{:kernel}, res, 
     FEFunction(∆U, dx), op
 end
 
-# Linear problems (`StaticLinearModel(...; backend = :kernel)`): the affine problem K x = b of
+# Linear problems (`StaticLinearModel(...; backend = :compiled)`): the affine problem K x = b of
 # bf(u, v) = lf(v) is the operator r(u, v) = bf(u, v) - lf(v), j(u, du, v) = bf(du, v) at u = 0, so
 # K = j and b = -r(0); r(0) carries the Dirichlet lift (the FE function of u = 0 holds the Dirichlet
 # values of U, read by the kernels at every assembly). Re-assembly re-captures the forms with
@@ -66,7 +66,7 @@ function _check_pattern(K, op::KernelOperator, previous)
         error("HyperFEM: the sparsity pattern of the kernel operator changed on re-assembly; build a new StaticLinearModel")
 end
 
-function HyperFEM.ComputationalModels.linear_system(::Val{:kernel}, bf, lf, U, V, assem)
+function HyperFEM.ComputationalModels.linear_system(::Val{:compiled}, bf, lf, U, V, assem)
     op = KernelOperator(_linear_res(bf, lf), _linear_jac(bf), U, V)
     x0 = zero_initial_guess(op)
     K, b = allocate_jacobian(op, x0), allocate_residual(op, x0)
@@ -74,14 +74,14 @@ function HyperFEM.ComputationalModels.linear_system(::Val{:kernel}, bf, lf, U, V
     K, b, op
 end
 
-function HyperFEM.ComputationalModels.linear_system!(::Val{:kernel}, K, b, bf, lf, U, V, assem, previous)
+function HyperFEM.ComputationalModels.linear_system!(::Val{:compiled}, K, b, bf, lf, U, V, assem, previous)
     op = _kernel_operator(previous, _linear_res(bf, lf), _linear_jac(bf), U, V)
     _check_pattern(K, op, previous)
     _linear_assemble!(K, lf === nothing ? nothing : b, op, zero_initial_guess(op))
     op
 end
 
-function HyperFEM.ComputationalModels.load_vector!(::Val{:kernel}, b, lf, U, V, assem, previous)
+function HyperFEM.ComputationalModels.load_vector!(::Val{:compiled}, b, lf, U, V, assem, previous)
     previous isa KernelOperator || error("HyperFEM: load_vector! with the kernel backend needs the operator of linear_system")
     op = update(previous, _load_res(lf), previous.jac)
     residual!(b, op, zero_initial_guess(op))
@@ -89,10 +89,10 @@ function HyperFEM.ComputationalModels.load_vector!(::Val{:kernel}, b, lf, U, V, 
     op
 end
 
-# State variables: `CellState(model, dΩ; backend = :kernel)` stores them as dense `KernelState`s, whose
-# updates run with the engine automatically; `update_state!(model, ...; backend = :kernel)` runs the
+# State variables: `CellState(model, dΩ; backend = :compiled)` stores them as dense `KernelState`s, whose
+# updates run with the engine automatically; `update_state!(model, ...; backend = :compiled)` runs the
 # update with the engine for Gridap's `CellState`s too.
-HyperFEM.PhysicalModels._new_state(::Val{:kernel}, v, points) = KernelState(v, points)
-HyperFEM.PhysicalModels._state_updater(::Val{:kernel}, f) = KernelUpdater(f)
+HyperFEM.PhysicalModels._new_state(::Val{:compiled}, v, points) = KernelState(v, points)
+HyperFEM.PhysicalModels._state_updater(::Val{:compiled}, f) = KernelUpdater(f)
 
 end # module

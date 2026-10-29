@@ -6,7 +6,7 @@ using Gridap.FESpaces
 using HyperFEM
 
 
-function static_mechanical_dirichlet_simulation(; backend=:gridap, writevtk=false, verbose=false)
+function static_mechanical_dirichlet_simulation(; backend=:lazy, writevtk=false, verbose=false)
 
   pname = "Stretch"
   simdir = projdir("data", "sims", pname)

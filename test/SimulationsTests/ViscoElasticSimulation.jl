@@ -6,7 +6,7 @@ using HyperFEM
 using HyperFEM.DiscreteModeling.EvolutionFunctions
 using HyperFEM.ComputationalModels.PostMetrics
 
-function visco_elastic_simulation(; backend=:gridap, t_end=2, writevtk=false, verbose=false)
+function visco_elastic_simulation(; backend=:lazy, t_end=2, writevtk=false, verbose=false)
   simdir = projdir("data", "sims", stem(@__FILE__))
   writevtk && setupfolder(simdir)
 
@@ -67,7 +67,7 @@ function visco_elastic_simulation(; backend=:gridap, t_end=2, writevtk=false, ve
 
   uh = FEFunction(Uu, zero_free_values(Uu))
   unh = FEFunction(Uun, zero_free_values(Uun))
-  state_vars = CellState(cons_model, dΩ; backend)      # :kernel → KernelStates, updated by the engine
+  state_vars = CellState(cons_model, dΩ; backend)      # :compiled → KernelStates, updated by the engine
   F,_,_ = get_Kinematics(k)
   Fnh = F∘∇(unh)'
 

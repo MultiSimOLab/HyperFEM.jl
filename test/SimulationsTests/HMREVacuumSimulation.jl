@@ -131,7 +131,7 @@ function hmre_vacuum_model(backend::Symbol; φbot=0.2 * 5200, verbose=false)
 end
 
 
-function hmre_vacuum_simulation(; backend=:gridap, φbot=0.2 * 5200 / 2, nsteps=4, nsubsteps=1, verbose=false)
+function hmre_vacuum_simulation(; backend=:lazy, φbot=0.2 * 5200 / 2, nsteps=4, nsubsteps=1, verbose=false)
   s = hmre_vacuum_model(backend; φbot, verbose)
   args = (Dict(:stepping => (nsteps=1, maxbisec=5), :ProjectDirichlet => true),
           Dict(:stepping => (nsteps=1, maxbisec=5)),
