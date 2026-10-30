@@ -92,6 +92,7 @@ export δ∂t
 export δ∂tt
 export δat
 export get_velocity
+export get_previous_state
 export get_acceleration
 export TimeStepping
 export AdaptiveStepping

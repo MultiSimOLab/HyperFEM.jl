@@ -269,8 +269,10 @@ end
 # available inside a Runge–Kutta stage (the later stages are unknown): the stage field is used.
 _np1(ctx::TimeContext, u) = _affine(ctx.h.α0_np1, u, ctx.h.β0_np1, ctx.h.use_β0_np1)
 
-_scaled(α::Float64, u) = AffineCellField(α, u, nothing)
-_affine(α::Float64, u, β, useβ::Bool) = useβ ? AffineCellField(α, u, β) : AffineCellField(α, u, nothing)
+# the identity (α = 1, no β: the quasi-static field, the BDF and Newmark field, the variations) is the
+# unknown itself, so the forms of those schemes are the static ones
+_scaled(α::Float64, u) = α == 1.0 ? u : AffineCellField(α, u, nothing)
+_affine(α::Float64, u, β, useβ::Bool) = useβ ? AffineCellField(α, u, β) : _scaled(α, u)
 
 """
     AffineCellField(α, f, h)

@@ -104,16 +104,24 @@ end
   # the same run with the third attempt failing: the state after the failure is the one of step 2, the run
   # continues with the halved increment and the trajectory is a legitimate one (different steps)
   snap = Dict{Symbol,Any}()
-  m = TransientModel(res, jac, U, V, bc; scheme=Newmark(), mass, nls=FailAtT(nls(), [3]))
+  # the internal-variable hook: called once per accepted step (never on a failed attempt), after the
+  # post-processing, with the new state and the state of the previous step
+  calls = Ref(0); prev = Ref(0.0); seen_by_post = Ref(0)
+  internal = (uh, unh) -> (calls[] += 1; prev[] = norm(get_free_dof_values(unh)); nothing)
+  m = TransientModel(res, jac, U, V, bc; scheme=Newmark(), mass, nls=FailAtT(nls(), [3]), internal)
+  post = PostProcessor(m, _ -> (seen_by_post[] = calls[]); is_vtk=false, filepath=mktempdir())
   st = TimeStep(TimeStepping(; Δt=t_end / 5, t_end))
   stepping = TimeStepping(; Δt=t_end / 5, t_end, maxbisec=3)
   initialize!(m, st)
-  ok1 = step!(m, st, stepping); ok2 = step!(m, st, stepping)
+  ok1 = step!(m, st, stepping; post)
+  x1 = norm(m.caches.x)
+  ok2 = step!(m, st, stepping; post)
   @test ok1 && ok2
+  @test calls[] == 2 && prev[] == x1 && seen_by_post[] == 1
   snap[:x] = copy(m.caches.x); snap[:v] = copy(m.hist.vn); snap[:a] = copy(m.hist.an); snap[:t] = st.t
   snap[:gd] = copy(get_dirichlet_dof_values(U)); snap[:gdn] = deepcopy(m.hist.gdn); snap[:vdn] = deepcopy(m.hist.vdn)
-  ok = @test_logs (:warn, "Bisection performed!") step!(m, st, stepping)
-  @test !ok
+  ok = @test_logs (:warn, "Bisection performed!") step!(m, st, stepping; post)
+  @test !ok && calls[] == 2
   @test m.caches.x == snap[:x] && m.hist.vn == snap[:v] && m.hist.an == snap[:a] && st.t == snap[:t]
   @test get_dirichlet_dof_values(U) == snap[:gd] && m.hist.gdn == snap[:gdn] && m.hist.vdn == snap[:vdn]
   @test st.Δt == t_end / 10 && st.nbisect == 1

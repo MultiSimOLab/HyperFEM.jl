@@ -47,6 +47,29 @@ function agree(results, f; rtol=1e-10)
   end
 end
 
+# A Newton solver that fails at chosen attempts (the time loop must bisect and go on from the last accepted
+# step, the internal variables untouched)
+mutable struct FailingNewton{N<:NewtonRaphson,L} <: Gridap.Algebra.NonlinearSolver
+  nls::N
+  fails::Vector{Int}
+  calls::Int
+  ls::L
+  linesearch::Any
+  log::Any
+end
+FailingNewton(nls, fails) = FailingNewton(nls, fails, 0, nls.ls, nls.linesearch, nls.log)
+HyperFEM.ComputationalModels.instantiate_caches(x, s::FailingNewton, op) = HyperFEM.ComputationalModels.instantiate_caches(x, s.nls, op)
+function Gridap.Algebra.solve!(x::AbstractVector, s::FailingNewton, op::Gridap.Algebra.NonlinearOperator, cache; r_reference=0.0)
+  s.calls += 1
+  s.calls in s.fails && return cache
+  solve!(x, s.nls, op, cache; r_reference)
+end
+HyperFEM.ComputationalModels.nls_converged(s::FailingNewton) = !(s.calls in s.fails) && HyperFEM.Solvers.converged(s.nls)
+HyperFEM.ComputationalModels.nls_message(s::FailingNewton, msg) = nothing
+HyperFEM.ComputationalModels.nls_verbosity(s::FailingNewton) = 0
+HyperFEM.ComputationalModels.nls_reset!(s::FailingNewton) = HyperFEM.ComputationalModels.nls_reset!(s.nls)
+HyperFEM.ComputationalModels.nls_iterations(s::FailingNewton) = HyperFEM.ComputationalModels.nls_iterations(s.nls)
+
 @testset "SimulationsTests (backends: $(join(TEST_BACKENDS, ", ")))" begin
 
   @testset "ViscoElastic" begin
@@ -57,6 +80,28 @@ end
       end
     end
     agree(r, x -> x[2])
+    # the transient driver (QuasiStatic scheme, the internal variables updated through the hooks, both
+    # storages of the state variables) reproduces the load-step loop of the static driver
+    rs = run_backends(b -> visco_elastic_simulation(; backend=b, driver=:static))
+    for b in TEST_BACKENDS
+      @testset "transient vs static ($b)" begin
+        @test norm(r[b][2] - rs[b][2]) ≤ 1e-10 * norm(rs[b][2])
+        @test norm(r[b][1] - rs[b][1]) ≤ 1e-10 * norm(rs[b][1])
+      end
+    end
+    # a forced failure of the fifth attempt: the loop bisects from the fourth step, the internal variables
+    # and the state of that step untouched, and goes on (the increment grows back); the response is that of
+    # the uninterrupted run up to the time discretisation of the bisected step
+    for b in TEST_BACKENDS
+      @testset "forced bisection ($b)" begin
+        nls = FailingNewton(NewtonRaphson(LUSolver(); maxiter=20, atol=1e-6, rtol=1e-6, verbose=0), [5])
+        stepping = TimeStepping(; Δt=0.05, t_end=2.0, maxbisec=1, grow=2.0)
+        λf, σf = visco_elastic_simulation(; backend=b, nls, stepping)
+        @test length(σf) == length(r[b][2]) + 1
+        @test σf[1:4] == r[b][2][1:4]
+        @test abs(σf[end] - r[b][2][end]) ≤ 1e-3 * abs(r[b][2][end])
+      end
+    end
   end
 
   @testset "StaticMechanicalDirichlet" begin

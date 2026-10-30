@@ -176,7 +176,8 @@ zero guess, no Newton), `:Δt` (linear with a tangent that depends on Δt only �
 only when Δt changes). Explicit stages use `:Δt` (the mass alone).
 
 `physics` receives `update_time_step!(physics, Δt)` before every attempt; `internal(xh, xh⁻)` is called
-when a step is accepted, with the new state and the state of the previous step, before `post`; `history`
+when a step is accepted, with the new state and the state of the previous step, after `post` (the
+post-processing sees the internal variables the residual of the step was evaluated with); `history`
 is a user object available as `ctx.history` and committed with `commit!(history, ctx, xh)` when defined.
 `xh` is the initial state (and the FE function of the state after every accepted step, over the model's
 `x`), `vh` the initial velocity (second order), `initial_acceleration` `:zero` or `:solve` (`M a₀ = −r(0, u₀)`,
@@ -339,6 +340,13 @@ get_measure(m::TransientModel) = m.res.dΩ
 "Velocity and acceleration of the last accepted step as FE functions (second-order schemes)."
 get_velocity(m::TransientModel) = m.hist.vnh
 get_acceleration(m::TransientModel) = m.hist.anh
+"""
+    get_previous_state(m::TransientModel)
+
+The FE function over the history `uₙ` (`ctx.u⁻` of the forms): during `post` (before the commit of the
+step) the state the step started from; after `step!` the last accepted state (the history is committed).
+"""
+get_previous_state(m::TransientModel) = m.hist.un
 
 #*******************************************************************************
 #    					 One attempt of the time loop
@@ -353,7 +361,7 @@ every stage of the scheme (coefficients, Dirichlet values of the stage, forms, p
 Dirichlet projection of the static tangent when `ProjectDirichlet` —, solve, `commit_stage!`). A failed
 solve bisects the increment ([`bisect!`](@ref), `on_bisection(t, Δt)`); with `AdaptiveStepping` a step
 whose error estimate exceeds the tolerance is rejected ([`reject!`](@ref), `on_reject(t, Δt, err)`);
-otherwise the step is accepted: `internal(xh, xh⁻)`, `post(t)`, the commit of the scheme (history,
+otherwise the step is accepted: `post(t)`, `internal(xh, xh⁻)`, the commit of the scheme (history,
 velocities and accelerations, Dirichlet values) and [`accept!`](@ref). Returns whether the step was
 accepted. On failure or rejection the state, the time, the Dirichlet values and the history are those of
 the last accepted step.
@@ -411,8 +419,8 @@ function step!(m::TransientModel, st::TimeStep, stepping::TimeControl;
     if ok
         _field_np1!(x, s, h, y, Δt)
         _dcopy!(_dirichlet_values(U), h.gd)
-        m.internal === nothing || m.internal(FEFunction(U, x), h.un)
         post(t)
+        m.internal === nothing || m.internal(FEFunction(U, x), h.un)
         commit!(s, h, x, Δt)
         m.history === nothing || commit!(m.history, x, h)
         adaptive ? accept!(st, stepping, its, err, error_order(s)) : accept!(st, stepping, its)
