@@ -49,13 +49,14 @@ end
   @test x === c.x && typeof(c.op) === typeof(op0)    # one operator per step, of the same type
   @test fieldtype(typeof(c), :op) === typeof(op0)
   @test c.projection === nothing                                       # the lazy projection keeps no operator
-  # DynamicNonlinearModel: the constructor only (its time loop is rewritten in R2)
+  # DynamicNonlinearModel (deprecated, removed in the next release): the constructor only
   p = drivers_test_problem()
   Uold = TrialFESpace(p.V, p.bc, 0.0)
   vel = HyperFEM.ComputationalModels.SingleFieldTC(x -> VectorValue(0.0, 0.0), p.V)
   resd(t, uh⁻, vh) = (u, v) -> p.res(t)(u, v)
   jacd(t, uh⁻, vh) = (u, du, v) -> p.jac(t)(u, du, v)
-  md = DynamicNonlinearModel(resd, jacd, p.U, Uold, p.V, p.bc, vel; nls=NewtonRaphson(LUSolver(); verbose=0))
+  mkd() = DynamicNonlinearModel(resd, jacd, p.U, Uold, p.V, p.bc, vel; nls=NewtonRaphson(LUSolver(); verbose=0))
+  md = Base.JLOptions().depwarn == 0 ? mkd() : (@test_logs (:warn, r"deprecated") match_mode = :any mkd())
   @test md.caches isa NonlinearStepCache && isconcretetype(typeof(md.caches)) && md.caches.backend === LazyBackend()
   @test md.state⁻ isa FEFunction && get_free_dof_values(md.state⁻) === md.caches.x⁻ && get_assemblers(md) === md.caches.assem
 end

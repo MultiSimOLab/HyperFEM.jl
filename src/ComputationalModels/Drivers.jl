@@ -383,6 +383,16 @@ end
 #*******************************************************************************	
 
 
+"""
+    DynamicNonlinearModel(res, jac, U, Uold, V, dirichlet, velocity; assem_U, nls, xh)
+
+Transient driver with the midpoint update of the velocity (`solve!(m; stepping = (nsteps, Δt), post)`).
+
+!!! warning "Deprecated"
+    `DynamicNonlinearModel` is deprecated and will be removed in the next release, replaced by new transient
+    models built on the incremental loop of `step!`. It is not covered by the test suite: its time loop
+    updates the velocity from the free values instead of the FE functions and fails.
+"""
 struct DynamicNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
     res::A
     jac::B
@@ -399,6 +409,8 @@ struct DynamicNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
         nls::NonlinearSolver=NewtonRaphson(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
         xh::FEFunction=FEFunction(U, zero_free_values(U)))
 
+        Base.depwarn("`DynamicNonlinearModel` is deprecated and will be removed in the next release; " *
+                     "new transient models replace it", :DynamicNonlinearModel)
         spaces = (U, V, Uold)
         applicators = (dirichlet_applicator(U, dirbc), dirichlet_applicator(Uold, dirbc))
         x = get_free_dof_values(xh)
