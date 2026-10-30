@@ -25,6 +25,30 @@ using Test
   end
 
   @time begin
+    include("TimeSteppingTests.jl")
+  end
+
+  @time begin
+    include("TimeSchemesTests.jl")
+  end
+
+  @time begin
+    include("TransientModelTests.jl")
+  end
+
+  @time begin
+    include("TransientModelTests2.jl")
+  end
+
+  @time begin
+    include("TransientEnergyTests.jl")
+  end
+
+  @time begin
+    include("TransientGridapTests.jl")
+  end
+
+  @time begin
     include("LinearModelTests.jl")
   end
 

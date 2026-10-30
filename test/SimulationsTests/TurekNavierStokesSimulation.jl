@@ -1,8 +1,9 @@
 # Flow around a cylinder, DFG benchmark 2D-1 (Schäfer & Turek 1996): steady laminar flow at Re = 20, reached by
 # time stepping with the same discretization as examples/aorta_cfd (equal-order P1-P1 with SUPG + PSPG + LSIC,
-# BDF2 with backward Euler in the first step, Oseen linearization: one linear system per step) written with
-# HyperFEM's StaticLinearModel (re-assembled at every step) and a `backend` keyword. Mesh test/models/turek2d.msh
-# (7 402 triangles, generated with `benchmark/meshes/generate.jl turek 0.02` of HyperFEMKernels.jl).
+# BDF2 with backward Euler in the first step, Oseen linearization: one linear system per step) written on
+# HyperFEM's TransientModel (general level of the stage contract, `BDF(2)`, `tangent_update = :step`) with a
+# `backend` keyword. Mesh test/models/turek2d.msh (7 402 triangles, generated with
+# `benchmark/meshes/generate.jl turek 0.02` of HyperFEMKernels.jl).
 # Reference values of the benchmark (fine meshes, P2-P1): C_D = 5.5795, C_L = 0.0106, Δp = 0.1175.
 using Gridap, GridapGmsh, Gridap.FESpaces, Gridap.CellData, GridapSolvers
 using GridapSolvers.LinearSolvers
@@ -36,42 +37,53 @@ function turek_navier_stokes_simulation(; backend=:lazy, nsteps=12, dt=0.5, verb
   dΩ = Measure(Ω, 2order + 1)
   he = CellField(map(a -> sqrt(2a), collect(get_cell_measure(Ω))), Ω)   # element size (triangles)
 
-  # Previous states (free values overwritten in place at every step; the Dirichlet values are those of U)
-  xh⁻ = FEFunction(U, zero_free_values(U)); xh⁻⁻ = FEFunction(U, zero_free_values(U))
-  un = xh⁻[1]; unm1 = xh⁻⁻[1]
-
-  # BDF2 (first step backward Euler): ∂ₜu ≈ c0 u - (c1 uⁿ - c2 uⁿ⁻¹); Oseen advecting velocity 2uⁿ - uⁿ⁻¹
-  bdf2 = Ref(false)
-  c0() = bdf2[] ? 1.5 / dt : 1.0 / dt
-  c1() = bdf2[] ? 2.0 / dt : 1.0 / dt
-  c2() = bdf2[] ? 0.5 / dt : 0.0
-  hist() = c1() * un - c2() * unm1
-  wadv() = bdf2[] ? 2.0 * un - 1.0 * unm1 : un
-
   # Stabilization parameters (semi-discrete), evaluated with uⁿ; with P1 velocity the viscous term has no
-  # element Laplacian, so the strong residual is ρ (c u + ∇u·w) + ∇p - ρ f
+  # element Laplacian, so the strong residual is ρ ∂ₜu + ρ ∇u·w + ∇p - ρ f
   τsupg(u, h) = ((2 * norm(u) / h)^2 + 9 * (4μ / (ρ * h^2))^2)^(-1 / 2)
   τpspg(u, h) = τsupg(u, h) / ρ
   τlsic(u, h) = ρ * norm(u) * h * 0.5
-  Rvel(c) = (u, ∇u, w) -> ρ * c * u + ρ * (∇u' ⋅ w)
   ε(∇u) = 0.5 * (∇u + ∇u')
 
-  function a((u, p), (v, q))
-    c = c0(); w = wadv()
+  # The time derivative of the velocity comes from the context of the velocity field (BDF2, backward Euler
+  # in the first step: `∂t(cu, u) = c0 u - (c1 uⁿ - c2 uⁿ⁻¹)`), also inside the SUPG and PSPG residuals; the
+  # Oseen advecting velocity is extrapolated from the history, 2uⁿ - uⁿ⁻¹ (uⁿ in the first step, which has
+  # no uⁿ⁻¹: uⁿ carries the inlet profile in its Dirichlet values from the start). The expression keeps
+  # its type across the steps (the operator of the model is rebuilt with the same type every step).
+  function advecting(cu)
+    a, b = cu.step == 1 ? (1.0, 0.0) : (2.0, 1.0)
+    a * cu.u⁻ - b * cu.u⁻⁻
+  end
+  function res(ctx)
+    cu = ctx[1]
+    un = cu.u⁻; w = advecting(cu)
     τs = τsupg ∘ (un, he); τp = τpspg ∘ (un, he); τl = τlsic ∘ (un, he)
-    Ru = Rvel(c) ∘ (u, ∇(u), w)
-    ∫(ρ * c * (u ⋅ v))dΩ + ∫(2μ * (ε ∘ (∇(u))) ⊙ (ε ∘ (∇(v))))dΩ + ∫(ρ * ((∇(u)' ⋅ w) ⋅ v))dΩ -
-    ∫(p * (∇ ⋅ v))dΩ - ∫(q * (∇ ⋅ u))dΩ +
-    ∫(τs * ((∇(v)' ⋅ w) ⋅ Ru))dΩ + ∫(τs * ((∇(v)' ⋅ w) ⋅ ∇(p)))dΩ -
-    ∫(τp * (∇(q) ⋅ Ru))dΩ - ∫(τp * (∇(q) ⋅ ∇(p)))dΩ +
-    ∫(τl * (∇ ⋅ v) * (∇ ⋅ u))dΩ
+    ((u, p), (v, q)) -> begin
+      ut = ∂t(cu, u)
+      Ru = ρ * ut + ρ * (∇(u)' ⋅ w)
+      ∫(ρ * (ut ⋅ v))dΩ + ∫(2μ * (ε ∘ (∇(u))) ⊙ (ε ∘ (∇(v))))dΩ + ∫(ρ * ((∇(u)' ⋅ w) ⋅ v))dΩ -
+      ∫(p * (∇ ⋅ v))dΩ - ∫(q * (∇ ⋅ u))dΩ +
+      ∫(τs * ((∇(v)' ⋅ w) ⋅ Ru))dΩ + ∫(τs * ((∇(v)' ⋅ w) ⋅ ∇(p)))dΩ -
+      ∫(τp * (∇(q) ⋅ Ru))dΩ - ∫(τp * (∇(q) ⋅ ∇(p)))dΩ +
+      ∫(τl * (∇ ⋅ v) * (∇ ⋅ u))dΩ
+    end
   end
-  function l((v, q))
-    w = wadv(); f = hist()
-    τs = τsupg ∘ (un, he); τp = τpspg ∘ (un, he)
-    ∫(ρ * (f ⋅ v))dΩ + ∫(τs * ((∇(v)' ⋅ w) ⋅ (ρ * f)))dΩ - ∫(τp * (∇(q) ⋅ (ρ * f)))dΩ
+  function jac(ctx)
+    cu = ctx[1]
+    un = cu.u⁻; w = advecting(cu)
+    τs = τsupg ∘ (un, he); τp = τpspg ∘ (un, he); τl = τlsic ∘ (un, he)
+    ((u, p), (du, dp), (v, q)) -> begin
+      dut = δ∂t(cu, du)
+      dRu = ρ * dut + ρ * (∇(du)' ⋅ w)
+      ∫(ρ * (dut ⋅ v))dΩ + ∫(2μ * (ε ∘ (∇(du))) ⊙ (ε ∘ (∇(v))))dΩ + ∫(ρ * ((∇(du)' ⋅ w) ⋅ v))dΩ -
+      ∫(dp * (∇ ⋅ v))dΩ - ∫(q * (∇ ⋅ du))dΩ +
+      ∫(τs * ((∇(v)' ⋅ w) ⋅ dRu))dΩ + ∫(τs * ((∇(v)' ⋅ w) ⋅ ∇(dp)))dΩ -
+      ∫(τp * (∇(q) ⋅ dRu))dΩ - ∫(τp * (∇(q) ⋅ ∇(dp)))dΩ +
+      ∫(τl * (∇ ⋅ v) * (∇ ⋅ du))dΩ
+    end
   end
-  compmodel = StaticLinearModel(l, a, U, V, D_bc; backend)
+  # linear in the unknown with a tangent that depends on the history: one solve per step from the zero guess
+  nls = NewtonRaphson(LUSolver(); verbose=0)
+  compmodel = TransientModel(res, jac, U, V, D_bc; scheme=BDF(2), tangent_update=:step, nls, backend)
 
   # Forces on the cylinder: F = -∫ σ·n dΓ with n the outward normal of the fluid (σ = -p I + 2μ ε(u))
   Γc = BoundaryTriangulation(geomodel, tags="cylinder"); dΓc = Measure(Γc, 2order + 1); nc = get_normal_vector(Γc)
@@ -86,16 +98,13 @@ function turek_navier_stokes_simulation(; backend=:lazy, nsteps=12, dt=0.5, verb
   end
 
   cD_history = Float64[]
-  x = zero_free_values(U)
-  for n in 1:nsteps
-    x = solve!(compmodel; Assembly=true)             # new uⁿ, uⁿ⁻¹ and BDF2 numbers in the forms
-    xh = FEFunction(U, x)
-    get_free_dof_values(xh⁻⁻) .= get_free_dof_values(xh⁻)
-    get_free_dof_values(xh⁻) .= x
-    bdf2[] = true
-    push!(cD_history, coefficients(xh).cD)
-    verbose && println("step $n  t = $(n * dt)  C_D = $(cD_history[end])")
+  function record(post)
+    push!(cD_history, coefficients(get_state(compmodel)).cD)
+    verbose && println("step $(post.iter)  t = $(post.Λ[end])  C_D = $(cD_history[end])")
   end
-  xh = FEFunction(U, x)
+  post = PostProcessor(compmodel, record; is_vtk=false, filepath=mktempdir())
+  x, flag = solve!(compmodel; stepping=TimeStepping(; Δt=dt, t_end=nsteps * dt), post)
+  flag == 1 || error("Turek: the time loop did not complete")
+  xh = get_state(compmodel)
   (; x, cD_history, coefficients(xh)...)
 end

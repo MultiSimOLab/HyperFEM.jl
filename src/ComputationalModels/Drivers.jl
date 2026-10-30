@@ -142,11 +142,11 @@ Work data of the incremental nonlinear drivers, typed so that the hot path of th
 dynamic dispatch: the nonlinear solver `nls` and its cache, the free values `x` of the state and
 `x⁻` of the last converged step, the assembler `assem` of the lazy backend (`nothing` for the
 others), the `backend` and its operator `op` of the current step (rebuilt or updated by
-[`build_operator`](@ref) at every step, hence a field of a fixed type), and the backend operator of
+`build_operator` at every step, hence a field of a fixed type), and the backend operator of
 the Dirichlet projection, `projection` (`nothing` until the first projection and for the lazy
 backend; the kernel operator on `∆U` of the compiled one, reused with `update`; its type depends on
 the backend, so it is untyped — one dynamic dispatch per projected step). The projection system
-itself lives in the tangent, residual and increment of `nls_cache` ([`dirichlet_projection!`](@ref)).
+itself lives in the tangent, residual and increment of `nls_cache` (`dirichlet_projection!`).
 """
 mutable struct NonlinearStepCache{N<:NonlinearSolver,C,X<:AbstractVector,A,B<:AbstractBackend,O}
     const nls::N
@@ -269,7 +269,7 @@ projection_setup!(c, x) = numerical_setup!(c.ns, c.A)
 the driver at the load of every step. The model owns the Dirichlet applicators of its spaces
 (`get_applicators`: those of `U`, `∆U` and the space of `xh⁻`). `backend` (`:lazy`, `:compiled` or an
 [`AbstractBackend`](@ref)) selects who evaluates and assembles the forms (see `build_operator`);
-`assem_U` is a custom Gridap assembler for the lazy backend only (see [`assembler`](@ref)).
+`assem_U` is a custom Gridap assembler for the lazy backend only (see `assembler`).
 
 `injectivity` is the measure whose quadrature points must keep `det F > 0` (`dΩ`, or `(dΩ, i)` when
 the displacement is the field `i` of a multi-field space); it gives the injectivity step of
@@ -412,144 +412,6 @@ function get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆�
     Algebra.solve!(dx, ns, b)
     return FEFunction(∆U, dx)
 end
-#*******************************************************************************	
-#    					 DynamicNonlinearModel
-#*******************************************************************************	
-
-
-"""
-    DynamicNonlinearModel(res, jac, U, Uold, V, dirichlet, velocity; assem_U, nls, xh)
-
-Transient driver with the midpoint update of the velocity (`solve!(m; stepping = (nsteps, Δt), post)`).
-
-!!! warning "Deprecated"
-    `DynamicNonlinearModel` is deprecated and will be removed in the next release, replaced by new transient
-    models built on the incremental loop of `step!`. It is not covered by the test suite: its time loop
-    updates the velocity from the free values instead of the FE functions and fails.
-"""
-struct DynamicNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
-    res::A
-    jac::B
-    spaces::C
-    dirichlet::D
-    velocity::E
-    applicators::F                    # of U and Uold
-    caches::G
-    state⁻::H                         # FE function of `Uold` over `caches.x⁻`
-
-    function DynamicNonlinearModel(
-        res::Function, jac::Function, U, Uold, V, dirbc, velocity::TimedependentCondition;
-        assem_U=nothing,
-        nls::NonlinearSolver=NewtonRaphson(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
-        xh::FEFunction=FEFunction(U, zero_free_values(U)))
-
-        Base.depwarn("`DynamicNonlinearModel` is deprecated and will be removed in the next release; " *
-                     "new transient models replace it", :DynamicNonlinearModel)
-        spaces = (U, V, Uold)
-        applicators = (dirichlet_applicator(U, dirbc), dirichlet_applicator(Uold, dirbc))
-        x = get_free_dof_values(xh)
-        x⁻ = zero_free_values(Uold)
-        uh⁻ = FEFunction(Uold, x⁻)
-        vuh = velocity()
-        _res = res(1.0, uh⁻, vuh)
-        _jac = jac(1.0, uh⁻, vuh)
-        bk = LazyBackend()
-        assem = assembler(bk, assem_U, U, V)
-        op = build_operator(bk, _res, _jac, U, V, assem, nothing)
-        nls_cache = instantiate_caches(x, nls, op)
-        caches = NonlinearStepCache(nls, nls_cache, x, x⁻, assem, bk, op)
-        A, B, C = typeof(res), typeof(jac), typeof(spaces)
-        D, E, F, G, H = typeof(dirbc), typeof(velocity), typeof(applicators), typeof(caches), typeof(uh⁻)
-        return new{A,B,C,D,E,F,G,H}(res, jac, spaces, dirbc, velocity, applicators, caches, uh⁻)
-    end
-end
-
-# Getters
-get_state(m::DynamicNonlinearModel) = FEFunction(get_trial_space(m), m.caches.x)
-get_measure(m::DynamicNonlinearModel) = m.res.dΩ
-get_spaces(m::DynamicNonlinearModel) = m.spaces
-get_applicators(m::DynamicNonlinearModel) = m.applicators
-get_assemblers(m::DynamicNonlinearModel) = m.caches.assem
-
-
-function midpoint_update!(v, x⁺, x⁻, Δt)
-  v .*= -1.0
-  v .-= (2.0 / Δt) * x⁻
-  v .+= (2.0 / Δt) * x⁺
-end
-
-
-"""
-    update_velocity!
-
-Update the velocity field `vh` based on the current displacement field `xh⁺`
-and the previous displacement `xh⁻` using a midpoint time-stepping scheme.
-The velocity is updated in place.
-"""
-function update_velocity!(vh, xh⁺, xh⁻, Δt)
-  # TODO: Once moved to Gridap 0.20, a dispatch get_dirichlet_dof_values(::CellField) will be available
-  midpoint_update!(get_free_dof_values(vh), get_free_dof_values(xh⁺), get_free_dof_values(xh⁻), Δt)
-  midpoint_update!(get_dirichlet_dof_values(get_fe_space(vh)), get_dirichlet_dof_values(get_fe_space(xh⁺)), get_dirichlet_dof_values(get_fe_space(xh⁻)), Δt)
-  return vh
-end
-
-
-"""
-    update_displacements!
-
-Update the old displacement field `xh⁻` with the new displacement field `xh⁺`.
-The update is performed in place, modifying `xh⁻` to match both the free dof values
-and the dirichlet dof values of `xh⁺`.
-"""
-function update_displacements!(xh⁻, xh⁺)
-  # TODO: Once moved to Gridap 0.20, a dispatch get_dirichlet_dof_values(::CellField) will be available
-  x = get_free_dof_values(xh⁻)
-  x .= get_free_dof_values(xh⁺)
-  x_dir = get_dirichlet_dof_values(get_fe_space(xh⁻))
-  x_dir .= get_dirichlet_dof_values(get_fe_space(xh⁺))
-  return xh⁻
-end
-
-
-function solve!(m::DynamicNonlinearModel;
-    stepping=(nsteps=10, Δt=0.1),
-    post=PostProcessor())
-
-    reset!(post)
-    U, V, U⁻ = m.spaces
-    t = 0.0
-    Δt = stepping[:Δt]
-    nsteps = stepping[:nsteps]
-    c = m.caches
-    nls, nls_cache, x, x⁻, assem_U, uh⁻ = c.nls, c.nls_cache, c.x, c.x⁻, c.assem, m.state⁻
-
-    for itime in 1:nsteps
-        t += Δt
-        vuh = m.velocity()
-        _res = m.res(t, uh⁻, vuh)
-        _jac = m.jac(t, uh⁻, vuh)
-        TrialFESpace!(U, m.applicators[1], t)
-        TrialFESpace!(U⁻, m.applicators[2], t - Δt)
-
-        op = build_operator(c.backend, _res, _jac, U, V, assem_U, c.op)
-        c.op = op
-        Algebra.solve!(x, nls, op, nls_cache)
-
-        update_velocity!(m.velocity.vh, x, x⁻, Δt)
-        x⁻ .= x
-        nls_message(nls, "\nStep: $itime, Time: $t\n")
-        post(t)
-        GC.gc()
-    end
-    vtk_save(post)
-
-    return x
-end
-
-
-
-
-
 #*******************************************************************************
 #    					 StaticLinearModel
 #*******************************************************************************
@@ -621,7 +483,7 @@ several right-hand sides on the repeated spaces of `U0`, `V0`. The matrix is fac
 setup of `ls`) at construction and again only when it is re-assembled (`Assembly = true`).
 `backend` selects who assembles (see `linear_system`): `:lazy` (default), `:compiled`
 (HyperFEMKernels extension, `using HyperFEMKernels`) or an [`AbstractBackend`](@ref); `assem_U`
-is a custom Gridap assembler for the lazy backend only (see [`assembler`](@ref)).
+is a custom Gridap assembler for the lazy backend only (see `assembler`).
 """
 struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
     lf::A

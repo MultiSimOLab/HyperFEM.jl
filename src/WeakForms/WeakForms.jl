@@ -67,7 +67,7 @@ end
 Stored energy of the constitutive model over `dΩ` for the displacement `u`; its first variation is
 `residual(physicalmodel, km, u, v, dΩ, Λ, vars...)`. Summed over the subdomains of a model (plus
 the regularisation terms and the Neumann work, added by the driver) it is the energy of the
-Armijo line search ([`InjectivityLS`](@ref) with `armijo = true`).
+Armijo line search ([`InjectivityLS`](@ref HyperFEM.Solvers.InjectivityLS) with `armijo = true`).
 """
 function energy(physicalmodel::Mechano, km::KinematicModel, u, dΩ, Λ=1.0, vars...)
   Ψ, _, _ = physicalmodel()

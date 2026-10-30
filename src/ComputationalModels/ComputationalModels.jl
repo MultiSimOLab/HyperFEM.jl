@@ -6,6 +6,10 @@ using HyperFEM.Solvers
 using Gridap
 using Gridap.Helpers
 using Gridap.TensorValues, Gridap.FESpaces, Gridap.Algebra
+using Gridap.CellData, Gridap.Fields
+import Gridap.ODEs: ∂t, ∂tt
+using SparseArrays
+using SparseArrays: getcolptr
 using Gridap: createvtk
 using Gridap.MultiField
 using Gridap.FESpaces: get_assembly_strategy
@@ -42,8 +46,6 @@ export get_Neumann_dΓ
 export NothingBC
 export NothingTC
 export MultiFieldBC
-export SingleFieldTC
-export MultiFieldTC
 export residual_Neumann
 export NeumannConditions
 export add_tag_from_vertex_filter!
@@ -63,13 +65,42 @@ export GmshDiscreteModel
 export evaluate!
 
 include("Drivers.jl")
+include("TimeStepping.jl")
 include("LoadStepping.jl")
+include("TimeSchemes.jl")
+include("TransientModel.jl")
+export TransientModel
+export TimeScheme
+export QuasiStatic
+export BDF
+export Theta
+export GeneralizedAlpha
+export Newmark
+export HHT
+export Midpoint
+export CentralDifference
+export SDIRK
+export TimeContext
+export field
+export ∂t
+export ∂tt
+export at
+export δfield
+export δ∂t
+export δ∂tt
+export δat
+export get_velocity
+export get_previous_state
+export get_energies
+export get_acceleration
+export TimeStepping
+export AdaptiveStepping
+export TimeStep
 export LoadStepping
 export LoadStep
 export step!
 export StaggeredModel
 export StaticNonlinearModel
-export DynamicNonlinearModel
 export StaticLinearModel
 export NonlinearStepCache
 export LinearSystemCache
@@ -82,8 +113,6 @@ export get_applicators
 export get_assemblers
 export get_trial_space
 export get_test_space
-export update_velocity!
-export update_displacements!
 
 include("PostProcessors.jl")
 export PostProcessor
