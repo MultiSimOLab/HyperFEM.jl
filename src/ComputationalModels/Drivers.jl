@@ -78,6 +78,13 @@ struct StaggeredModel{A,B,C,D,E} <: ComputationalModel
 end
 
 
+"""
+    solve!(m::StaggeredModel; stepping, presolver, evolτ, verbose, kargsolve) -> (x⁺, flagconv)
+
+Staggered solve of the physics of `m` over `nsteps` steps of the load ramp `evolτ` (each physics with
+the keywords of its entry in `kargsolve`). Returns the free values of every physics and `flagconv`,
+`1` when every inner solve of every step converged and `0` otherwise (the flag of the inner drivers).
+"""
 function solve!(m::StaggeredModel;
     stepping=(nsteps=20, nsubsteps=1, maxbisec=15),
     presolver=(τ, ∆τ) -> nothing,
@@ -108,7 +115,8 @@ function solve!(m::StaggeredModel;
         stevol(stage) = τ⁻ + (τ⁺ - τ⁻) * stage
         for τ_inner in 1:nsubsteps
             map((x) -> TrialFESpace!(x.spaces[1], get_applicators(x)[1], τ⁺; stage=1.0), m.compmodels)
-            _, flagconv = map((x, y) -> solve!(x; load=stevol, y...), m.compmodels, kargsolve)
+            flags = map((x, y) -> solve!(x; load=stevol, y...)[2], m.compmodels, kargsolve)
+            flagconv = min(flagconv, all(==(1), flags) ? 1 : 0)
             map((s, a) -> TrialFESpace!(get_fe_space(s), a, τ⁺; stage=1.0), m.state⁻, m.applicators⁻)
             map((x, y) -> x .= y, x⁻, x⁺)
         end
