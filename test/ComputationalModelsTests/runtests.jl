@@ -24,4 +24,8 @@ using Test
     include("LoadSteppingTests.jl")
   end
 
+  @time begin
+    include("LinearModelTests.jl")
+  end
+
 end

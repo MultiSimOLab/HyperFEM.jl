@@ -169,7 +169,9 @@ Work data of [`StaticLinearModel`](@ref): the numerical setup `ns` of the linear
 `K`, the right-hand side `b`, the solution `x`, the assembler `assem` of the lazy backend, the
 `backend` and its operator `op` (`nothing` for the lazy backend; the operator of the last assembly
 for the others, whose form changes between the system, the matrix alone and the load vectors, hence
-untyped).
+untyped). `stale` records that `K` was re-assembled since the last numerical setup: the solves update
+the setup (the factorisation of a direct solver) only then (`numerical_setup!(cache)`); code that
+changes `K` by other means sets it.
 """
 mutable struct LinearSystemCache{NS,TK,TB,TX,A,B<:AbstractBackend}
     const ns::NS
@@ -179,10 +181,20 @@ mutable struct LinearSystemCache{NS,TK,TB,TX,A,B<:AbstractBackend}
     const assem::A
     const backend::B
     op::Any
+    stale::Bool
 end
 
 LinearSystemCache(ns, K, b, x, assem, backend, op) =
-    LinearSystemCache{typeof(ns),typeof(K),typeof(b),typeof(x),typeof(assem),typeof(backend)}(ns, K, b, x, assem, backend, op)
+    LinearSystemCache{typeof(ns),typeof(K),typeof(b),typeof(x),typeof(assem),typeof(backend)}(ns, K, b, x, assem, backend, op, false)
+
+"Numerical setup of the linear solver for `K`, only if `K` changed since the last one."
+function Algebra.numerical_setup!(c::LinearSystemCache)
+    if c.stale
+        numerical_setup!(c.ns, c.K)
+        c.stale = false
+    end
+    return c.ns
+end
 
 
 
@@ -599,14 +611,16 @@ load_vector!(b::AbstractBackend, args...) = Backends.not_available(b, "the linea
 """
     StaticLinearModel(lf, bf, U, V, dirichlet; assem_U, ls, xh, backend=:lazy)
     StaticLinearModel(bf, U, V, dirichlet; assem_U, ls, xh, backend=:lazy)
-    StaticLinearModel(lfs::Vector, bf, U0, V0, dirichlet; assem_U0, ls, backend=:lazy)
+    StaticLinearModel(lfs::Vector, bf, U0, V0, dirichlet; assem_U, ls, backend=:lazy)
 
-Linear problem `bf(u, v) = lf(v)`. The first form assembles matrix and vector at construction; the
-second only the matrix (the right-hand side is given to `solve!` or built by the model's functors);
-the third solves one matrix for several right-hand sides `lfs` on the repeated spaces of `U0`, `V0`.
+Linear problem `bf(u, v) = lf(v)`. With a linear form `lf` the matrix and the vector are assembled at
+construction; without one (`lf = nothing`) only the matrix (the right-hand side is given to `solve!`
+or built by the model's functors); with a vector of linear forms `lfs` one matrix is solved for
+several right-hand sides on the repeated spaces of `U0`, `V0`. The matrix is factorised (numerical
+setup of `ls`) at construction and again only when it is re-assembled (`Assembly = true`).
 `backend` selects who assembles (see `linear_system`): `:lazy` (default), `:compiled`
 (HyperFEMKernels extension, `using HyperFEMKernels`) or an [`AbstractBackend`](@ref); `assem_U`
-(`assem_U0`) is a custom Gridap assembler for the lazy backend only (see [`assembler`](@ref)).
+is a custom Gridap assembler for the lazy backend only (see [`assembler`](@ref)).
 """
 struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
     lf::A
@@ -616,17 +630,19 @@ struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
     caches::E
 
     function StaticLinearModel(
-        lf::Function, bf::Function, U, V, dirbc;
+        lf::Union{Nothing,Function,AbstractVector{<:Function}}, bf::Function, U0, V0, dirbc;
         assem_U=nothing,
         ls::LinearSolver=LUSolver(),
-        xh::FEFunction=FEFunction(U, zero_free_values(U)),
+        xh::Union{Nothing,FEFunction}=nothing,
         backend=:lazy)
 
-        spaces = (U, V)
+        multi = lf isa AbstractVector
+        spaces = multi ? repeat_spaces(length(lf), U0, V0) : (U0, V0)
         bk = as_backend(backend)
-        assem = assembler(bk, assem_U, U, V)
-        K, b, op = linear_system(bk, bf, lf, U, V, assem)
-        x = get_free_dof_values(xh)
+        assem = assembler(bk, assem_U, U0, V0)
+        K, b, op = linear_system(bk, bf, multi ? nothing : lf, U0, V0, assem)
+        x = multi ? repeated_allocate_in_domain(length(lf), K) :
+            get_free_dof_values(xh === nothing ? FEFunction(U0, zero_free_values(U0)) : xh)
         fill!(x, zero(eltype(x)))
         ns = numerical_setup(symbolic_setup(ls, K), K)
         caches = LinearSystemCache(ns, K, b, x, assem, bk, op)
@@ -636,87 +652,27 @@ struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
         return new{A,B,C,D,E}(lf, bf, spaces, dirbc, caches)
     end
 
-
-
-    function StaticLinearModel(
-        lf::Vector{<:Function}, bf::Function, U0, V0, dirbc;
-        assem_U0=nothing,
-        ls::LinearSolver=LUSolver(),
-        backend=:lazy)
-
-        nblocks = length(lf)
-        U, V = repeat_spaces(nblocks, U0, V0)
-        spaces = (U, V)
-        bk = as_backend(backend)
-        assem = assembler(bk, assem_U0, U0, V0)
-        K, b, op = linear_system(bk, bf, nothing, U0, V0, assem) # 1D
-        x = repeated_allocate_in_domain(nblocks, K)
-        fill!(x, zero(eltype(x))) # nD
-        ns = numerical_setup(symbolic_setup(ls, K), K) # 1D
-        caches = LinearSystemCache(ns, K, b, x, assem, bk, op)
-
-        A, B, C = Vector{<:Function}, typeof(bf), typeof(spaces)
-        D, E = typeof(dirbc), typeof(caches)
-        return new{A,B,C,D,E}(lf, bf, spaces, dirbc, caches)
-    end
-
-
-
-    function StaticLinearModel(
-        bf::Function, U, V, dirbc;
-        assem_U=nothing,
-        ls::LinearSolver=LUSolver(),
-        xh::FEFunction=FEFunction(U, zero_free_values(U)),
-        backend=:lazy)
-
-        spaces = (U, V)
-        bk = as_backend(backend)
-        assem = assembler(bk, assem_U, U, V)
-        K, b, op = linear_system(bk, bf, nothing, U, V, assem)
-        x = get_free_dof_values(xh)
-        fill!(x, zero(eltype(x)))
-        ns = numerical_setup(symbolic_setup(ls, K), K) # 1D
-        caches = LinearSystemCache(ns, K, b, x, assem, bk, op)
-
-        A, B, C = Nothing, typeof(bf), typeof(spaces)
-        D, E = typeof(dirbc), typeof(caches)
-        return new{A,B,C,D,E}(nothing, bf, spaces, dirbc, caches)
-    end
-
-
-
     function (m::StaticLinearModel)(x::AbstractVector{Float64}; Assembly=false)
         U, V = m.spaces
-        bf = m.bf
         c = m.caches
-        ns, K, b, assem_U = c.ns, c.K, c.b, c.assem
-        b .= x
-        if Assembly
-            assemble_stiffness!(m, bf, U, V, assem_U)
-        end
-        numerical_setup!(ns, K)
-        Algebra.solve!(x, ns, b)
+        c.b .= x
+        Assembly && assemble_stiffness!(m, m.bf, U, V, c.assem)
+        Algebra.solve!(x, numerical_setup!(c), c.b)
         return x
     end
 
     function (m::StaticLinearModel)(xh::SingleFieldFEFunction; Measure=nothing, Assembly=false, kwargs...)
         x_ = get_free_dof_values(xh)
         U, V = m.spaces
-        bf = m.bf
         c = m.caches
-        ns, K, b, assem_U = c.ns, c.K, c.b, c.assem
-        assemble_vector!((v) -> ∫(xh * v)Measure, b, assem_U, V)
-        if Assembly
-            assemble_stiffness!(m, bf, U, V, assem_U)
-        end
-        numerical_setup!(ns, K)
-        Algebra.solve!(x_, ns, b)
+        assemble_vector!((v) -> ∫(xh * v)Measure, c.b, c.assem, V)
+        Assembly && assemble_stiffness!(m, m.bf, U, V, c.assem)
+        Algebra.solve!(x_, numerical_setup!(c), c.b)
         return x_
     end
-
-
-
 end
+
+StaticLinearModel(bf::Function, U, V, dirbc; kwargs...) = StaticLinearModel(nothing, bf, U, V, dirbc; kwargs...)
 
 # Backend of the model
 get_backend(m::StaticLinearModel) = m.caches.backend
@@ -725,26 +681,34 @@ get_backend(m::StaticLinearModel) = m.caches.backend
 function assemble_stiffness!(m::StaticLinearModel, bf, U, V, assem)
     c = m.caches
     c.op = linear_system!(c.backend, c.K, c.b, bf, nothing, U, V, assem, c.op)
+    c.stale = true
+    nothing
 end
 
 
+"""
+    solve!(m::StaticLinearModel; Assembly=true, post) -> x
+    solve!(m::StaticLinearModel, b; Assembly=true, post) -> x
+
+Solve of the linear problem with the right-hand side of the model (or the vector `b`). With
+`Assembly = true` the system is re-assembled with the current Dirichlet values (the matrix alone
+when the model has no linear form or `b` is given) and the numerical setup updated; with
+`Assembly = false` the matrix and its setup of the last assembly are reused.
+"""
 function solve!(m::StaticLinearModel; Assembly=true, post=PostProcessor())
 
     reset!(post)
     U, V = m.spaces
-    bf = m.bf
-    lf = m.lf
     c = m.caches
-    ns, K, b, x = c.ns, c.K, c.b, c.x
     if Assembly
-        c.op = linear_system!(c.backend, K, b, bf, lf, U, V, c.assem, c.op)
+        c.op = linear_system!(c.backend, c.K, c.b, m.bf, m.lf, U, V, c.assem, c.op)
+        c.stale = true
     end
-    numerical_setup!(ns, K)
-    Algebra.solve!(x, ns, b)
+    Algebra.solve!(c.x, numerical_setup!(c), c.b)
     post(1.0)
     vtk_save(post)
 
-    return x
+    return c.x
 end
 
 
@@ -753,44 +717,31 @@ function solve!(m::StaticLinearModel, b::Vector{Float64}; Assembly=true, post=Po
 
     reset!(post)
     U, V = m.spaces
-    bf = m.bf
     c = m.caches
-    ns, K, x, assem_U = c.ns, c.K, c.x, c.assem
-    if Assembly
-        assemble_stiffness!(m, bf, U, V, assem_U)
-    end
-    numerical_setup!(ns, K)
-    Algebra.solve!(x, ns, b)
+    Assembly && assemble_stiffness!(m, m.bf, U, V, c.assem)
+    Algebra.solve!(c.x, numerical_setup!(c), b)
     post(1.0)
     vtk_save(post)
-    return x
+    return c.x
 end
 
 
 
-function solve!(m::StaticLinearModel{Vector{<:Function},<:Any,<:Any,<:Any,<:Any}; Assembly=true, post=PostProcessor())
+function solve!(m::StaticLinearModel{<:AbstractVector}; Assembly=true, post=PostProcessor())
     reset!(post)
     U, V = m.spaces
     U0 = U[1]
     V0 = V[1]
-    bf = m.bf
-    lf = m.lf
     c = m.caches
-    ns, K, b, x, assem_U0 = c.ns, c.K, c.b, c.x, c.assem
-
-    if Assembly
-        assemble_stiffness!(m, bf, U0, V0, assem_U0)
-    end
-
-    numerical_setup!(ns, K)
-
-    map(blocks(x), lf) do xi, li
-        c.op = load_vector!(c.backend, b, li, U0, V0, assem_U0, c.op)
-        Algebra.solve!(xi, ns, b)
+    Assembly && assemble_stiffness!(m, m.bf, U0, V0, c.assem)
+    ns = numerical_setup!(c)
+    map(blocks(c.x), m.lf) do xi, li
+        c.op = load_vector!(c.backend, c.b, li, U0, V0, c.assem, c.op)
+        Algebra.solve!(xi, ns, c.b)
     end
     post(1.0)
     vtk_save(post)
-    return x
+    return c.x
 end
 
 # Getters
