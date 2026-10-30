@@ -126,3 +126,39 @@ end
   out = capture_stdout(() -> solve!(m; stepping=(nsteps=1, maxbisec=0)))
   @test isempty(out)
 end
+
+# The Newton cache is lazy: building it (and a model) assembles and factorises nothing; the first solve
+# does one assembly and one numerical setup, the next ones update it in place
+mutable struct CountingLU <: Gridap.Algebra.LinearSolver
+  setups::Int
+  updates::Int
+end
+struct CountingSS <: Gridap.Algebra.SymbolicSetup
+  ls::CountingLU
+end
+mutable struct CountingNS <: Gridap.Algebra.NumericalSetup
+  ls::CountingLU
+  ns::Gridap.Algebra.LUNumericalSetup
+end
+Gridap.Algebra.symbolic_setup(ls::CountingLU, A::AbstractMatrix) = CountingSS(ls)
+Gridap.Algebra.numerical_setup(ss::CountingSS, A::AbstractMatrix) = (ss.ls.setups += 1; CountingNS(ss.ls, numerical_setup(symbolic_setup(LUSolver(), A), A)))
+Gridap.Algebra.numerical_setup!(ns::CountingNS, A::AbstractMatrix) = (ns.ls.updates += 1; numerical_setup!(ns.ns, A); ns)
+Gridap.Algebra.solve!(x::AbstractVector, ns::CountingNS, b::AbstractVector) = solve!(x, ns.ns, b)
+
+@testset "Lazy numerical setup of the Newton cache" begin
+  p = newton_test_problem()
+  ls = CountingLU(0, 0)
+  nls = NewtonRaphson(ls; maxiter=20, atol=1e-12, rtol=1e-12, verbose=0)
+  m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=nls)
+  c = m.caches.nls_cache
+  @test c isa NewtonCache && c.ns === nothing && ls.setups == 0 && ls.updates == 0
+  @test_throws ErrorException HyperFEM.Solvers.numerical_setup(c)
+  x, flag = solve!(m; stepping=(nsteps=2, maxbisec=0))
+  @test flag == 1 && c.ns isa CountingNS && ls.setups == 1
+  @test ls.updates >= 2                       # one update per re-assembled tangent (two steps)
+  # the same run with Gridap's LU gives the same solution (bit-identical: same assemblies, same factorisations)
+  p = newton_test_problem()
+  m2 = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=NewtonRaphson(LUSolver(); maxiter=20, atol=1e-12, rtol=1e-12, verbose=0))
+  x2, _ = solve!(m2; stepping=(nsteps=2, maxbisec=0))
+  @test x2 == x
+end

@@ -80,9 +80,12 @@ function step!(m::StaticNonlinearModel, st::LoadStep, stepping::LoadStepping;
     end
     _hook(presolver, st.Λ, ∆Λ)
     α = ProjectDirichlet ? dirichlet_preconditioning!(x, m, Λ, ∆Λ, nls, load) : 1.0
+    # a zero safe load factor would leave the stage where it is forever
+    α > 0 || error("HyperFEM: the Dirichlet projection at Λ = $(st.Λ) gives a zero safe load factor (α = $α): the " *
+                   "state already violates the injectivity bound of the line search along the Dirichlet increment")
     Λ -= ∆Λ
     ∆Λ = α * ∆Λ
-    TrialFESpace!(Un, app_Un, load(Λ); stage=Λ)
+    Un === U || TrialFESpace!(Un, app_Un, load(Λ); stage=Λ)      # the same space is set at the target stage below
     Λ += ∆Λ
     TrialFESpace!(U, app_U, load(Λ); stage=Λ)
 
@@ -150,9 +153,7 @@ function solve!(m::StaticNonlinearModel;
     t_run = time()
 
     st = LoadStep(stepping)
-    if RestartState
-        x .*= 0.0
-    end
+    RestartState && fill!(x, zero(eltype(x)))     # not `x .*= 0`: a NaN of a diverged run would survive it
     x⁻ .= x
 
     while !finished(st)

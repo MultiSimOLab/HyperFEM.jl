@@ -9,7 +9,7 @@ using HyperFEM
 using HyperFEM.Backends: CompiledBackend
 using HyperFEMKernels: KernelOperator, update, KernelState, KernelUpdater
 using Gridap.FESpaces: FEFunction
-using Gridap.Algebra: AffineOperator, residual, jacobian, residual!, jacobian!, zero_initial_guess, solve
+using Gridap.Algebra: residual!, jacobian!, zero_initial_guess
 using Gridap.Algebra: allocate_residual, allocate_jacobian
 
 function HyperFEM.ComputationalModels.build_operator(::CompiledBackend, res, jac, U, V, assem, previous)
@@ -20,17 +20,19 @@ end
 # jac(uh, du, v) = -res(uh, v) on ∆U is the operator r(du, v) = jac(uh, du, v) + res(uh, v),
 # j(du, ddu, v) = jac(uh, ddu, v), evaluated at du = 0: the residual there is res(uh, v) plus the
 # contribution of the Dirichlet increment stored in ∆U, and the Jacobian is the tangent. The
-# operator of the previous step is reused (`update`): same spaces, pattern and colouring.
-function HyperFEM.ComputationalModels.dirichlet_projection(::CompiledBackend, res, jac, uh, ∆U, V, ls, previous)
+# operator of the previous step is reused (`update`): same spaces, pattern and colouring. The system
+# is assembled into the tangent and the residual of the Newton cache, whose pattern (that of the
+# model's operator on U, V) is the one of this operator (∆U shares the free dofs of U).
+function HyperFEM.ComputationalModels.dirichlet_projection!(::CompiledBackend, A, b, res, jac, uh, ∆U, V, assem, previous)
     r(du, v) = jac(uh, du, v) + res(uh, v)
     j(du, ddu, v) = jac(uh, ddu, v)
     op = previous isa KernelOperator ? update(previous, r, j) : KernelOperator(r, j, ∆U, V)
+    _check_pattern(A, op, previous)
     x0 = zero_initial_guess(op)
-    b = residual(op, x0)
-    A = jacobian(op, x0)
+    residual!(b, op, x0)
     b .*= -1.0
-    dx = solve(ls, AffineOperator(A, b))
-    FEFunction(∆U, dx), op
+    jacobian!(A, op, x0)
+    op
 end
 
 # Linear problems (`StaticLinearModel(...; backend = :compiled)`): the affine problem K x = b of
@@ -59,12 +61,13 @@ function _linear_assemble!(K, b, op, x0)
     end
 end
 
-# `K` was allocated from the pattern of a previous operator: `update` keeps it unless fallback terms
-# (assembled by Gridap) changed the pattern, which the LU setup of the model could not follow.
+# `K` was allocated from the pattern of a previous operator (or of the model's operator, for the Dirichlet
+# projection): `update` keeps it unless fallback terms (assembled by Gridap) changed the pattern, which the
+# setup of the model could not follow.
 function _check_pattern(K, op::KernelOperator, previous)
     previous isa KernelOperator && op.A0 === previous.A0 && return
     (size(K) == size(op.A0) && K.colptr == op.A0.colptr && K.rowval == op.A0.rowval) ||
-        error("HyperFEM: the sparsity pattern of the kernel operator changed on re-assembly; build a new StaticLinearModel")
+        error("HyperFEM: the sparsity pattern of the kernel operator does not match the matrix it assembles into")
 end
 
 function HyperFEM.ComputationalModels.linear_system(::CompiledBackend, bf, lf, U, V, assem)

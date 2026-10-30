@@ -3,6 +3,7 @@ module Solvers
 using IterativeSolvers
 using Gridap
 using Gridap.Algebra
+import Gridap.Algebra: numerical_setup, numerical_setup!
 using Gridap.CellData
 using Gridap.Arrays: array_cache, getindex!
 using LinearAlgebra

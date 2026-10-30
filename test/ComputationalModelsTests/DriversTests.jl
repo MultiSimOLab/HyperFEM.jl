@@ -2,6 +2,7 @@
 using Gridap, Gridap.FESpaces
 using HyperFEM
 using LinearAlgebra
+using SparseArrays
 using Test
 
 # Small 2D hyperelastic block stretched by a Dirichlet condition
@@ -96,4 +97,24 @@ end
     solve!(m; stepping=(nsteps=2, nsubsteps=1, maxbisec=0), verbose=false, kargsolve=args)
   end
   @test flag == 0
+end
+
+@testset "Dirichlet projection on the Newton cache" begin
+  # the projection assembled into the Newton cache equals, bit for bit, the AffineFEOperator of the
+  # linearised problem solved on its own
+  p = drivers_test_problem()
+  nls = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-12, rtol=1e-12, verbose=0)
+  m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=nls)
+  x, _ = solve!(m; stepping=(nsteps=2, maxbisec=0))                    # state at Λ = 1 (the trial space too)
+  Λ, ∆Λ = 1.0, 0.5
+  duh = HyperFEM.ComputationalModels.get_dirichlet_preconditioner(m, Λ, ∆Λ)
+  @test get_free_dof_values(duh) === m.caches.nls_cache.dx && m.caches.projection === nothing
+  U, V, ∆U = m.spaces
+  uh = FEFunction(U, x)
+  aop = AffineFEOperator((du, v) -> p.jac(Λ - ∆Λ)(uh, du, v), v -> -1.0 * p.res(Λ - ∆Λ)(uh, v), ∆U, V)
+  dref = solve(LUSolver(), aop)
+  @test get_free_dof_values(duh) == get_free_dof_values(dref)
+  @test get_dirichlet_dof_values(get_fe_space(duh)) == get_dirichlet_dof_values(get_fe_space(dref))
+  @test nonzeros(m.caches.nls_cache.A) == nonzeros(get_matrix(aop))
+  @test norm(get_free_dof_values(duh)) > 0
 end
