@@ -318,48 +318,76 @@ verbosity(nls::NewtonRaphson) = verbosity(nls.log)
 get_tolerances(nls::NewtonRaphson) = nls.tols
 
 """
-    NewtonCache(A, b, dx, ns[, w])
+    NewtonCache(x, nls, op)
+    NewtonCache(A, b, dx, ss, ns[, w])
 
 Work data of a [`NewtonRaphson`](@ref) solve: tangent `A`, residual `b`, increment `dx`, the
-numerical setup `ns` of the linear solver and the work vector `w` of the line searches. Parametric
-so that the matrix may be any operator a linear solver accepts (e.g. a matrix-free Jacobian).
+symbolic setup `ss` and the numerical setup `ns` of the linear solver, and the work vector `w` of the
+line searches. Parametric so that the matrix may be any operator a linear solver accepts (e.g. a
+matrix-free Jacobian). Built from the operator it only allocates (`allocate_residual`,
+`allocate_jacobian`, the symbolic setup): the first assembly and the first numerical setup (the
+factorisation of a direct solver) happen at the first `solve!`, so that building a model does not
+factorise a tangent that the solve recomputes. `ns` is `nothing` until then.
 """
-struct NewtonCache{TA,TB,TNS<:Algebra.NumericalSetup}
-  A::TA
-  b::TB
-  dx::TB
-  ns::TNS
-  w::TB
+mutable struct NewtonCache{TA,TB,TSS,TNS}
+  const A::TA
+  const b::TB
+  const dx::TB
+  const ss::TSS
+  ns::Union{Nothing,TNS}
+  const w::TB
 end
 
-NewtonCache(A, b, dx, ns) = NewtonCache(A, b, dx, ns, similar(dx))
+NewtonCache(A, b, dx, ss, ns, w=similar(dx)) = NewtonCache{typeof(A),typeof(b),typeof(ss),typeof(ns)}(A, b, dx, ss, ns, w)
 
 function NewtonCache(x::AbstractVector, nls::NewtonRaphson, op::Algebra.NonlinearOperator)
   set_tangent!(op, :consistent)
-  b = residual(op, x)
-  A = jacobian(op, x)
+  b = allocate_residual(op, x)
+  A = allocate_jacobian(op, x)
   dx = allocate_in_domain(A)
   fill!(dx, zero(eltype(dx)))
   ss = symbolic_setup(nls.ls, A)
-  ns = numerical_setup_state(ss, A, x)
-  NewtonCache(A, b, dx, ns, similar(dx))
+  TNS = Base.promote_op(numerical_setup_state, typeof(ss), typeof(A), typeof(x))
+  NewtonCache{typeof(A),typeof(b),typeof(ss),TNS}(A, b, dx, ss, nothing, similar(dx))
+end
+
+"""
+    numerical_setup!(cache::NewtonCache, x) -> ns
+
+Numerical setup of the linear solver for the tangent in `cache.A` at the state `x`: created at the
+first call, updated in place afterwards ([`numerical_setup_state`](@ref)).
+"""
+function Algebra.numerical_setup!(cache::NewtonCache, x::AbstractVector)
+  ns = cache.ns
+  if ns === nothing
+    ns = numerical_setup_state(cache.ss, cache.A, x)
+    cache.ns = ns
+  else
+    numerical_setup_state!(ns, cache.A, x)
+  end
+  return ns
+end
+
+"Numerical setup of the cache, which must exist (`numerical_setup!(cache, x)` creates it)."
+function numerical_setup(cache::NewtonCache)
+  ns = cache.ns
+  ns === nothing && error("HyperFEM: the Newton cache has no numerical setup yet (numerical_setup!(cache, x) creates it)")
+  return ns
 end
 
 function Algebra.solve!(x::AbstractVector, nls::NewtonRaphson, op::Algebra.NonlinearOperator, ::Nothing)
-  cache = NewtonCache(x, nls, op)
-  _solve_nr!(x, cache, nls, op)
-  return cache
+  solve!(x, nls, op, NewtonCache(x, nls, op))
 end
 
 function Algebra.solve!(x::AbstractVector, nls::NewtonRaphson, op::Algebra.NonlinearOperator, cache::NewtonCache)
-  A, b, ns = cache.A, cache.b, cache.ns
+  A, b = cache.A, cache.b
   log = nls.log
   t1 = time()
   residual!(b, op, x)
   set_tangent!(op, :consistent)
   jacobian!(A, op, x)
   t2 = time()
-  numerical_setup_state!(ns, A, x)
+  numerical_setup!(cache, x)
   t3 = time()
   log.t_assembly += t2 - t1
   log.t_setup += t3 - t2
@@ -390,7 +418,7 @@ fails the Newton iteration like a failed line search.
 linear_converged(::Algebra.NumericalSetup) = true
 
 function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op)
-  A, b, dx, ns, w = cache.A, cache.b, cache.dx, cache.ns, cache.w
+  A, b, dx, ns, w = cache.A, cache.b, cache.dx, numerical_setup(cache), cache.w
   log, tols, linesearch, tangent = nls.log, nls.tols, nls.linesearch, nls.tangent
   t0 = time()
   lname = log.verbose >= 2 ? _linear_name(nls.ls) : ""
