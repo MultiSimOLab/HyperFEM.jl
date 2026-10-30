@@ -59,3 +59,20 @@ end
   @test md.caches isa NonlinearStepCache && isconcretetype(typeof(md.caches)) && md.caches.backend === LazyBackend()
   @test md.state⁻ isa FEFunction && get_free_dof_values(md.state⁻) === md.caches.x⁻ && get_assemblers(md) === md.caches.assem
 end
+
+@testset "Custom assemblers" begin
+  p = drivers_test_problem()
+  assem = SparseMatrixAssembler(p.U, p.V)
+  m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=NewtonRaphson(LUSolver(); verbose=0), assem_U=assem)
+  @test get_assemblers(m) === assem
+  m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=NewtonRaphson(LUSolver(); verbose=0))
+  @test get_assemblers(m) isa SparseMatrixAssembler
+  err = try
+    StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; backend=NoSuchBackend(), assem_U=assem); nothing
+  catch e
+    e
+  end
+  @test err isa ErrorException && occursin("takes no assembler", err.msg) && occursin("NoSuchBackend", err.msg)
+  @test HyperFEM.ComputationalModels.assembler(CompiledBackend(), nothing, p.U, p.V) === nothing
+  @test_throws ErrorException HyperFEM.ComputationalModels.assembler(CompiledBackend(), assem, p.U, p.V)
+end

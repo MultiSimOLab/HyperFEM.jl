@@ -181,6 +181,22 @@ LinearSystemCache(ns, K, b, x, assem, backend, op) =
     LinearSystemCache{typeof(ns),typeof(K),typeof(b),typeof(x),typeof(assem),typeof(backend)}(ns, K, b, x, assem, backend, op)
 
 
+
+"""
+    assembler(backend, assem, U, V)
+
+Assembler of the drivers for `backend`: `LazyBackend` assembles with the Gridap assembler `assem`
+(`SparseMatrixAssembler(U, V)` when `assem === nothing`, the default of the drivers); the other
+backends assemble with their own kernels and accept no assembler (`assem_U` must be left to its
+default), failing with a clear error otherwise.
+"""
+assembler(::LazyBackend, ::Nothing, U, V) = SparseMatrixAssembler(U, V)
+assembler(::LazyBackend, assem, U, V) = assem
+assembler(::AbstractBackend, ::Nothing, U, V) = nothing
+assembler(b::AbstractBackend, assem, U, V) =
+    error("HyperFEM: backend :$(Backends.backend_name(b)) assembles with its own kernels and takes no assembler " *
+          "(got $(typeof(assem))); custom assemblers are only supported by backend = :lazy")
+
 #*******************************************************************************	
 #    					 StaticNonlinearModel
 #*******************************************************************************	
@@ -223,7 +239,8 @@ dirichlet_projection(b::AbstractBackend, res, jac, uh, ∆U, V, ls, previous) = 
 `BoundaryConditions` of `U`; `neumann`, if any, the [`NeumannConditions`](@ref) added to the residual by
 the driver at the load of every step. The model owns the Dirichlet applicators of its spaces
 (`get_applicators`: those of `U`, `∆U` and the space of `xh⁻`). `backend` (`:lazy`, `:compiled` or an
-[`AbstractBackend`](@ref)) selects who evaluates and assembles the forms (see `build_operator`).
+[`AbstractBackend`](@ref)) selects who evaluates and assembles the forms (see `build_operator`);
+`assem_U` is a custom Gridap assembler for the lazy backend only (see [`assembler`](@ref)).
 
 `injectivity` is the measure whose quadrature points must keep `det F > 0` (`dΩ`, or `(dΩ, i)` when
 the displacement is the field `i` of a multi-field space); it gives the injectivity step of
@@ -250,7 +267,7 @@ struct StaticNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
     function StaticNonlinearModel(
         res::Function, jac::Function, U, V, dirbc;
         neumann=nothing,
-        assem_U=SparseMatrixAssembler(U, V),
+        assem_U=nothing,
         nls::NonlinearSolver=NewtonRaphson(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
         xh::FEFunction=FEFunction(U, zero_free_values(U)),
         xh⁻::FEFunction=FEFunction(U, zero_free_values(U)),
@@ -271,9 +288,10 @@ struct StaticNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
         _res = with_neumann(res(1.0), neumann, 1.0)
         _jac = jac(1.0)
         bk = as_backend(backend)
-        op = build_operator(bk, _res, _jac, U, V, assem_U, nothing)
+        assem = assembler(bk, assem_U, U, V)
+        op = build_operator(bk, _res, _jac, U, V, assem, nothing)
         nls_cache = instantiate_caches(x, nls, model_operator(hooks, spaces, neumann, op, 1.0, 1.0))
-        caches = NonlinearStepCache(nls, nls_cache, x, x⁻, assem_U, bk, op)
+        caches = NonlinearStepCache(nls, nls_cache, x, x⁻, assem, bk, op)
 
         A, B, C = typeof(res), typeof(jac), typeof(spaces)
         D, E, F, G, H = typeof(dirbc), typeof(neumann), typeof(applicators), typeof(caches), typeof(hooks)
@@ -457,7 +475,7 @@ struct DynamicNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
 
     function DynamicNonlinearModel(
         res::Function, jac::Function, U, Uold, V, dirbc, velocity::TimedependentCondition;
-        assem_U=SparseMatrixAssembler(U, V),
+        assem_U=nothing,
         nls::NonlinearSolver=NewtonRaphson(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
         xh::FEFunction=FEFunction(U, zero_free_values(U)))
 
@@ -470,9 +488,10 @@ struct DynamicNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
         _res = res(1.0, uh⁻, vuh)
         _jac = jac(1.0, uh⁻, vuh)
         bk = LazyBackend()
-        op = build_operator(bk, _res, _jac, U, V, assem_U, nothing)
+        assem = assembler(bk, assem_U, U, V)
+        op = build_operator(bk, _res, _jac, U, V, assem, nothing)
         nls_cache = instantiate_caches(x, nls, op)
-        caches = NonlinearStepCache(nls, nls_cache, x, x⁻, assem_U, bk, op)
+        caches = NonlinearStepCache(nls, nls_cache, x, x⁻, assem, bk, op)
         A, B, C = typeof(res), typeof(jac), typeof(spaces)
         D, E, F, G, H = typeof(dirbc), typeof(velocity), typeof(applicators), typeof(caches), typeof(uh⁻)
         return new{A,B,C,D,E,F,G,H}(res, jac, spaces, dirbc, velocity, applicators, caches, uh⁻)
@@ -633,7 +652,8 @@ Linear problem `bf(u, v) = lf(v)`. The first form assembles matrix and vector at
 second only the matrix (the right-hand side is given to `solve!` or built by the model's functors);
 the third solves one matrix for several right-hand sides `lfs` on the repeated spaces of `U0`, `V0`.
 `backend` selects who assembles (see `linear_system`): `:lazy` (default), `:compiled`
-(HyperFEMKernels extension, `using HyperFEMKernels`) or an [`AbstractBackend`](@ref).
+(HyperFEMKernels extension, `using HyperFEMKernels`) or an [`AbstractBackend`](@ref); `assem_U`
+(`assem_U0`) is a custom Gridap assembler for the lazy backend only (see [`assembler`](@ref)).
 """
 struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
     lf::A
@@ -644,18 +664,19 @@ struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
 
     function StaticLinearModel(
         lf::Function, bf::Function, U, V, dirbc;
-        assem_U=SparseMatrixAssembler(U, V),
+        assem_U=nothing,
         ls::LinearSolver=LUSolver(),
         xh::FEFunction=FEFunction(U, zero_free_values(U)),
         backend=:lazy)
 
         spaces = (U, V)
         bk = as_backend(backend)
-        K, b, op = linear_system(bk, bf, lf, U, V, assem_U)
+        assem = assembler(bk, assem_U, U, V)
+        K, b, op = linear_system(bk, bf, lf, U, V, assem)
         x = get_free_dof_values(xh)
         fill!(x, zero(eltype(x)))
         ns = numerical_setup(symbolic_setup(ls, K), K)
-        caches = LinearSystemCache(ns, K, b, x, assem_U, bk, op)
+        caches = LinearSystemCache(ns, K, b, x, assem, bk, op)
 
         A, B, C = typeof(lf), typeof(bf), typeof(spaces)
         D, E = typeof(dirbc), typeof(caches)
@@ -666,20 +687,20 @@ struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
 
     function StaticLinearModel(
         lf::Vector{<:Function}, bf::Function, U0, V0, dirbc;
-        assem_U0=SparseMatrixAssembler(U0, V0),
+        assem_U0=nothing,
         ls::LinearSolver=LUSolver(),
         backend=:lazy)
 
         nblocks = length(lf)
         U, V = repeat_spaces(nblocks, U0, V0)
         spaces = (U, V)
-        ##  cache
         bk = as_backend(backend)
-        K, b, op = linear_system(bk, bf, nothing, U0, V0, assem_U0) # 1D
+        assem = assembler(bk, assem_U0, U0, V0)
+        K, b, op = linear_system(bk, bf, nothing, U0, V0, assem) # 1D
         x = repeated_allocate_in_domain(nblocks, K)
         fill!(x, zero(eltype(x))) # nD
         ns = numerical_setup(symbolic_setup(ls, K), K) # 1D
-        caches = LinearSystemCache(ns, K, b, x, assem_U0, bk, op)
+        caches = LinearSystemCache(ns, K, b, x, assem, bk, op)
 
         A, B, C = Vector{<:Function}, typeof(bf), typeof(spaces)
         D, E = typeof(dirbc), typeof(caches)
@@ -690,18 +711,19 @@ struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
 
     function StaticLinearModel(
         bf::Function, U, V, dirbc;
-        assem_U=SparseMatrixAssembler(U, V),
+        assem_U=nothing,
         ls::LinearSolver=LUSolver(),
         xh::FEFunction=FEFunction(U, zero_free_values(U)),
         backend=:lazy)
 
         spaces = (U, V)
         bk = as_backend(backend)
-        K, b, op = linear_system(bk, bf, nothing, U, V, assem_U)
+        assem = assembler(bk, assem_U, U, V)
+        K, b, op = linear_system(bk, bf, nothing, U, V, assem)
         x = get_free_dof_values(xh)
         fill!(x, zero(eltype(x)))
         ns = numerical_setup(symbolic_setup(ls, K), K) # 1D
-        caches = LinearSystemCache(ns, K, b, x, assem_U, bk, op)
+        caches = LinearSystemCache(ns, K, b, x, assem, bk, op)
 
         A, B, C = Nothing, typeof(bf), typeof(spaces)
         D, E = typeof(dirbc), typeof(caches)
