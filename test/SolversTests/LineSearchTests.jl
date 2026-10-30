@@ -140,7 +140,7 @@ end
   du = FEFunction(p.V, 3x)
   αmax = injectivity_step(m, u0, du, 1 - 1e-6, 0.0)
   @test 0 < αmax < 1
-  @test max_step(HyperFEM.ComputationalModels.model_operator(m, m.caches[7][]), zeros(length(x)), 3x, 1 - 1e-6, 0.0) == αmax
+  @test max_step(HyperFEM.ComputationalModels.model_operator(m, m.caches.op), zeros(length(x)), 3x, 1 - 1e-6, 0.0) == αmax
   # jmin and β are honoured (safe load factor of the Dirichlet projection and the search)
   p3 = linesearch_test_problem()
   ls3 = InjectivityLS(jmin=1e-3, β=0.5)
@@ -158,9 +158,9 @@ end
   # Armijo needs an energy
   nls5 = NewtonRaphson(LUSolver(); maxiter=30, linesearch=InjectivityLS(armijo=true))
   m5 = StaticNonlinearModel(p4.res, p4.jac, p4.U, p4.V, p4.bc; nls=nls5, injectivity=p4.dΩ)
-  op5 = HyperFEM.ComputationalModels.model_operator(m5, m5.caches[7][])
+  op5 = HyperFEM.ComputationalModels.model_operator(m5, m5.caches.op)
   @test_throws ErrorException energy(op5, zeros(num_free_dofs(p4.U)))
-  @test_throws ErrorException energy(m5.caches[7][], zeros(num_free_dofs(p4.U)))
+  @test_throws ErrorException energy(m5.caches.op, zeros(num_free_dofs(p4.U)))
 end
 
 @testset "Line-search failure and bisection" begin

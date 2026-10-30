@@ -36,3 +36,26 @@ struct NoSuchBackend <: AbstractBackend end
   @test_throws ErrorException HyperFEM.PhysicalModels.new_state(1.0, dΩ, NoSuchBackend())
   @test_throws ErrorException HyperFEM.PhysicalModels.state_updater(identity, NoSuchBackend())
 end
+
+@testset "Typed caches" begin
+  p = drivers_test_problem()
+  m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=NewtonRaphson(LUSolver(); verbose=0))
+  c = m.caches
+  @test c isa NonlinearStepCache
+  @test isconcretetype(typeof(c)) && c.backend === LazyBackend() && c.projection === nothing
+  @test c.x === get_free_dof_values(get_state(m)) && get_assemblers(m) === c.assem
+  op0 = c.op
+  x, _ = solve!(m; stepping=(nsteps=2, maxbisec=0), ProjectDirichlet=true)
+  @test x === c.x && typeof(c.op) === typeof(op0)    # one operator per step, of the same type
+  @test fieldtype(typeof(c), :op) === typeof(op0)
+  @test c.projection === nothing                                       # the lazy projection keeps no operator
+  # DynamicNonlinearModel: the constructor only (its time loop is rewritten in R2)
+  p = drivers_test_problem()
+  Uold = TrialFESpace(p.V, p.bc, 0.0)
+  vel = HyperFEM.ComputationalModels.SingleFieldTC(x -> VectorValue(0.0, 0.0), p.V)
+  resd(t, uh⁻, vh) = (u, v) -> p.res(t)(u, v)
+  jacd(t, uh⁻, vh) = (u, du, v) -> p.jac(t)(u, du, v)
+  md = DynamicNonlinearModel(resd, jacd, p.U, Uold, p.V, p.bc, vel; nls=NewtonRaphson(LUSolver(); verbose=0))
+  @test md.caches isa NonlinearStepCache && isconcretetype(typeof(md.caches)) && md.caches.backend === LazyBackend()
+  @test md.state⁻ isa FEFunction && get_free_dof_values(md.state⁻) === md.caches.x⁻ && get_assemblers(md) === md.caches.assem
+end

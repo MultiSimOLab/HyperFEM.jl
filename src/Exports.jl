@@ -164,6 +164,8 @@ end
 @publish ComputationalModels  StaticNonlinearModel
 @publish ComputationalModels  DynamicNonlinearModel
 @publish ComputationalModels  StaticLinearModel
+@publish ComputationalModels  NonlinearStepCache
+@publish ComputationalModels  LinearSystemCache
 @publish ComputationalModels  solve!
 @publish ComputationalModels  dirichlet_preconditioning!
 @publish ComputationalModels  GmshDiscreteModel

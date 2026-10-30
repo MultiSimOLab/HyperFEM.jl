@@ -41,7 +41,7 @@ end
     m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=nls, neumann=p.neumann, energy=p.en, injectivity=p.dΩ)
     x, _ = solve!(m; stepping=(nsteps=2, maxbisec=0))
     # operator with the hooks at Λ = 1 (load 1): E and R = ∇E
-    op = model_operator(m, m.caches[7][], 1.0, 1.0)
+    op = model_operator(m, m.caches.op, 1.0, 1.0)
     x0 = x .+ 0.01 .* randn(rng, length(x))
     E0 = energy(op, x0)
     @test isfinite(E0)

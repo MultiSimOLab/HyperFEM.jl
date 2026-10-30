@@ -67,6 +67,8 @@ export StaggeredModel
 export StaticNonlinearModel
 export DynamicNonlinearModel
 export StaticLinearModel
+export NonlinearStepCache
+export LinearSystemCache
 export solve!
 export dirichlet_preconditioning!
 export get_state

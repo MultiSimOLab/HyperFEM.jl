@@ -98,7 +98,7 @@ comp_model = StaticNonlinearModel(res, jac, U, V, D_bc; nls=nls_)
 
 # Postprocessor to save results
 function driverpost(post; Ω=Ω, U=U)
-    state = post.comp_model.caches[3]
+    state = post.comp_model.caches.x
     Λ_ = post.iter
 
     xh = FEFunction(U, state)
