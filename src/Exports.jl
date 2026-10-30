@@ -151,8 +151,6 @@ end
 @publish ComputationalModels  DirichletApplicator
 @publish ComputationalModels  NothingBC
 @publish ComputationalModels  MultiFieldBC
-@publish ComputationalModels  SingleFieldTC
-@publish ComputationalModels  MultiFieldTC
 @publish ComputationalModels  TrialFESpace
 @publish ComputationalModels  get_state
 @publish ComputationalModels  get_measure
@@ -162,7 +160,6 @@ end
 @publish ComputationalModels  get_test_space
 @publish ComputationalModels  get_assemblers
 @publish ComputationalModels  StaticNonlinearModel
-@publish ComputationalModels  DynamicNonlinearModel
 @publish ComputationalModels  StaticLinearModel
 @publish ComputationalModels  NonlinearStepCache
 @publish ComputationalModels  LinearSystemCache
@@ -198,8 +195,6 @@ end
 @publish ComputationalModels  step!
 @publish ComputationalModels  dirichlet_preconditioning!
 @publish ComputationalModels  GmshDiscreteModel
-@publish ComputationalModels update_velocity!
-@publish ComputationalModels update_displacements!
 @publish ComputationalModels  PostProcessor
 @publish ComputationalModels  vtk_save
 @publish ComputationalModels  get_pvd

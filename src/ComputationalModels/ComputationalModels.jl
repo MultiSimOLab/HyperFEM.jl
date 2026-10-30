@@ -46,8 +46,6 @@ export get_Neumann_dΓ
 export NothingBC
 export NothingTC
 export MultiFieldBC
-export SingleFieldTC
-export MultiFieldTC
 export residual_Neumann
 export NeumannConditions
 export add_tag_from_vertex_filter!
@@ -103,7 +101,6 @@ export LoadStep
 export step!
 export StaggeredModel
 export StaticNonlinearModel
-export DynamicNonlinearModel
 export StaticLinearModel
 export NonlinearStepCache
 export LinearSystemCache
@@ -116,8 +113,6 @@ export get_applicators
 export get_assemblers
 export get_trial_space
 export get_test_space
-export update_velocity!
-export update_displacements!
 
 include("PostProcessors.jl")
 export PostProcessor

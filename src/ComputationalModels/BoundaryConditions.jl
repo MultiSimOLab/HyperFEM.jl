@@ -1,39 +1,4 @@
 
-abstract type TimedependentCondition end
-
-
-struct MultiFieldTC{A} <: TimedependentCondition
-    vh::A # could be a multifield or single field
-    BlockID::Int64
-    function MultiFieldTC(vel::Function, V::MultiFieldFESpace; BlockID::Int64=1)
-        v = zero_free_values(V)
-        vh = FEFunction(V, v)
-        vuh = interpolate_everywhere(vel, V[BlockID])
-
-        view_vh = get_free_dof_values(vh[1])
-        view_vuh = get_free_dof_values(vuh)
-        view_vh .= view_vuh
-        new{typeof(vh)}(vh, BlockID)
-    end
-end
-
-function (obj::MultiFieldTC)()
-    obj.vh[obj.BlockID]
-end
-
-struct SingleFieldTC{A} <: TimedependentCondition
-    vh::A
-    function SingleFieldTC(vel::Function, V::SingleFieldFESpace)
-        vh = interpolate_everywhere(vel, V)
-        new{typeof(vh)}(vh)
-    end
-end
-
-function (obj::SingleFieldTC)()
-    obj.vh
-end
-
-
 #*******************************************************************************
 #    					 Prescriptions
 #*******************************************************************************

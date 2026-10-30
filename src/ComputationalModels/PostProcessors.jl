@@ -71,12 +71,6 @@ function (obj::PostProcessor{<:TransientModel,<:Any,<:Any})(t)
     obj.cache[1](obj, obj.cache[2]...)
 end
 
-function (obj::PostProcessor{<:DynamicNonlinearModel,<:Any,<:Any})(Λ)
-    obj.iter +=1
-    push!(obj.Λ, Λ)
-    obj.cache[1](obj, obj.cache[2]...)
-end
-
 function Jacobian(uh,km)
   @warn "The function Jacobian is deprecated and it will be removed after release 0.0.7." maxlog=1
   F, _, J = get_Kinematics(km)
