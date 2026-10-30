@@ -63,6 +63,10 @@ export GmshDiscreteModel
 export evaluate!
 
 include("Drivers.jl")
+include("LoadStepping.jl")
+export LoadStepping
+export LoadStep
+export step!
 export StaggeredModel
 export StaticNonlinearModel
 export DynamicNonlinearModel

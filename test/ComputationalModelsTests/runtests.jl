@@ -20,4 +20,8 @@ using Test
     include("BackendsTests.jl")
   end
 
+  @time begin
+    include("LoadSteppingTests.jl")
+  end
+
 end
