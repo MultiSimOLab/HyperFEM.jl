@@ -1,6 +1,7 @@
 module HyperFEM
 
 include("TensorAlgebra/TensorAlgebra.jl")
+include("Backends.jl")
 include("PhysicalModels/PhysicalModels.jl")
 include("WeakForms/WeakForms.jl")
 include("Solvers/Solvers.jl")

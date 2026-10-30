@@ -125,15 +125,14 @@ end
 """
     build_operator(backend, res, jac, U, V, assem, previous)
 
-Algebraic operator used by the drivers. `Val(:lazy)` (default) builds Gridap's `FEOperator`;
-`Val(:compiled)` is provided by the HyperFEMKernels extension (`using HyperFEMKernels`).
+Algebraic operator used by the drivers. `LazyBackend` (default) builds Gridap's `FEOperator`;
+`CompiledBackend` is provided by the HyperFEMKernels extension (`using HyperFEMKernels`).
 `previous` is the operator of the previous load step (or `nothing`), so that a backend can reuse
 its structure.
 """
-build_operator(::Val{:lazy}, res, jac, U, V, assem, previous) =
+build_operator(::LazyBackend, res, jac, U, V, assem, previous) =
     get_algebraic_operator(FEOperator(res, jac, U, V, assem))
-build_operator(::Val{B}, res, jac, U, V, assem, previous) where {B} =
-    error("HyperFEM: backend :$B is not available; for :compiled load HyperFEMKernels (`using HyperFEMKernels`)")
+build_operator(b::AbstractBackend, res, jac, U, V, assem, previous) = Backends.not_available(b, "the drivers")
 
 """
     dirichlet_projection(backend, res, jac, uh, ∆U, V, ls, previous) -> (duh, op)
@@ -142,17 +141,16 @@ Linearised problem of the Dirichlet projection (`solve!` with `ProjectDirichlet=
 `jac(uh, du, v) = -res(uh, v)` for `du` in `∆U`, whose Dirichlet values hold the increment of the
 conditions of the step, with the linear solver `ls`. Returns the increment `duh` (an `FEFunction` of
 `∆U`) and the operator used, handed back as `previous` in the next step so that a backend can reuse
-its structure (`nothing` the first time). `Val(:lazy)` assembles an `AffineFEOperator`;
-`Val(:compiled)` is provided by the HyperFEMKernels extension.
+its structure (`nothing` the first time). `LazyBackend` assembles an `AffineFEOperator`;
+`CompiledBackend` is provided by the HyperFEMKernels extension.
 """
-function dirichlet_projection(::Val{:lazy}, res, jac, uh, ∆U, V, ls, previous)
+function dirichlet_projection(::LazyBackend, res, jac, uh, ∆U, V, ls, previous)
     l(v) = -1.0 * res(uh, v)
     a(du, v) = jac(uh, du, v)
     op = AffineFEOperator(a, l, ∆U, V)
     solve(ls, op), nothing
 end
-dirichlet_projection(::Val{B}, res, jac, uh, ∆U, V, ls, previous) where {B} =
-    error("HyperFEM: backend :$B is not available; for :compiled load HyperFEMKernels (`using HyperFEMKernels`)")
+dirichlet_projection(b::AbstractBackend, res, jac, uh, ∆U, V, ls, previous) = Backends.not_available(b, "the Dirichlet projection")
 
 """
     StaticNonlinearModel(res, jac, U, V, dirichlet; neumann=nothing, nls, xh, xh⁻, backend=:lazy,
@@ -161,8 +159,8 @@ dirichlet_projection(::Val{B}, res, jac, uh, ∆U, V, ls, previous) where {B} =
 `res(τ)` and `jac(τ)` are functions of the stage parameter τ of the solver. `dirichlet` are the
 `BoundaryConditions` of `U`; `neumann`, if any, the [`NeumannConditions`](@ref) added to the residual by
 the driver at the load of every step. The model owns the Dirichlet applicators of its spaces
-(`get_applicators`: those of `U`, `∆U` and the space of `xh⁻`). `backend` selects the algebraic operator
-(see `build_operator`).
+(`get_applicators`: those of `U`, `∆U` and the space of `xh⁻`). `backend` (`:lazy`, `:compiled` or an
+[`AbstractBackend`](@ref)) selects who evaluates and assembles the forms (see `build_operator`).
 
 `injectivity` is the measure whose quadrature points must keep `det F > 0` (`dΩ`, or `(dΩ, i)` when
 the displacement is the field `i` of a multi-field space); it gives the injectivity step of
@@ -193,7 +191,7 @@ struct StaticNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
         nls::NonlinearSolver=NewtonRaphson(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
         xh::FEFunction=FEFunction(U, zero_free_values(U)),
         xh⁻::FEFunction=FEFunction(U, zero_free_values(U)),
-        backend::Symbol=:lazy,
+        backend=:lazy,
         injectivity=nothing,
         energy=nothing,
         tangent_switch=nothing)
@@ -209,9 +207,10 @@ struct StaticNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
         hooks = (injectivity=_injectivity_hook(injectivity), energy=energy, tangent_switch=tangent_switch)
         _res = with_neumann(res(1.0), neumann, 1.0)
         _jac = jac(1.0)
-        op = build_operator(Val(backend), _res, _jac, U, V, assem_U, nothing)
+        bk = as_backend(backend)
+        op = build_operator(bk, _res, _jac, U, V, assem_U, nothing)
         nls_cache = instantiate_caches(x, nls, model_operator(hooks, spaces, neumann, op, 1.0, 1.0))
-        caches = (nls, nls_cache, x, x⁻, assem_U, Val(backend), Ref{Any}(op), Ref{Any}(nothing))
+        caches = (nls, nls_cache, x, x⁻, assem_U, bk, Ref{Any}(op), Ref{Any}(nothing))
 
         A, B, C = typeof(res), typeof(jac), typeof(spaces)
         D, E, F, G, H = typeof(dirbc), typeof(neumann), typeof(applicators), typeof(caches), typeof(hooks)
@@ -552,10 +551,10 @@ Matrix `K` of the bilinear form `bf` and vector `b` of the linear form `lf`, wit
 `U` (the Dirichlet values of `U` are moved to the right-hand side), as Gridap's `AffineFEOperator`.
 With `lf === nothing` only `K` is assembled and `b` is allocated and zeroed. `op` is the operator
 of the backend (`nothing` for `:lazy`), handed back to `linear_system!` and
-`load_vector!` so that a backend can reuse its structure. `Val(:compiled)` is provided by
+`load_vector!` so that a backend can reuse its structure. `CompiledBackend` is provided by
 the HyperFEMKernels extension (`using HyperFEMKernels`).
 """
-function linear_system(::Val{:lazy}, bf, lf, U, V, assem)
+function linear_system(::LazyBackend, bf, lf, U, V, assem)
     if lf === nothing
         K = assemble_matrix(bf, assem, U, V)
         b = allocate_in_range(K)
@@ -566,8 +565,7 @@ function linear_system(::Val{:lazy}, bf, lf, U, V, assem)
     end
     K, b, nothing
 end
-linear_system(::Val{B}, bf, lf, U, V, assem) where {B} =
-    error("HyperFEM: backend :$B is not available; for :compiled load HyperFEMKernels (`using HyperFEMKernels`)")
+linear_system(b::AbstractBackend, args...) = Backends.not_available(b, "the linear drivers")
 
 """
     linear_system!(backend, K, b, bf, lf, U, V, assem, op) -> op
@@ -575,7 +573,7 @@ linear_system(::Val{B}, bf, lf, U, V, assem) where {B} =
 Re-assembles in place the system of `linear_system`: `K` and `b` with the current Dirichlet
 values of `U`, or only `K` when `lf === nothing`. Returns the operator to hand back in the next call.
 """
-function linear_system!(::Val{:lazy}, K, b, bf, lf, U, V, assem, op)
+function linear_system!(::LazyBackend, K, b, bf, lf, U, V, assem, op)
     if lf === nothing
         assemble_matrix!(bf, K, assem, U, V)
     else
@@ -586,8 +584,7 @@ function linear_system!(::Val{:lazy}, K, b, bf, lf, U, V, assem, op)
     end
     nothing
 end
-linear_system!(::Val{B}, K, b, bf, lf, U, V, assem, op) where {B} =
-    error("HyperFEM: backend :$B is not available; for :compiled load HyperFEMKernels (`using HyperFEMKernels`)")
+linear_system!(b::AbstractBackend, args...) = Backends.not_available(b, "the linear drivers")
 
 """
     load_vector!(backend, b, lf, U, V, assem, op) -> op
@@ -596,12 +593,11 @@ Vector of the linear form `lf` alone (no Dirichlet lift), as Gridap's `assemble_
 the right-hand sides of a [`StaticLinearModel`](@ref) with several linear forms. Returns the operator
 to hand back in the next call.
 """
-function load_vector!(::Val{:lazy}, b, lf, U, V, assem, op)
+function load_vector!(::LazyBackend, b, lf, U, V, assem, op)
     assemble_vector!(lf, b, assem, V)
     nothing
 end
-load_vector!(::Val{B}, b, lf, U, V, assem, op) where {B} =
-    error("HyperFEM: backend :$B is not available; for :compiled load HyperFEMKernels (`using HyperFEMKernels`)")
+load_vector!(b::AbstractBackend, args...) = Backends.not_available(b, "the linear drivers")
 
 """
     StaticLinearModel(lf, bf, U, V, dirichlet; assem_U, ls, xh, backend=:lazy)
@@ -611,8 +607,8 @@ load_vector!(::Val{B}, b, lf, U, V, assem, op) where {B} =
 Linear problem `bf(u, v) = lf(v)`. The first form assembles matrix and vector at construction; the
 second only the matrix (the right-hand side is given to `solve!` or built by the model's functors);
 the third solves one matrix for several right-hand sides `lfs` on the repeated spaces of `U0`, `V0`.
-`backend` selects who assembles (see `linear_system`): `:lazy` (default) or `:compiled`
-(HyperFEMKernels extension, `using HyperFEMKernels`).
+`backend` selects who assembles (see `linear_system`): `:lazy` (default), `:compiled`
+(HyperFEMKernels extension, `using HyperFEMKernels`) or an [`AbstractBackend`](@ref).
 """
 struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
     lf::A
@@ -626,15 +622,15 @@ struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
         assem_U=SparseMatrixAssembler(U, V),
         ls::LinearSolver=LUSolver(),
         xh::FEFunction=FEFunction(U, zero_free_values(U)),
-        backend::Symbol=:lazy)
+        backend=:lazy)
 
         spaces = (U, V)
-        K, b, op = linear_system(Val(backend), bf, lf, U, V, assem_U)
+        bk = as_backend(backend)
+        K, b, op = linear_system(bk, bf, lf, U, V, assem_U)
         x = get_free_dof_values(xh)
-        # x = allocate_in_domain(K)
         fill!(x, zero(eltype(x)))
         ns = numerical_setup(symbolic_setup(ls, K), K)
-        caches = (ns, K, b, x, assem_U, Val(backend), Ref{Any}(op))
+        caches = (ns, K, b, x, assem_U, bk, Ref{Any}(op))
 
         A, B, C = typeof(lf), typeof(bf), typeof(spaces)
         D, E = typeof(dirbc), typeof(caches)
@@ -647,17 +643,18 @@ struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
         lf::Vector{<:Function}, bf::Function, U0, V0, dirbc;
         assem_U0=SparseMatrixAssembler(U0, V0),
         ls::LinearSolver=LUSolver(),
-        backend::Symbol=:lazy)
+        backend=:lazy)
 
         nblocks = length(lf)
         U, V = repeat_spaces(nblocks, U0, V0)
         spaces = (U, V)
         ##  cache
-        K, b, op = linear_system(Val(backend), bf, nothing, U0, V0, assem_U0) # 1D
+        bk = as_backend(backend)
+        K, b, op = linear_system(bk, bf, nothing, U0, V0, assem_U0) # 1D
         x = repeated_allocate_in_domain(nblocks, K)
         fill!(x, zero(eltype(x))) # nD
         ns = numerical_setup(symbolic_setup(ls, K), K) # 1D
-        caches = (ns, K, b, x, assem_U0, Val(backend), Ref{Any}(op))
+        caches = (ns, K, b, x, assem_U0, bk, Ref{Any}(op))
 
         A, B, C = Vector{<:Function}, typeof(bf), typeof(spaces)
         D, E = typeof(dirbc), typeof(caches)
@@ -671,15 +668,15 @@ struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
         assem_U=SparseMatrixAssembler(U, V),
         ls::LinearSolver=LUSolver(),
         xh::FEFunction=FEFunction(U, zero_free_values(U)),
-        backend::Symbol=:lazy)
+        backend=:lazy)
 
         spaces = (U, V)
-        K, b, op = linear_system(Val(backend), bf, nothing, U, V, assem_U)
+        bk = as_backend(backend)
+        K, b, op = linear_system(bk, bf, nothing, U, V, assem_U)
         x = get_free_dof_values(xh)
-        # x = allocate_in_domain(K)
         fill!(x, zero(eltype(x)))
         ns = numerical_setup(symbolic_setup(ls, K), K) # 1D
-        caches = (ns, K, b, x, assem_U, Val(backend), Ref{Any}(op))
+        caches = (ns, K, b, x, assem_U, bk, Ref{Any}(op))
 
         A, B, C = Nothing, typeof(bf), typeof(spaces)
         D, E = typeof(dirbc), typeof(caches)

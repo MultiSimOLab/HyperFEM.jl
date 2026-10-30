@@ -1,4 +1,13 @@
 
+## Backends
+
+```@autodocs
+Modules = [HyperFEM.Backends]
+Order   = [:module, :type, :function, :macro]
+Public  = true
+Private = false
+```
+
 ## ComputationalModels
 
 ```@autodocs

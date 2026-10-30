@@ -116,11 +116,11 @@ function staggered_visco_electric_simulation(; backend=:lazy, t_end=0.5, writevt
       TrialFESpace!(Uu, dirichlet_u, time)
       
       verbose && println("Electric staggered step")
-      op_elec = build_operator(Val(backend), res_elec(time), jac_elec(time), Uφ, Vφ, assem_φ, op_elec)
+      op_elec = build_operator(as_backend(backend), res_elec(time), jac_elec(time), Uφ, Vφ, assem_φ, op_elec)
       solve!(get_free_dof_values(φh⁺), nls, op_elec)
 
       verbose && println("Mechanical staggered step")
-      op_mec = build_operator(Val(backend), res_mec(time), jac_mec(time), Uu, Vu, assem_u, op_mec)
+      op_mec = build_operator(as_backend(backend), res_mec(time), jac_mec(time), Uu, Vu, assem_u, op_mec)
       solve!(get_free_dof_values(uh⁺), nls, op_mec)
       
       driverpost(pvd, step, time)

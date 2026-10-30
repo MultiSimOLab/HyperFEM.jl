@@ -1,4 +1,5 @@
 module ComputationalModels
+using HyperFEM.Backends
 using HyperFEM.PhysicalModels
 using HyperFEM.Solvers
 
