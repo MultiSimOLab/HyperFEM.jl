@@ -1,4 +1,5 @@
 [deps]
+AlgebraicMultigrid = "2169fc97-5a83-5252-b627-83903c6c433c"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 Gridap = "56d4f2e9-7ea1-5844-9cf6-b9c51ca7ce8e"
 GridapGmsh = "3025c34a-b394-11e9-2a55-3fee550c04c8"
@@ -14,4 +15,5 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 
 [compat]
+AlgebraicMultigrid = "1.1, 2"
 HyperFEMKernels = "0.1"

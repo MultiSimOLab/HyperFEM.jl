@@ -37,6 +37,7 @@ mutable struct NewtonLog
   const residuals::Vector{Float64}
   const alphas::Vector{Float64}
   const modes::Vector{Symbol}
+  const linear::Vector{Int}       # iterations of the linear solver at every Newton iteration (0 for direct solvers)
   num_iters::Int
   reason::Symbol
   const verbose::Int
@@ -48,6 +49,7 @@ mutable struct NewtonLog
   niters::Int
   nprojected::Int
   nswitches::Int
+  nlinear::Int                    # linear-solver iterations over the run
   t_assembly::Float64
   t_setup::Float64
   t_linear::Float64
@@ -55,8 +57,8 @@ mutable struct NewtonLog
   t_solve::Float64
   function NewtonLog(; maxiter::Integer=100, verbose=0, name::AbstractString="Newton-Raphson")
     v = _verbose_level(verbose)
-    new(zeros(maxiter + 1), zeros(maxiter + 1), fill(:consistent, maxiter + 1), 0, :running, v, String(name),
-        0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    new(zeros(maxiter + 1), zeros(maxiter + 1), fill(:consistent, maxiter + 1), zeros(Int, maxiter + 1), 0, :running, v, String(name),
+        0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0)
   end
 end
 
@@ -70,6 +72,9 @@ residual_history(log::NewtonLog) = view(log.residuals, 1:log.num_iters+1)
 step_history(log::NewtonLog) = view(log.alphas, 1:log.num_iters)
 "Tangent of every iteration of the last solve (`:consistent` / `:projected`)."
 mode_history(log::NewtonLog) = view(log.modes, 1:log.num_iters)
+
+"Iterations of the linear solver at every Newton iteration of the last solve (0 for direct solvers)."
+linear_history(log::NewtonLog) = view(log.linear, 1:log.num_iters)
 "Number of iterations of the last solve."
 num_iterations(log::NewtonLog) = log.num_iters
 "Stop reason of the last solve (see [`NewtonLog`](@ref))."
@@ -83,6 +88,7 @@ function reset!(log::NewtonLog)
   log.niters = 0
   log.nprojected = 0
   log.nswitches = 0
+  log.nlinear = 0
   log.t_assembly = 0.0
   log.t_setup = 0.0
   log.t_linear = 0.0
@@ -99,16 +105,19 @@ function _start!(log::NewtonLog, r0::Float64)
   log
 end
 
-@inline function _record!(log::NewtonLog, r::Float64, α::Float64, mode::Symbol)
+@inline function _record!(log::NewtonLog, r::Float64, α::Float64, mode::Symbol, lin::Int=0)
   n = log.num_iters + 1
   if n + 1 > length(log.residuals)
     resize!(log.residuals, 2n)
     resize!(log.alphas, 2n)
     resize!(log.modes, 2n)
+    resize!(log.linear, 2n)
   end
   log.residuals[n+1] = r
   log.alphas[n] = α
   log.modes[n] = mode
+  log.linear[n] = lin
+  log.nlinear += lin
   log.num_iters = n
   log.niters += 1
   mode === :projected && (log.nprojected += 1)
@@ -181,6 +190,7 @@ function print_summary(log::NewtonLog; io=stdout)
   pproj = 100 * log.nprojected / n
   rest = log.t_solve - log.t_assembly - log.t_setup - log.t_linear - log.t_linesearch
   println(io, "  $(log.name): $(log.nsolves) solves, $(log.niters) iterations ($(@sprintf("%.0f", pproj)) % projected, $(log.nswitches) switches)")
+  log.nlinear > 0 && @printf(io, "  linear solver: %d iterations, %.1f per Newton iteration\n", log.nlinear, log.nlinear / n)
   @printf(io, "  time %.2f s: assembly %.2f, setup %.2f, linear solve %.2f, line search %.2f, other %.2f\n",
           log.t_solve, log.t_assembly, log.t_setup, log.t_linear, log.t_linesearch, max(rest, 0.0))
 end
@@ -312,6 +322,7 @@ converged(nls::NewtonRaphson) = converged(nls.log)
 residual_history(nls::NewtonRaphson) = residual_history(nls.log)
 step_history(nls::NewtonRaphson) = step_history(nls.log)
 mode_history(nls::NewtonRaphson) = mode_history(nls.log)
+linear_history(nls::NewtonRaphson) = linear_history(nls.log)
 num_iterations(nls::NewtonRaphson) = num_iterations(nls.log)
 stop_reason(nls::NewtonRaphson) = stop_reason(nls.log)
 verbosity(nls::NewtonRaphson) = verbosity(nls.log)
@@ -477,7 +488,7 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
     α = search!(linesearch, w, op, x, dx, b)    # takes the step: x ← x + α dx, b = R(x); α = 0 is a failure
     log.t_linesearch += time() - t1
     r = norm(b)
-    _record!(log, r, α, mode)
+    _record!(log, r, α, mode, linear_iterations(ns))
     if log.verbose >= 2
       _print_row(log, r, r0, α, α == injectivity_limit(linesearch), mode, lname * linear_info(ns), time() - t0)
       _print_detail(log, linesearch)

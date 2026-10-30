@@ -5,6 +5,9 @@ using Gridap
 using Gridap.Algebra
 import Gridap.Algebra: numerical_setup, numerical_setup!
 using Gridap.CellData
+using Gridap.FESpaces: SingleFieldFESpace, get_fe_dof_basis, get_free_dof_values, interpolate, num_free_dofs
+using Gridap.MultiField: MultiFieldFESpace, num_fields
+using Gridap.Geometry: num_point_dims, get_triangulation
 using Gridap.Arrays: array_cache, getindex!
 using LinearAlgebra
 using Printf
@@ -25,6 +28,11 @@ export stop_reason
 export verbosity
 export get_tolerances
 export linear_converged
+export linear_iterations
+export preconditioner_builds
+export PETScSolver
+export AMGSolver
+export near_nullspace
 export numerical_setup_state
 export numerical_setup_state!
 export FullStepLS
@@ -44,6 +52,7 @@ export TangentStrategy
 export ConsistentTangent
 export HybridTangent
 export mode_history
+export linear_history
 export print_summary
 export reason_text
 export linear_info
@@ -56,6 +65,7 @@ import HyperFEM.WeakForms: energy
 using HyperFEM.PhysicalModels: TangentSwitch, set_projected!, is_projected
 
 include("LinearSolvers.jl")
+include("KrylovSolvers.jl")
 include("Injectivity.jl")
 include("ModelOperator.jl")
 include("LineSearches.jl")

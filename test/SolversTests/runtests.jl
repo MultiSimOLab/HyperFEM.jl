@@ -32,4 +32,15 @@ using Test
     include("VerboseTests.jl")
   end
 
+  @time begin
+    include("KrylovSolversTests.jl")
+  end
+
+  # PETSc variant: local only (GridapPETSc is not in the CI test environment, see PETScSolverTests.jl)
+  if get(ENV, "HYPERFEM_TEST_PETSC", "0") == "1"
+    @time begin
+      include("PETScSolverTests.jl")
+    end
+  end
+
 end
