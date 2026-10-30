@@ -232,3 +232,28 @@ end
     @test ctx[2].u⁻ === m2.hist.un[2] && ctx[1].u⁻ === m2.hist.un[1] && ctx.u⁻ === m2.hist.un
   end
 end
+
+@testset "TransientModel: inertia mask of a multi-field mass form" begin
+  # the mass form touches the first field only: the error estimate and the initial acceleration are
+  # restricted to its dofs (the compiled backend stores the whole pattern of the space with zeros)
+  p = bar_dirichlet_problem()
+  (; U, V, dΩ, bc, res, jac, mass) = p
+  model = get_background_model(get_triangulation(U))
+  bcp = BoundaryConditions(BoundaryCondition("left", 0.0, EvolutionFunctions.constant()))
+  Vp = TestFESpace(model, ReferenceFE(lagrangian, Float64, 1), bcp; conformity=:H1)
+  Up = TrialFESpace(Vp, bcp, 0.0)
+  UU = MultiFieldFESpace([U, Up]); VV = MultiFieldFESpace([V, Vp])
+  bc2 = MultiFieldBC([bc, bcp])
+  res2(t) = ((u, w), (v, q)) -> res(t)(u, v) + ∫(∇(w) ⋅ ∇(q))dΩ
+  jac2(t) = ((u, w), (du, dw), (v, q)) -> jac(t)(u, du, v) + ∫(∇(dw) ⋅ ∇(q))dΩ
+  mass2 = ((a, aw), (v, q)) -> mass(a, v)
+  nls = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-12, rtol=1e-9, verbose=0)
+  for backend in TEST_BACKENDS_T
+    m = TransientModel(res2, jac2, UU, VV, bc2; scheme=Newmark(), mass=mass2, nls, backend, initial_acceleration=:solve)
+    mask = HyperFEM.ComputationalModels._inertia_mask(m)
+    nu = num_free_dofs(U)
+    @test all(mask[1:nu]) && !any(mask[nu+1:end])
+    x, flag = solve!(m; stepping=TimeStepping(; Δt=0.1, t_end=0.3))
+    @test flag == 1
+  end
+end

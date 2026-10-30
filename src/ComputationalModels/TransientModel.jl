@@ -665,8 +665,14 @@ _stage_dirichlet!(U, ::SDIRK, h::StageHistory, ::StageCoefficients) = _dcopy!(_d
 function _inertia_mask(m::TransientModel)
     o = m.caches.op
     o.structured || return trues(length(m.caches.x))
-    mask = falses(size(o.M, 1))
-    for i in rowvals(o.M); mask[i] = true; end
+    # rows with a nonzero entry (the compiled backend stores the whole pattern of the space, with zeros on
+    # the fields the mass form does not touch)
+    M = o.M
+    mask = falses(size(M, 1))
+    rv, nz = rowvals(M), nonzeros(M)
+    for j in 1:size(M, 2), k in nzrange(M, j)
+        nz[k] == 0.0 || (mask[rv[k]] = true)
+    end
     mask
 end
 
@@ -879,6 +885,15 @@ function _initial_acceleration!(m::TransientModel, t0::Float64, load)
     b = c.nls_cache.b
     residual!(b, o.inner, h.xn)
     b .*= -1.0
-    h.an .= o.M \ b
+    mask = _inertia_mask(m)
+    if all(mask)
+        h.an .= o.M \ b
+    else
+        # fields without inertia (electric potential, pressure): their acceleration is not defined and
+        # their rows of the mass matrix are empty; the solve is on the dofs with inertia
+        idx = findall(mask)
+        fill!(h.an, zero(eltype(h.an)))
+        h.an[idx] .= o.M[idx, idx] \ b[idx]
+    end
     nothing
 end
