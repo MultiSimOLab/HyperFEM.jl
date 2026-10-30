@@ -167,6 +167,9 @@ end
 @publish ComputationalModels  NonlinearStepCache
 @publish ComputationalModels  LinearSystemCache
 @publish ComputationalModels  solve!
+@publish ComputationalModels  LoadStepping
+@publish ComputationalModels  LoadStep
+@publish ComputationalModels  step!
 @publish ComputationalModels  dirichlet_preconditioning!
 @publish ComputationalModels  GmshDiscreteModel
 @publish ComputationalModels update_velocity!

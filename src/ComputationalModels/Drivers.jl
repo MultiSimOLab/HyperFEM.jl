@@ -24,6 +24,9 @@ nls_message(::NonlinearSolver, msg) = nothing
 nls_verbosity(::NonlinearSolver) = 0
 nls_reset!(nls::NewtonRaphson) = Solvers.reset!(nls.log)
 nls_reset!(::NonlinearSolver) = nothing
+"Iterations of the last solve (the growth of the increment asks for it; unknown solvers never grow it)."
+nls_iterations(nls::NewtonRaphson) = num_iterations(nls)
+nls_iterations(::NonlinearSolver) = typemax(Int)
 
 # Output of the incremental drivers: `verbose = 1` one line per attempt and a summary of the run;
 # `verbose ≥ 2` a header per step before solving (the solver prints its iterations) and the summary.
@@ -31,16 +34,17 @@ function step_header(v::Int, n::Int, Λ, ΔΛ)
     v >= 2 || return
     printstyled(@sprintf("━━ Step %d ━━ Λ = %.4f  ΔΛ = %.4f ━━\n", n, Λ, ΔΛ); bold=true)
 end
-function step_line(v::Int, nls::NewtonRaphson, n::Int, Λ, ΔΛ, ok::Bool, t)
+function step_line(v::Int, nls::NewtonRaphson, n::Int, Λ, ΔΛ, ok::Bool, t, grown::Bool=false)
     v == 1 || return
     r = residual_history(nls)[end]
     np = count(==(:projected), mode_history(nls))
     @printf("step %4d  Λ = %.4f  ΔΛ = %.4f  it = %3d  ‖R‖ = %.3e  ", n, Λ, ΔΛ, num_iterations(nls), r)
     printstyled(ok ? "✓" : "✗ → bisect"; color=ok ? :green : :yellow)
     np > 0 && print("  (projected $np)")
+    grown && printstyled("  ↑ ΔΛ"; color=:cyan)
     @printf("  %.2f s\n", t)
 end
-step_line(v::Int, ::NonlinearSolver, n, Λ, ΔΛ, ok, t) = nothing
+step_line(v::Int, ::NonlinearSolver, n, Λ, ΔΛ, ok, t, grown=false) = nothing
 function run_summary(v::Int, nls::NewtonRaphson, Λ, nsteps::Int, nbisect::Int, t)
     v >= 1 || return
     @printf("Λ = %.4f reached: %d steps, %d bisections, %.2f s\n", Λ, nsteps, nbisect, t)
@@ -342,90 +346,6 @@ get_applicators(m::StaticNonlinearModel) = m.applicators
 get_assemblers(m::StaticNonlinearModel) = m.caches.assem
 
 
-"""
-    solve!(m::StaticNonlinearModel; stepping, RestartState, ProjectDirichlet, post, load=identity)
-
-Incremental solve with the stage parameter Λ from 0 to 1. The conditions and the Neumann term are
-applied at the load `load(Λ)` (`identity` by default; `StaggeredModel` passes the ramp of its step).
-"""
-function solve!(m::StaticNonlinearModel;
-    stepping=(nsteps=20, maxbisec=15), RestartState::Bool=false, ProjectDirichlet::Bool=false,
-    post=PostProcessor(), load=identity)
-
-    reset!(post)
-    flagconv = 1 # convergence flag 0 (max bisections) 1 (max steps)
-    U, V, ∆U, Un = m.spaces
-    app_U, _, app_Un = m.applicators
-    TrialFESpace!(U, app_U, load(0.0); stage=0.0)
-    c = m.caches
-    nls, nls_cache, x, x⁻, assem_U = c.nls, c.nls_cache, c.x, c.x⁻, c.assem
-    verbose = nls_verbosity(nls)
-    nls_reset!(nls)
-    t_run = time()
-
-    Λ = 0.0
-    ∆Λ = 1.0 / stepping[:nsteps]
-    nbisect = 0
-    Λ_ = 0
-    if RestartState
-        x .*= 0.0
-    end
-    x⁻ .= x
-    α = 1.0
-
-    while !isapprox(Λ, 1.0; atol=1e-12)
-        Λ += ∆Λ
-        if Λ > 1.0
-            ∆Λ = 1.0 - (Λ - ∆Λ)
-            Λ = min(1.0, Λ)
-        end
-        if ProjectDirichlet
-            α = dirichlet_preconditioning!(x, m, Λ, ∆Λ, nls, load)
-        end
-        Λ -= ∆Λ
-        ∆Λ = α * ∆Λ
-        TrialFESpace!(Un, app_Un, load(Λ); stage=Λ)
-        Λ += ∆Λ
-        TrialFESpace!(U, app_U, load(Λ); stage=Λ)
-
-        res = with_neumann(m.res(Λ), m.neumann, load(Λ))
-        jac = m.jac(Λ)
-        op = build_operator(c.backend, res, jac, U, V, assem_U, c.op)
-        c.op = op
-        step_header(verbose, Λ_ + 1, Λ, ∆Λ)
-        t_step = time()
-        Algebra.solve!(x, nls, model_operator(m, op, Λ, load(Λ)), nls_cache)
-        ok = nls_converged(nls)
-        step_line(verbose, nls, Λ_ + 1, Λ, ∆Λ, ok, time() - t_step)
-        if !ok
-            @warn "Bisection performed!"
-            # back to the last converged step: state, load factor (∆Λ already includes α) and the Dirichlet
-            # values of U, so that the next attempt (and its Dirichlet projection) starts from a consistent state
-            x .= x⁻
-            Λ -= ∆Λ
-            ∆Λ = ∆Λ / 2
-            TrialFESpace!(U, app_U, load(Λ); stage=Λ)
-            nbisect += 1
-        else
-            Λ_ += 1
-            # Write to PVD
-            post(Λ)
-            x⁻ .= x
-        end
-
-        if nbisect > stepping[:maxbisec]
-            @warn "Maximum number of bisections reached"
-            flagconv = 0
-            break
-        end
-
-    end
-
-    run_summary(verbose, nls, Λ, Λ_, nbisect, time() - t_run)
-    vtk_save(post)
-
-    return x, flagconv
-end
 
 function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, nls::NewtonRaphson, load=identity)
     duh = get_dirichlet_preconditioner(m, Λ, ∆Λ, load)
