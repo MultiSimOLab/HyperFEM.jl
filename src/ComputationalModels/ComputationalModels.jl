@@ -1,4 +1,5 @@
 module ComputationalModels
+using HyperFEM.Backends
 using HyperFEM.PhysicalModels
 using HyperFEM.Solvers
 
@@ -66,6 +67,8 @@ export StaggeredModel
 export StaticNonlinearModel
 export DynamicNonlinearModel
 export StaticLinearModel
+export NonlinearStepCache
+export LinearSystemCache
 export solve!
 export dirichlet_preconditioning!
 export get_state

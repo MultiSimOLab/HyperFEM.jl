@@ -27,6 +27,10 @@ end
 @publish TensorAlgebra I9
 @publish TensorAlgebra Tensorize
 
+@publish Backends AbstractBackend
+@publish Backends LazyBackend
+@publish Backends CompiledBackend
+@publish Backends as_backend
 @publish PhysicalModels PhysicalModel
 @publish PhysicalModels Elasto
 @publish PhysicalModels ViscoElastic
@@ -160,6 +164,8 @@ end
 @publish ComputationalModels  StaticNonlinearModel
 @publish ComputationalModels  DynamicNonlinearModel
 @publish ComputationalModels  StaticLinearModel
+@publish ComputationalModels  NonlinearStepCache
+@publish ComputationalModels  LinearSystemCache
 @publish ComputationalModels  solve!
 @publish ComputationalModels  dirichlet_preconditioning!
 @publish ComputationalModels  GmshDiscreteModel

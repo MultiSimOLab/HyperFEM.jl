@@ -1,5 +1,6 @@
 module PhysicalModels
 
+using ..Backends
 using Gridap
 using Gridap.CellData
 using Gridap.Helpers
@@ -181,13 +182,12 @@ end
     new_state(v, points, backend)
 
 State variable with the value `v` at every point of `points` (a `Measure` or `CellPoint`), in the
-storage of `backend`: Gridap's `CellState` (`:lazy`) or the one provided by an extension
-(`:compiled` by HyperFEMKernels).
+storage of `backend` (a symbol or an `AbstractBackend`): Gridap's `CellState` (`LazyBackend`) or the
+one provided by an extension (`CompiledBackend` by HyperFEMKernels).
 """
-new_state(v, points, backend::Symbol) = _new_state(Val(backend), v, points)
-_new_state(::Val{:lazy}, v, points) = CellState(v, points)
-_new_state(::Val{B}, v, points) where {B} =
-  error("HyperFEM: backend :$B is not available for the state variables; for :compiled load HyperFEMKernels (`using HyperFEMKernels`)")
+new_state(v, points, backend) = _new_state(as_backend(backend), v, points)
+_new_state(::LazyBackend, v, points) = CellState(v, points)
+_new_state(b::AbstractBackend, v, points) = Backends.not_available(b, "the state variables")
 
 
 """
@@ -220,13 +220,12 @@ end
 """
     state_updater(f, backend)
 
-The pointwise updater `f` as executed by `backend`: `f` itself for `:lazy`, or the wrapper
-provided by an extension (`:compiled` by HyperFEMKernels).
+The pointwise updater `f` as executed by `backend` (a symbol or an `AbstractBackend`): `f` itself for
+`LazyBackend`, or the wrapper provided by an extension (`CompiledBackend` by HyperFEMKernels).
 """
-state_updater(f, backend::Symbol) = _state_updater(Val(backend), f)
-_state_updater(::Val{:lazy}, f) = f
-_state_updater(::Val{B}, f) where {B} =
-  error("HyperFEM: backend :$B is not available for the state variables; for :compiled load HyperFEMKernels (`using HyperFEMKernels`)")
+state_updater(f, backend) = _state_updater(as_backend(backend), f)
+_state_updater(::LazyBackend, f) = f
+_state_updater(b::AbstractBackend, f) = Backends.not_available(b, "the state variables")
 
 
 """

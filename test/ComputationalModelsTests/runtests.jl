@@ -16,4 +16,8 @@ using Test
     include("DriversTests.jl")
   end
 
+  @time begin
+    include("BackendsTests.jl")
+  end
+
 end

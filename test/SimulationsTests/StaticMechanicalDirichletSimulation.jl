@@ -50,7 +50,7 @@ function static_mechanical_dirichlet_simulation(; backend=:lazy, writevtk=false,
 
   function driverpost_mech(post)
     if writevtk
-      state = post.comp_model.caches[3]
+      state = post.comp_model.caches.x
       Λ_ = post.iter
       Λ = post.Λ[Λ_]
       xh = FEFunction(U, state)

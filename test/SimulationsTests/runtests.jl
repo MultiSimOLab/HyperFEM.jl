@@ -81,14 +81,15 @@ end
 
   @testset "StaggeredElectroMechanical" begin
     r = run_backends(b -> staggered_electro_mechanical_simulation(; backend=b))
-    for (b, (φh, uh)) in r
+    for (b, ((φh, uh), flag)) in r
       @testset "$b" begin
-        @test norm(uh[1]) ≈ 0.01492384116
-        @test norm(φh[1]) ≈ 0.00023052926
+        @test flag == 1
+        @test norm(uh) ≈ 0.01492384116
+        @test norm(φh) ≈ 0.00023052926
       end
     end
     # thin Q2 plate, ill conditioned: identical Newton histories, the LU rounding shows at ~2e-10 in u
-    agree(r, x -> x[2][1]; rtol=1e-8)
+    agree(r, x -> x[1][2]; rtol=1e-8)
     agree(r, x -> x[1][1])
   end
 

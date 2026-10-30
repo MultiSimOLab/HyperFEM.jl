@@ -75,3 +75,25 @@ HyperFEM.ComputationalModels.nls_message(s::FailFirst, msg) = nothing
   @test flag == 1 && Λs ≈ [0.25, 0.5, 0.75, 1.0]
   @test x == xref
 end
+
+@testset "StaggeredModel convergence flag" begin
+  # two copies of the same problem solved in a staggered way, the first one with a solver that never
+  # converges (maxiter = 0, maxbisec = 0): the flag of the staggered solve must report the failure
+  function staggered(nls1, nls2)
+    p1, p2 = drivers_test_problem(), drivers_test_problem()
+    states(p) = (FEFunction(p.U, zero_free_values(p.U)), FEFunction(p.U, zero_free_values(p.U)))
+    (u1⁺, u1⁻), (u2⁺, u2⁻) = states(p1), states(p2)
+    m1 = StaticNonlinearModel(p1.res, p1.jac, p1.U, p1.V, p1.bc; nls=nls1, xh=u1⁺, xh⁻=u1⁻)
+    m2 = StaticNonlinearModel(p2.res, p2.jac, p2.U, p2.V, p2.bc; nls=nls2, xh=u2⁺, xh⁻=u2⁻)
+    StaggeredModel((m1, m2), (u1⁺, u2⁺), (u1⁻, u2⁻))
+  end
+  nls_ok() = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-12, rtol=1e-12, verbose=0)
+  args = ((stepping=(nsteps=1, maxbisec=0),), (stepping=(nsteps=1, maxbisec=0),))
+  x, flag = solve!(staggered(nls_ok(), nls_ok()); stepping=(nsteps=2, nsubsteps=1, maxbisec=0), verbose=false, kargsolve=args)
+  @test flag == 1 && length(x) == 2 && x[1] == x[2]
+  m = staggered(NewtonRaphson(LUSolver(); maxiter=0, verbose=0), nls_ok())
+  x, flag = @test_logs (:warn, r"Maximum number of bisections") match_mode = :any begin
+    solve!(m; stepping=(nsteps=2, nsubsteps=1, maxbisec=0), verbose=false, kargsolve=args)
+  end
+  @test flag == 0
+end
