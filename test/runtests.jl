@@ -12,6 +12,8 @@ using Test
 
   include("ComputationalModelsTests/runtests.jl")
 
+  include("SolversTests/runtests.jl")
+
   include("SimulationsTests/runtests.jl")
 
 end;

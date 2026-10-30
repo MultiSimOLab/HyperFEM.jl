@@ -69,6 +69,52 @@ end
 
 
 
+@testset "LogBarrier" begin
+  K = Kinematics(Mechano, Solid)
+  for p in (1, 2, 4)
+    barrier = LogBarrier(κ=3.0, p=p)
+    test_derivatives_2D_(barrier, K; rtol=1e-10)
+    test_derivatives_3D_(barrier, K; rtol=1e-10)
+    test_equilibrium_at_rest_2D(barrier)
+    test_equilibrium_at_rest_3D(barrier)
+    # large compression: the barrier grows steeply, still consistent with its derivatives
+    test_derivatives__(barrier, K, TensorValue(-0.9, 0.0, 0.0, -0.5); rtol=1e-10)
+    test_derivatives__(barrier, K, TensorValue(-0.9, 0.0, 0.0, 0.0, -0.5, 0.0, 0.0, 0.0, -0.7); rtol=1e-10)
+  end
+  Ψ, ∂Ψu, ∂Ψuu = LogBarrier(κ=1.0, p=2)()
+  @test Ψ(I2) == 0 && Ψ(I3) == 0
+  @test isnan(Ψ(TensorValue(-1.0, 0.0, 0.0, 1.0))) && all(isnan, ∂Ψu(TensorValue(-1.0, 0.0, 0.0, 1.0)).data)
+  @test Ψ(0.01 * I2) > Ψ(0.5 * I2) > 0
+  @test_throws ArgumentError LogBarrier(κ=1.0, p=0)
+  # composition with the third-medium model of the piston
+  tm = ARAP2D(μ=1e-6) + LogBarrier(κ=1e-6, p=2)
+  test_derivatives_2D_(tm, K; rtol=1e-8)
+end
+
+@testset "TangentSwitch in HessianRegularization" begin
+  model = NonlinearMooneyRivlin2D(λ=2.0, μ1=1.0, μ2=1.0, α1=1.0, α2=1.0)
+  _, _, ∂Ψuu = model()
+  F = TensorValue(1.0, 0.0, 0.0, 1.0) + TensorValue(-0.6, 0.3, 0.2, -0.5)
+  C = ∂Ψuu(F)
+  δ = 1e3                                             # above every eigenvalue: the clamp changes the tangent
+  switch = TangentSwitch()
+  _, _, ∂Ψuu_sw = HessianRegularization(model; δ=δ, switch=switch)()
+  _, _, ∂Ψuu_al = HessianRegularization(model; δ=δ)()
+  @test !is_projected(switch)
+  @test ∂Ψuu_sw(F) == C                               # consistent while the switch is off
+  set_projected!(switch, true)
+  @test is_projected(switch)
+  @test ∂Ψuu_sw(F) == ∂Ψuu_al(F) == regularize_hessian(C, δ)
+  @test ∂Ψuu_sw(F) != C                               # this tangent is indefinite: clamped
+  set_projected!(switch, false)
+  @test ∂Ψuu_sw(F) == C
+  # symmetrize: (C + Cᵀ)/2 before diagonalising; equal to round-off for a symmetric tangent
+  _, _, ∂Ψuu_sy = HessianRegularization(model; δ=δ, symmetrize=true)()
+  @test isapprox(∂Ψuu_sy(F), ∂Ψuu_al(F), rtol=1e-12)
+  # a tangent with every eigenvalue above δ is returned unchanged
+  @test HessianRegularization(model; δ=-1e3)()[3](F) == C
+end
+
 @testset "composition of HGO_1Fiber" begin
   c1 = [0.6639232500447778, 0.5532987701062146, 0.9912576142028674, 0.4951942011240962]
   c2 = [0.800583033264982, 0.3141082734275339, 0.8063905248474006, 0.5850486948450955]

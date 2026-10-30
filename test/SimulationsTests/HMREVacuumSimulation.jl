@@ -4,8 +4,7 @@
 # BoundaryConditions and the Coupling prescription. Mesh test/models/Short_magnet.msh (25 375 dofs).
 # The test is reduced: half of the applied potential and four staggered steps. The example of HyperFEMKernels
 # (examples/hmre_vacuum_2d) builds the full problem with `hmre_vacuum_model`.
-using Gridap, GridapGmsh, GridapSolvers
-using GridapSolvers.NonlinearSolvers
+using Gridap, GridapGmsh
 using Gridap.FESpaces
 using Gridap.CellData
 using HyperFEM
@@ -116,11 +115,11 @@ function hmre_vacuum_model(backend::Symbol; φbot=0.2 * 5200, verbose=false)
   jac_vacmech(Λ) = (u, du, v) -> ∫(∇(v)' ⊙ ((∂Ψvm∂FF ∘ (F ∘ (∇(u)'))) ⊙ (∇(du)')))dΩvacuum_mec
 
   # Computational problems
-  nls_mag = NewtonSolver(LUSolver(); maxiter=20, atol=1.e-9, rtol=1.e-8, verbose=verbose)
+  nls_mag = NewtonRaphson(LUSolver(); maxiter=20, atol=1.e-9, rtol=1.e-8, verbose=verbose)
   cm_mag = StaticNonlinearModel(res_mag, jac_mag, Uφ⁺, Vφ, Dφ; nls=nls_mag, xh=φh⁺, backend=backend)
-  nls_mech = NewtonSolver(LUSolver(); maxiter=20, atol=1.e-6, rtol=1.e-2, verbose=verbose)
+  nls_mech = NewtonRaphson(LUSolver(); maxiter=20, atol=1.e-6, rtol=1.e-2, verbose=verbose)
   cm_mech = StaticNonlinearModel(res_mech, jac_mech, Uu_solid⁺, Vu_solid, Du_solid; nls=nls_mech, xh=uh_solid⁺, backend=backend)
-  nls_vacmech = NewtonSolver(LUSolver(); maxiter=10, rtol=2, verbose=verbose)
+  nls_vacmech = NewtonRaphson(LUSolver(); maxiter=10, rtol=2, verbose=verbose)
   cm_vacmech = StaticNonlinearModel(res_vacmech, jac_vacmech, Uu_vacuum⁺, Vu_vacuum, Du_vacuum; nls=nls_vacmech, xh=uh_vacuum⁺, backend=backend)
   comp_model = StaggeredModel((cm_mag, cm_mech, cm_vacmech), (φh⁺, uh_solid⁺, uh_vacuum⁺), (φh⁻, uh_solid⁻, uh_vacuum⁻))
 

@@ -174,4 +174,26 @@ end
     agree(r, s -> s.fpiston)
   end
 
+  # Piston with the configuration of the note "Solver improvements for third-medium contact" (2026-10-25):
+  # barrier p = 2, w ≡ 1, λ = 6μ, exact injectivity step with J_min, Armijo, hybrid Newton; fixed ΔΛ0 (the step
+  # growth belongs to the driver refactor, R2), up to u_y ≈ 3.5 d, past the first snap. Local only (several
+  # minutes): HYPERFEM_TEST_LONG=1. The full loading to 15 d against Horák's curve is R2's acceptance test.
+  if get(ENV, "HYPERFEM_TEST_LONG", "0") == "1"
+    @testset "ThirdMediumContact, note configuration to 3.5 d (local)" begin
+      s = thirdmedium_contact_simulation(; backend=:lazy, uy_max=0.35, nsteps=235, maxbisec=5, ProjectDirichlet=true,
+                                           weight=false, kb=1.0, pvol=2, λsolid=6.0, hybrid=true, armijo=true,
+                                           jmin=1e-6, maxiter=500, verbose=1)
+      fps = s.fpiston .* (s.fcr / s.fcr_plane_strain)              # Horák's normalisation (plane strain)
+      @test s.flag == 1 && s.Λ[end] ≈ 1.0
+      imax = argmax(fps)
+      @test s.uy_over_d[imax] < 3.4 && fps[end] < fps[imax]          # the first snap happened before 3.5 d
+      @test all(abs.(s.fpiston .- s.fclamp) .< 1e-2 .* abs.(s.fpiston))   # equilibrium of the beam
+      for (x, ref) in ((1.0, 1.077), (2.0, 1.306), (3.0, 3.434), (3.5, 2.676))   # Horák, Fig. 3b (P2 in the paper)
+        i = argmin(abs.(s.uy_over_d .- x))
+        println("  u_y/d = $(round(s.uy_over_d[i], digits=3))  f_piston/f_cr = $(round(fps[i], digits=3))  (Horák $ref)")
+      end
+      println("  Newton: $(s.nls.log.niters) iterations, $(s.nls.log.nswitches) switches, $(round(100 * s.nls.log.nprojected / max(s.nls.log.niters, 1), digits=1)) % projected")
+    end
+  end
+
 end

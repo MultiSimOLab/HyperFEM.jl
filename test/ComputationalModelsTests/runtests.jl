@@ -12,4 +12,8 @@ using Test
     include("BoundaryConditionsTests.jl")
   end
 
+  @time begin
+    include("DriversTests.jl")
+  end
+
 end

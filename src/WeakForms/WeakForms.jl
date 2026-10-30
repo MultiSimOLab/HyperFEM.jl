@@ -6,10 +6,19 @@ using HyperFEM.PhysicalModels
 
 export residual
 export jacobian
+export energy
 export mass_term
 export (+)
 
 import Gridap.Algebra:residual,jacobian
+
+"""
+    energy(op, x)
+
+Incremental energy of an operator at the state `x` (see `HyperFEM.Solvers.ModelOperator`); the
+methods for the physical models follow.
+"""
+function energy end
 import Base: +
 
 # ===================
@@ -50,6 +59,20 @@ function jacobian(physicalmodel::Mechano, km::KinematicModel, u, du, v, dΩ, Λ=
   _, _, ∂Ψuu = physicalmodel()
   F, _, _    = get_Kinematics(km; Λ=Λ)
   ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘∇(u)', vars...)) ⊙ ∇(du)'))dΩ
+end
+
+"""
+    energy(physicalmodel, km, u, dΩ, Λ=1.0, vars...)::Gridap.CellData.DomainContribution
+
+Stored energy of the constitutive model over `dΩ` for the displacement `u`; its first variation is
+`residual(physicalmodel, km, u, v, dΩ, Λ, vars...)`. Summed over the subdomains of a model (plus
+the regularisation terms and the Neumann work, added by the driver) it is the energy of the
+Armijo line search ([`InjectivityLS`](@ref) with `armijo = true`).
+"""
+function energy(physicalmodel::Mechano, km::KinematicModel, u, dΩ, Λ=1.0, vars...)
+  Ψ, _, _ = physicalmodel()
+  F, _, _ = get_Kinematics(km; Λ=Λ)
+  ∫(Ψ ∘ (F∘∇(u)', vars...))dΩ
 end
 
 

@@ -12,6 +12,42 @@ function solve!(::ComputationalModel, ::Float64)
     @abstractmethod
 end
 
+# Convergence, verbosity and step messages of the nonlinear solver of a model. HyperFEM's `NewtonRaphson`
+# answers through its log; other solvers add their own methods (GridapSolvers' `NewtonSolver` through the
+# extension HyperFEMGridapSolversExt, deprecated).
+nls_converged(nls::NewtonRaphson) = Solvers.converged(nls)
+nls_message(nls::NewtonRaphson, msg) = Solvers.verbosity(nls) >= 1 && print(msg)
+nls_verbosity(nls::NewtonRaphson) = Solvers.verbosity(nls)
+nls_converged(nls::NonlinearSolver) = error("HyperFEM: the drivers cannot tell whether $(typeof(nls)) converged; " *
+    "use NewtonRaphson or add a method of HyperFEM.ComputationalModels.nls_converged")
+nls_message(::NonlinearSolver, msg) = nothing
+nls_verbosity(::NonlinearSolver) = 0
+nls_reset!(nls::NewtonRaphson) = Solvers.reset!(nls.log)
+nls_reset!(::NonlinearSolver) = nothing
+
+# Output of the incremental drivers: `verbose = 1` one line per attempt and a summary of the run;
+# `verbose ≥ 2` a header per step before solving (the solver prints its iterations) and the summary.
+function step_header(v::Int, n::Int, Λ, ΔΛ)
+    v >= 2 || return
+    printstyled(@sprintf("━━ Step %d ━━ Λ = %.4f  ΔΛ = %.4f ━━\n", n, Λ, ΔΛ); bold=true)
+end
+function step_line(v::Int, nls::NewtonRaphson, n::Int, Λ, ΔΛ, ok::Bool, t)
+    v == 1 || return
+    r = residual_history(nls)[end]
+    np = count(==(:projected), mode_history(nls))
+    @printf("step %4d  Λ = %.4f  ΔΛ = %.4f  it = %3d  ‖R‖ = %.3e  ", n, Λ, ΔΛ, num_iterations(nls), r)
+    printstyled(ok ? "✓" : "✗ → bisect"; color=ok ? :green : :yellow)
+    np > 0 && print("  (projected $np)")
+    @printf("  %.2f s\n", t)
+end
+step_line(v::Int, ::NonlinearSolver, n, Λ, ΔΛ, ok, t) = nothing
+function run_summary(v::Int, nls::NewtonRaphson, Λ, nsteps::Int, nbisect::Int, t)
+    v >= 1 || return
+    @printf("Λ = %.4f reached: %d steps, %d bisections, %.2f s\n", Λ, nsteps, nbisect, t)
+    print_summary(nls.log)
+end
+run_summary(v::Int, ::NonlinearSolver, Λ, nsteps, nbisect, t) = nothing
+
 
 #*******************************************************************************	
 #    					 StaggeredModel
@@ -119,15 +155,28 @@ dirichlet_projection(::Val{B}, res, jac, uh, ∆U, V, ls, previous) where {B} =
     error("HyperFEM: backend :$B is not available; for :compiled load HyperFEMKernels (`using HyperFEMKernels`)")
 
 """
-    StaticNonlinearModel(res, jac, U, V, dirichlet; neumann=nothing, nls, xh, xh⁻, backend=:lazy)
+    StaticNonlinearModel(res, jac, U, V, dirichlet; neumann=nothing, nls, xh, xh⁻, backend=:lazy,
+                         injectivity=nothing, energy=nothing, tangent_switch=nothing)
 
 `res(τ)` and `jac(τ)` are functions of the stage parameter τ of the solver. `dirichlet` are the
 `BoundaryConditions` of `U`; `neumann`, if any, the [`NeumannConditions`](@ref) added to the residual by
 the driver at the load of every step. The model owns the Dirichlet applicators of its spaces
 (`get_applicators`: those of `U`, `∆U` and the space of `xh⁻`). `backend` selects the algebraic operator
 (see `build_operator`).
+
+`injectivity` is the measure whose quadrature points must keep `det F > 0` (`dΩ`, or `(dΩ, i)` when
+the displacement is the field `i` of a multi-field space); it gives the injectivity step of
+[`InjectivityLS`](@ref) and the safe load factor of the Dirichlet projection (see
+[`injectivity_step`](@ref)). `energy(τ) = u -> ∫(…)dΩ + …` is the total potential energy of the
+model whose first variation is `res(τ)`: the stored energy of every subdomain (`energy(model, km, u, dΩ)`
+of `WeakForms`) plus the regularisation terms; the driver adds the work of the Neumann loads. It is
+the energy of the Armijo line search (`InjectivityLS(armijo = true)`), for minimisation problems
+only. `tangent_switch` is the `TangentSwitch` shared by the `HessianRegularization` wrappers of the
+models in `jac`, which the hybrid Newton (`HybridTangent`) flips between the consistent and the
+projected tangent. The solver receives the operator of the backend wrapped in a
+[`ModelOperator`](@ref) with these hooks.
 """
-struct StaticNonlinearModel{A,B,C,D,E,F,G} <: ComputationalModel
+struct StaticNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
     res::A
     jac::B
     spaces::C
@@ -135,15 +184,19 @@ struct StaticNonlinearModel{A,B,C,D,E,F,G} <: ComputationalModel
     neumann::E
     applicators::F
     caches::G
+    hooks::H
 
     function StaticNonlinearModel(
         res::Function, jac::Function, U, V, dirbc;
         neumann=nothing,
         assem_U=SparseMatrixAssembler(U, V),
-        nls::NonlinearSolver=NewtonSolver(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
+        nls::NonlinearSolver=NewtonRaphson(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
         xh::FEFunction=FEFunction(U, zero_free_values(U)),
         xh⁻::FEFunction=FEFunction(U, zero_free_values(U)),
-        backend::Symbol=:lazy)
+        backend::Symbol=:lazy,
+        injectivity=nothing,
+        energy=nothing,
+        tangent_switch=nothing)
 
         ∆U = TrialFESpace(U, dirbc, 0.0)
         Un = get_fe_space(xh⁻)
@@ -153,18 +206,53 @@ struct StaticNonlinearModel{A,B,C,D,E,F,G} <: ComputationalModel
         spaces = (U, V, ∆U, Un)
         x = get_free_dof_values(xh)
         x⁻ = get_free_dof_values(xh⁻)
-        # x⁻ = zero_free_values(U)
+        hooks = (injectivity=_injectivity_hook(injectivity), energy=energy, tangent_switch=tangent_switch)
         _res = with_neumann(res(1.0), neumann, 1.0)
         _jac = jac(1.0)
         op = build_operator(Val(backend), _res, _jac, U, V, assem_U, nothing)
-        nls_cache = instantiate_caches(x, nls, op)
+        nls_cache = instantiate_caches(x, nls, model_operator(hooks, spaces, neumann, op, 1.0, 1.0))
         caches = (nls, nls_cache, x, x⁻, assem_U, Val(backend), Ref{Any}(op), Ref{Any}(nothing))
 
         A, B, C = typeof(res), typeof(jac), typeof(spaces)
-        D, E, F, G = typeof(dirbc), typeof(neumann), typeof(applicators), typeof(caches)
-        return new{A,B,C,D,E,F,G}(res, jac, spaces, dirbc, neumann, applicators, caches)
+        D, E, F, G, H = typeof(dirbc), typeof(neumann), typeof(applicators), typeof(caches), typeof(hooks)
+        return new{A,B,C,D,E,F,G,H}(res, jac, spaces, dirbc, neumann, applicators, caches, hooks)
     end
 end
+
+_injectivity_hook(::Nothing) = nothing
+_injectivity_hook(dΩ::Measure) = (dΩ, nothing)
+_injectivity_hook(inj::Tuple{Measure,Int}) = inj
+_injectivity_hook(inj) = error("HyperFEM: `injectivity` must be a Measure or a tuple (Measure, field index); got $(typeof(inj))")
+
+_field(uh, ::Nothing) = uh
+_field(uh, i::Int) = uh[i]
+
+"""
+    injectivity_step(m::StaticNonlinearModel, xh, dxh, β, jmin) -> α
+
+Injectivity step of the model (`injectivity = …`) from the state `xh` along the increment `dxh`.
+"""
+function Solvers.injectivity_step(m::StaticNonlinearModel, xh, dxh, β, jmin)
+    inj = m.hooks.injectivity
+    inj === nothing && error("HyperFEM: the model has no `injectivity = …` measure for the injectivity step")
+    injectivity_step(inj[1], _field(xh, inj[2]), _field(dxh, inj[2]), β, jmin)
+end
+
+# The operator handed to the Newton: the operator of the backend with the hooks of the model at the
+# stage Λ and the load loadΛ of the step
+function model_operator(hooks, spaces, neumann, op, Λ, loadΛ)
+    U, V = spaces[1], spaces[2]
+    inj = hooks.injectivity
+    ms = inj === nothing ? nothing :
+        (x, dx, β, jmin) -> injectivity_step(inj[1], _field(FEFunction(U, x), inj[2]), _field(FEFunction(V, dx), inj[2]), β, jmin)
+    en = hooks.energy === nothing ? nothing : _energy_function(with_neumann_energy(hooks.energy(Λ), neumann, loadΛ), U)
+    ModelOperator(op; max_step=ms, energy=en, tangent_switch=hooks.tangent_switch)
+end
+model_operator(m::StaticNonlinearModel, op, Λ=1.0, loadΛ=1.0) = model_operator(m.hooks, m.spaces, m.neumann, op, Λ, loadΛ)
+
+# Energy of the model at the free values x (Gridap's lazy evaluation for every backend; the engine's
+# scalar functionals are a follow-up of HyperFEMKernels)
+_energy_function(e, U) = x -> sum(e(FEFunction(U, x)))
 
 # Getters
 get_state(m::StaticNonlinearModel) = FEFunction(get_trial_space(m), m.caches[3])
@@ -194,6 +282,9 @@ function solve!(m::StaticNonlinearModel;
     app_U, _, app_Un = m.applicators
     TrialFESpace!(U, app_U, load(0.0); stage=0.0)
     nls, nls_cache, x, x⁻, assem_U = m.caches[1:5]
+    verbose = nls_verbosity(nls)
+    nls_reset!(nls)
+    t_run = time()
 
     Λ = 0.0
     ∆Λ = 1.0 / stepping[:nsteps]
@@ -228,18 +319,21 @@ function solve!(m::StaticNonlinearModel;
         jac = m.jac(Λ)
         op = build_operator(m.caches[6], res, jac, U, V, assem_U, m.caches[7][])
         m.caches[7][] = op
-        Algebra.solve!(x, nls, op, nls_cache)
-        r_abs = nls.log.residuals[nls.log.num_iters+1]
-        r_rel = r_abs / nls.log.residuals[1]
-        if !converged(nls.log.tols, nls.log.num_iters, r_abs, r_rel)
+        step_header(verbose, Λ_ + 1, Λ, ∆Λ)
+        t_step = time()
+        Algebra.solve!(x, nls, model_operator(m, op, Λ, load(Λ)), nls_cache)
+        ok = nls_converged(nls)
+        step_line(verbose, nls, Λ_ + 1, Λ, ∆Λ, ok, time() - t_step)
+        if !ok
             @warn "Bisection performed!"
+            # back to the last converged step: state, load factor (∆Λ already includes α) and the Dirichlet
+            # values of U, so that the next attempt (and its Dirichlet projection) starts from a consistent state
             x .= x⁻
-            Λ -= α * ∆Λ
+            Λ -= ∆Λ
             ∆Λ = ∆Λ / 2
+            TrialFESpace!(U, app_U, load(Λ); stage=Λ)
             nbisect += 1
-            # @assert(nbisect <= stepping[:maxbisec], "Maximum number of bisections reached")
         else
-            print_message(nls.log, "\nSTEP: $Λ_, Λ: $Λ\n")
             Λ_ += 1
             # Write to PVD
             post(Λ)
@@ -255,6 +349,7 @@ function solve!(m::StaticNonlinearModel;
 
     end
 
+    run_summary(verbose, nls, Λ, Λ_, nbisect, time() - t_run)
     vtk_save(post)
 
     return x, flagconv
@@ -274,13 +369,17 @@ function post_solve!(pvd, x, Λ, Λ_, m, filePath)
     return pvd
 end
 
-function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, ::Newton_RaphsonSolver, load=identity)
+function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, nls::NewtonRaphson, load=identity)
     duh = get_dirichlet_preconditioner(m, Λ, ∆Λ, load)
-    # update step
-    α = update_cellstate!(m.caches[1].linesearch, get_state(m), duh)
-    x .+= α * get_free_dof_values(duh)
+    # safe load factor: the injectivity step of the line search along the Dirichlet increment
+    α = dirichlet_step(nls.linesearch, m, get_state(m), duh)
+    x .+= α .* get_free_dof_values(duh)
     return α
 end
+
+# Safe load factor of the Dirichlet projection for each line search
+dirichlet_step(ls::Solvers.AbstractLineSearch, m, xh, dxh) = update_cellstate!(ls, xh, dxh)
+dirichlet_step(ls::InjectivityLS, m, xh, dxh) = injectivity_step(m, xh, dxh, ls.β, ls.jmin)
 
 function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, ::Any, load=identity)
     duh = get_dirichlet_preconditioner(m, Λ, ∆Λ, load)
@@ -317,7 +416,7 @@ struct DynamicNonlinearModel{A,B,C,D,E,F,G} <: ComputationalModel
     function DynamicNonlinearModel(
         res::Function, jac::Function, U, Uold, V, dirbc, velocity::TimedependentCondition;
         assem_U=SparseMatrixAssembler(U, V),
-        nls::NonlinearSolver=NewtonSolver(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
+        nls::NonlinearSolver=NewtonRaphson(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
         xh::FEFunction=FEFunction(U, zero_free_values(U)))
 
         spaces = (U, V, Uold)
@@ -422,7 +521,7 @@ function solve!(m::DynamicNonlinearModel;
 
         update_velocity!(m.velocity.vh, x, x⁻, Δt)
         x⁻ .= x
-        print_message(nls.log, "\nStep: $itime, Time: $t\n")
+        nls_message(nls, "\nStep: $itime, Time: $t\n")
         post(t)
 
 

@@ -1,6 +1,4 @@
-using Gridap, GridapSolvers
-using GridapSolvers.NonlinearSolvers
-using GridapSolvers.LinearSolvers
+using Gridap
 using TimerOutputs
 using Gridap.FESpaces
 using HyperFEM
@@ -45,7 +43,7 @@ function static_mechanical_neumann_simulation(; backend=:lazy, writevtk=false, v
   jac(Λ) = (u, du, v) -> jacobian(physmodel, k, u, du, v, dΩ)
 
   ls = LUSolver()
-  nls = NewtonSolver(ls; maxiter=20, atol=1.e-10, rtol=1.e-8, verbose=verbose)
+  nls = NewtonRaphson(ls; maxiter=20, atol=1.e-10, rtol=1.e-8, verbose=verbose)
 
   comp_model = StaticNonlinearModel(res, jac, U, V, D_bc; neumann=N_bc, nls=nls, backend=backend)
 

@@ -63,29 +63,104 @@ function (obj::CoerciveVolumetric)(::Float64=1.0)
 end
 
 
+"""
+    LogBarrier(; κ, p=2)
+
+Volumetric barrier
+
+```math
+\\Psi = \\frac{\\kappa}{2p} (\\ln J)^{2p}
+```
+
+negligible at moderate `J` and steep as `J → 0` (the third medium of contact problems, with
+`κ = kb·μ·fc` and `p = 2`); `Ψ`, `∂Ψ/∂F` and `∂²Ψ/∂F∂F` are `NaN` for `J ≤ 0`, so that a trial state
+with inverted elements is rejected by an energy line search. 2D and 3D (`∂H/∂F` dispatched on the
+dimension). Composes with any `IsoElastic` model (`ARAP2D(μ=…) + LogBarrier(κ=…, p=2)`).
+"""
+struct LogBarrier <: Volumetric
+  κ::Float64
+  p::Int
+  function LogBarrier(; κ::Float64, p::Int=2)
+    p >= 1 || throw(ArgumentError("LogBarrier: p must be ≥ 1"))
+    new(κ, p)
+  end
+end
+
+_lnJ(J) = J > 0 ? log(J) : oftype(J, NaN)
+_∂H∂F(F::TensorValue{2,2}) = _∂H∂F_2D()
+_∂H∂F(F::TensorValue{3,3}) = ×ᵢ⁴(F)
+
+function (obj::LogBarrier)(::Float64=1.0)
+  κ, p = obj.κ, obj.p
+  J(F) = det(F)
+  H(F) = det(F) * inv(F)'
+  Ψ(F) = (κ / (2p)) * _lnJ(J(F))^(2p)
+  ∂Ψ_∂J(F) = κ * _lnJ(J(F))^(2p - 1) / J(F)
+  ∂Ψ2_∂J2(F) = κ * ((2p - 1) * _lnJ(J(F))^(2p - 2) - _lnJ(J(F))^(2p - 1)) / J(F)^2
+  ∂Ψu(F) = ∂Ψ_∂J(F) * H(F)
+  ∂Ψuu(F) = ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂J(F) * _∂H∂F(F)
+  return (Ψ, ∂Ψu, ∂Ψuu)
+end
+
 # ============================================
 # Regularization of Mechanical models
 # ============================================
 
-struct HessianRegularization <: Mechano
+"""
+    TangentSwitch()
+
+Flag shared by the [`HessianRegularization`](@ref) wrappers of the constitutive models of a problem
+and the Newton solver (`HybridTangent`): while `is_projected(switch)` the wrapped tangents are
+projected (eigenvalues clamped from below), otherwise they are the consistent ones. The solver flips
+it with `set_projected!` through the driver (`tangent_switch = switch`); the weak form is written
+once and reads the flag at every quadrature point.
+"""
+mutable struct TangentSwitch
+  projected::Bool
+end
+TangentSwitch() = TangentSwitch(false)
+is_projected(s::TangentSwitch) = s.projected
+set_projected!(s::TangentSwitch, v::Bool) = (s.projected = v; s)
+
+"""
+    HessianRegularization(mechano; δ=1e-6, switch=nothing, symmetrize=false)
+
+Mechanical model with the material tangent `∂²Ψ/∂F∂F` of `mechano` projected at every point: its
+eigenvalues are clamped from below at `δ` (`regularize_hessian`); energy and stress are unchanged.
+With a [`TangentSwitch`](@ref) the projection applies only while `is_projected(switch)`, so that
+the hybrid Newton switches between the consistent and the projected tangent without a second weak
+form. `symmetrize = true` diagonalises `(C + Cᵀ)/2` (for tangents that are not symmetric to
+round-off); by default the upper triangle is used, as `eigen(Symmetric(C))`.
+"""
+struct HessianRegularization{S} <: Mechano
   mechano::Mechano
   δ::Float64
+  switch::S
+  symmetrize::Bool
 
-  function HessianRegularization(mechano::Mechano; δ::Float64=1.0e-6)
-    new(mechano, δ)
+  function HessianRegularization(mechano::Mechano; δ::Float64=1.0e-6, switch=nothing, symmetrize::Bool=false)
+    new{typeof(switch)}(mechano, δ, switch, symmetrize)
   end
 
-  function HessianRegularization(; mechano::Mechano, δ::Float64=1.0e-6)
-    new(mechano, δ)
+  function HessianRegularization(; mechano::Mechano, δ::Float64=1.0e-6, switch=nothing, symmetrize::Bool=false)
+    new{typeof(switch)}(mechano, δ, switch, symmetrize)
   end
+end
 
-  function (obj::HessianRegularization)(Λ::Float64=1.0)
-    Ψs, ∂Ψs, ∂2Ψs = obj.mechano()
-    δ = obj.δ
+_symmetrize(C::TensorValue{N,N}) where {N} = 0.5 * (C + C')
 
-    ∂2Ψ(F) = regularize_hessian(∂2Ψs(F), δ)
-    return (Ψs, ∂Ψs, ∂2Ψ)
-  end
+function (obj::HessianRegularization{Nothing})(Λ::Float64=1.0)
+  Ψs, ∂Ψs, ∂2Ψs = obj.mechano()
+  δ, sym = obj.δ, obj.symmetrize
+  ∂2Ψ(F) = regularize_hessian(sym ? _symmetrize(∂2Ψs(F)) : ∂2Ψs(F), δ)
+  return (Ψs, ∂Ψs, ∂2Ψ)
+end
+
+function (obj::HessianRegularization{TangentSwitch})(Λ::Float64=1.0)
+  Ψs, ∂Ψs, ∂2Ψs = obj.mechano()
+  δ, sym, switch = obj.δ, obj.symmetrize, obj.switch
+  ∂2Ψ(F) = is_projected(switch) ? regularize_hessian(sym ? _symmetrize(∂2Ψs(F)) : ∂2Ψs(F), δ) : ∂2Ψs(F)
+  return (Ψs, ∂Ψs, ∂2Ψ)
 end
 
 

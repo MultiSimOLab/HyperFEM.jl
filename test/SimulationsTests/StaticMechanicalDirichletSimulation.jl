@@ -1,6 +1,4 @@
-using Gridap, GridapSolvers
-using GridapSolvers.NonlinearSolvers
-using GridapSolvers.LinearSolvers
+using Gridap
 using TimerOutputs
 using Gridap.FESpaces
 using HyperFEM
@@ -46,7 +44,7 @@ function static_mechanical_dirichlet_simulation(; backend=:lazy, writevtk=false,
 
   #computational model
   ls = LUSolver()
-  nls = NewtonSolver(ls; maxiter=15, rtol=1.e-12, verbose=verbose)
+  nls = NewtonRaphson(ls; maxiter=15, rtol=1.e-12, verbose=verbose)
 
   comp_model = StaticNonlinearModel(res, jac, U, V, D_bc; nls=nls, backend=backend)
 

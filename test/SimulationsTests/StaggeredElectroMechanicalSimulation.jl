@@ -1,4 +1,4 @@
-using Gridap, Gridap.FESpaces, GridapSolvers, GridapSolvers.NonlinearSolvers
+using Gridap, Gridap.FESpaces
 using HyperFEM
 using HyperFEM: jacobian
 
@@ -73,7 +73,7 @@ function staggered_electro_mechanical_simulation(; backend=:lazy, writevtk=false
 
   # nonlinear solver
   ls = LUSolver()
-  nls_ = NewtonSolver(ls; maxiter=20, atol=1.e-10, rtol=1.e-8, verbose=verbose)
+  nls_ = NewtonRaphson(ls; maxiter=20, atol=1.e-10, rtol=1.e-8, verbose=verbose)
   comp_model_elec = StaticNonlinearModel(res_elec, jac_elec, Uφ, Vφ, Dφ; nls=nls_, xh=φh⁺, backend=backend)
   comp_model_mec = StaticNonlinearModel(res_mec, jac_mec, Uu, Vu, Du; nls=nls_, xh=uh⁺, backend=backend)
   comp_model= StaggeredModel((comp_model_elec,comp_model_mec), (φh⁺,uh⁺), (φh⁻,uh⁻))
