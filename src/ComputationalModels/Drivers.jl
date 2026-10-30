@@ -142,10 +142,11 @@ Work data of the incremental nonlinear drivers, typed so that the hot path of th
 dynamic dispatch: the nonlinear solver `nls` and its cache, the free values `x` of the state and
 `x⁻` of the last converged step, the assembler `assem` of the lazy backend (`nothing` for the
 others), the `backend` and its operator `op` of the current step (rebuilt or updated by
-[`build_operator`](@ref) at every step, hence a field of a fixed type), and the operator of the
-Dirichlet projection, `projection` (`nothing` until the first projection; its type depends on the
-backend and on the projection, so it is left untyped until the projection moves to the Newton
-cache).
+[`build_operator`](@ref) at every step, hence a field of a fixed type), and the backend operator of
+the Dirichlet projection, `projection` (`nothing` until the first projection and for the lazy
+backend; the kernel operator on `∆U` of the compiled one, reused with `update`; its type depends on
+the backend, so it is untyped — one dynamic dispatch per projected step). The projection system
+itself lives in the tangent, residual and increment of `nls_cache` ([`dirichlet_projection!`](@ref)).
 """
 mutable struct NonlinearStepCache{N<:NonlinearSolver,C,X<:AbstractVector,A,B<:AbstractBackend,O}
     const nls::N

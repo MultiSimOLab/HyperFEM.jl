@@ -111,3 +111,25 @@ end
   x2, _ = @test_logs min_level = Logging.Error solve!(m2; stepping=LoadStepping(nsteps=2, maxbisec=1))
   @test x2 == x
 end
+
+# A line search whose safe load factor of the Dirichlet projection is zero
+struct ZeroStepLS <: HyperFEM.Solvers.AbstractLineSearch end
+HyperFEM.Solvers.update_cellstate!(::ZeroStepLS, xh, dxh) = 0.0
+(::ZeroStepLS)(x, dx, b, op) = 1.0
+
+@testset "Restart and a zero safe load factor" begin
+  nls = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-12, rtol=1e-12, verbose=0)
+  p = drivers_test_problem()
+  m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=nls)
+  x, _ = solve!(m; stepping=(nsteps=2, maxbisec=0))
+  xref = copy(x)
+  # RestartState clears the state, NaNs included
+  m.caches.x .= NaN
+  x, flag = solve!(m; stepping=(nsteps=2, maxbisec=0), RestartState=true)
+  @test flag == 1 && x == xref
+  # a zero safe load factor cannot advance the stage: an error instead of an endless loop
+  p = drivers_test_problem()
+  nls0 = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-12, rtol=1e-12, verbose=0, linesearch=ZeroStepLS())
+  m0 = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=nls0)
+  @test_throws ErrorException solve!(m0; stepping=(nsteps=2, maxbisec=0), ProjectDirichlet=true)
+end
