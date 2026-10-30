@@ -316,10 +316,6 @@ get_applicators(m::StaticNonlinearModel) = m.applicators
 get_assemblers(m::StaticNonlinearModel) = m.caches.assem
 
 
-# is_vtk=true,
-#   filePath=datadir("sims", "Temp"),
-#   vtk::WriteVTK.CollectionFile=paraview_collection(datadir("sims", "Temp") * "/Results", append=false)
-
 """
     solve!(m::StaticNonlinearModel; stepping, RestartState, ProjectDirichlet, post, load=identity)
 
@@ -360,14 +356,10 @@ function solve!(m::StaticNonlinearModel;
         if ProjectDirichlet
             α = dirichlet_preconditioning!(x, m, Λ, ∆Λ, nls, load)
         end
-        #@show α
         Λ -= ∆Λ
         ∆Λ = α * ∆Λ
         TrialFESpace!(Un, app_Un, load(Λ); stage=Λ)
         Λ += ∆Λ
-
-        # U.dirichlet_values .+= α*∆U.dirichlet_values
-
         TrialFESpace!(U, app_U, load(Λ); stage=Λ)
 
         res = with_neumann(m.res(Λ), m.neumann, load(Λ))
@@ -394,7 +386,6 @@ function solve!(m::StaticNonlinearModel;
             post(Λ)
             x⁻ .= x
         end
-        #  GC.gc()
 
         if nbisect > stepping[:maxbisec]
             @warn "Maximum number of bisections reached"
@@ -408,20 +399,6 @@ function solve!(m::StaticNonlinearModel;
     vtk_save(post)
 
     return x, flagconv
-end
-
-function post_solve!(pvd, x, Λ, Λ_, m, filePath)
-
-    Ω = get_triangulation(get_spaces(m)[1])
-    xh = FEFunction(get_trial_space(m), x)
-
-    Λstring = replace(string(round(Λ, digits=2)), "." => "_")
-    pvd[Λ_] = createvtk(Ω,
-        filePath * "/_Λ_" * Λstring * "_TIME_$Λ_" * ".vtu",
-        cellfields=["u" => xh],
-    )
-
-    return pvd
 end
 
 function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, nls::NewtonRaphson, load=identity)
@@ -552,11 +529,6 @@ function solve!(m::DynamicNonlinearModel;
     nsteps = stepping[:nsteps]
     c = m.caches
     nls, nls_cache, x, x⁻, assem_U, uh⁻ = c.nls, c.nls_cache, c.x, c.x⁻, c.assem, m.state⁻
-    itime = 0
-    KE = zeros(Float64, nsteps)
-    EE = zeros(Float64, nsteps)
-
-    uh = FEFunction(U, x)
 
     for itime in 1:nsteps
         t += Δt
@@ -566,31 +538,15 @@ function solve!(m::DynamicNonlinearModel;
         TrialFESpace!(U, m.applicators[1], t)
         TrialFESpace!(U⁻, m.applicators[2], t - Δt)
 
-        # @show(    ∑( ∫(uh⁻[1]⋅uh⁻[1])m.res.dΩ  )  )
-        # @show(    ∑( ∫(uh⁻[2]⋅uh⁻[2])m.res.dΩ   ) )
-
-
         op = build_operator(c.backend, _res, _jac, U, V, assem_U, c.op)
         c.op = op
         Algebra.solve!(x, nls, op, nls_cache)
-
-        # @show(    ∑( ∫(uu[1]⋅uu[1])m.res.dΩ  )  )
-        # @show(    ∑( ∫(uu[2]⋅uu[2])m.res.dΩ   ) )
-        # @show(    ∑( ∫(uh⁻[1]⋅uh⁻[1])m.res.dΩ  )  )
-        # @show(    ∑( ∫(uh⁻[2]⋅uh⁻[2])m.res.dΩ   ) )
 
         update_velocity!(m.velocity.vh, x, x⁻, Δt)
         x⁻ .= x
         nls_message(nls, "\nStep: $itime, Time: $t\n")
         post(t)
-
-
-        # # Kinetic Energy
-        #  KE[itime] = ∑(∫(0.5  * (m.velocity.vh ⋅ m.velocity.vh))m.res.dΩ )
-        # # Elastic Energy
-        #  EE[itime] = ∑(∫(Ψ ∘ (∇(uh[1])',∇(uh[2])'))m.res.dΩ )
         GC.gc()
-
     end
     vtk_save(post)
 
@@ -856,6 +812,5 @@ end
 
 # Getters
 get_state(m::StaticLinearModel) = FEFunction(get_trial_space(m), m.caches.x)
-get_measure(m::StaticLinearModel) = m.biform.dΩ
 get_spaces(m::StaticLinearModel) = m.spaces
-get_assemblers(m::StaticLinearModel) = (m.caches[5], m.plb_caches[2], m.adj_caches[4])
+get_assemblers(m::StaticLinearModel) = m.caches.assem
