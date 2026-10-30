@@ -1,8 +1,14 @@
 
 """
-    struct IterativeSolver <: LinearSolver end
+    IterativeSolver(solver::String; kwargs...)
 
-Wrapper of the  solvers available in IterativeSolvers package in julia
+Wrapper of the solvers of the IterativeSolvers package (`solver` is the name of the function, e.g.
+`"cg"`, `kwargs` its keyword arguments; `Pl` a function of the matrix building the preconditioner).
+
+!!! warning "Deprecated"
+    It parses and evaluates `solver` at every solve, does not warm-start and rebuilds the
+    preconditioner at every Newton iteration. It will be removed in the next release; the Krylov
+    solvers with algebraic multigrid of the solver plan (stage S1) replace it.
 """
 #constructor
 struct IterativeSolver <: Gridap.Algebra.LinearSolver
@@ -11,7 +17,8 @@ struct IterativeSolver <: Gridap.Algebra.LinearSolver
 end
 
 function IterativeSolver(solver::String; kwargs...)
-  IterativeSolver(solver, kwargs)
+  Base.depwarn("`IterativeSolver` is deprecated and will be removed in the next release", :IterativeSolver)
+  IterativeSolver(solver, Dict{Symbol,Any}(kwargs))
 end
 
 

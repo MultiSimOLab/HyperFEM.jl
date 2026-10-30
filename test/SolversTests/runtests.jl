@@ -9,6 +9,10 @@ using Test
   end
 
   @time begin
+    include("LinearSolversTests.jl")
+  end
+
+  @time begin
     include("AllocationTests.jl")
   end
 
