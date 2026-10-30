@@ -20,7 +20,7 @@ Control of the time loop of a transient model with a fixed increment: the time r
 output times `tstops`; the proposed increment is kept after a cut). A failed attempt (the stage solve
 did not converge) is bisected from the last accepted step; `maxbisec` is the maximum number of
 **consecutive** bisections, the count restarts at every accepted step. After a step accepted in at
-most `easy` iterations the increment grows, `Δt ← min(grow Δt, Δt0, Δtmax)`; with `grow = 1` (the
+most `easy` iterations the increment grows, `Δt ← min(grow Δt, Δtmax)` (`Δtmax = Δt` by default: back to the initial increment after a bisection); with `grow = 1` (the
 default) a bisected increment is never grown again. The analogue of [`LoadStepping`](@ref) in time.
 """
 struct TimeStepping
@@ -172,11 +172,13 @@ after an easy step (`grown_increment`), bounded by `Δtmax`; `AdaptiveStepping`:
 controller for the error `err` of the step (`order` is the order of the scheme).
 """
 function accept!(st::TimeStep, s::TimeStepping, iterations::Int, err::Float64=NaN)
-    Δt = st.cut ? st.Δt : grown_increment(s.grow, s.easy, st.Δt_attempt, st.Δt0, true, iterations)
-    _accepted!(st, min(Δt, s.Δtmax), err)
+    Δt = st.cut ? st.Δt : grown_increment(s.grow, s.easy, st.Δt_attempt, s.Δtmax, true, iterations)
+    _accepted!(st, Δt, err)
 end
 function accept!(st::TimeStep, s::AdaptiveStepping, iterations::Int, err::Float64, order::Int)
     Δt = next_increment(s, st.Δt_attempt, err, st.err_prev, order, st.rejected)
+    # a step cut at t_end or at a tstop keeps the proposed increment (the controller would restart from the cut)
+    st.cut && (Δt = max(Δt, min(st.Δt, s.Δtmax)))
     _accepted!(st, Δt, err)
 end
 function _accepted!(st::TimeStep, Δt::Float64, err::Float64)

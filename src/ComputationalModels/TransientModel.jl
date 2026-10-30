@@ -247,6 +247,7 @@ struct TransientModel{R,J,S<:TimeScheme,SP,D,N,AP,H<:StageHistory,C,HK,MF,PH,IN,
     internal::IN
     history::UH
     initial_acceleration::Symbol
+    velocity_given::Bool                  # `vh` was given: its Dirichlet values are the initial Dirichlet velocity
 
     function TransientModel(res::Function, jac::Function, U, V, dirbc;
         scheme::TimeScheme,
@@ -296,6 +297,7 @@ struct TransientModel{R,J,S<:TimeScheme,SP,D,N,AP,H<:StageHistory,C,HK,MF,PH,IN,
         # the Dirichlet inertia vectors are assembled by the operators of the mass and damping systems (the
         # compiled backend assembles a load vector only through an operator built by `linear_system`)
         stepop.opbd, stepop.opbdC = opM, opC
+        kinetic !== nothing && derivative_order(scheme) != 2 && error("HyperFEM: the `kinetic` functional takes the velocity of the history, which the first-order schemes do not carry")
         structured && stage_energy !== nothing && error("HyperFEM: the stage energy is derived from `energy` on the structured level; `stage_energy` is for the general level")
         !structured && energy !== nothing && stage_energy === nothing && @warn "HyperFEM: on the general level the stored energy is reported only; the energy of the line searches needs `stage_energy(ctx)`"
         hooks = (injectivity=_injectivity_hook(injectivity), energy=energy, stage_energy=stage_energy, kinetic=kinetic, tangent_switch=tangent_switch)
@@ -311,7 +313,7 @@ struct TransientModel{R,J,S<:TimeScheme,SP,D,N,AP,H<:StageHistory,C,HK,MF,PH,IN,
         new{typeof(res),typeof(jac),typeof(scheme),typeof(spaces),typeof(dirbc),typeof(neumann),typeof(applicators),
             typeof(hist),typeof(caches),typeof(hooks),typeof(mass),typeof(physics),typeof(internal),typeof(history)}(
             res, jac, scheme, spaces, dirbc, neumann, applicators, hist, caches, hooks, mass, damping, mass_update,
-            mass_lumping, tangent_update, physics, internal, history, initial_acceleration)
+            mass_lumping, tangent_update, physics, internal, history, initial_acceleration, vh !== nothing)
     end
 end
 
@@ -364,10 +366,12 @@ mutable struct TransientStepCache{N<:NonlinearSolver,NC,X<:AbstractVector,A,B<:A
     coef_assembled::StageCoefficients
     projection::Any
     const energies::EnergyLog
+    const inertia_mask::Vector{Bool}       # dofs with a time derivative (rows of M with entries); all on the general level
 end
 TransientStepCache(nls, nls_cache, x, y, assem, backend, op, opM, opC, energies) =
     TransientStepCache{typeof(nls),typeof(nls_cache),typeof(x),typeof(assem),typeof(backend),typeof(op)}(
-        nls, nls_cache, x, y, assem, backend, op, opM, opC, NaN, StageCoefficients(NaN, NaN, NaN, NaN, NaN), nothing, energies)
+        nls, nls_cache, x, y, assem, backend, op, opM, opC, NaN, StageCoefficients(NaN, NaN, NaN, NaN, NaN), nothing, energies,
+        _inertia_mask(op, length(x)))
 
 
 # the forms of a stage: the user's forms of the context (general level) or the static forms at the stage
@@ -519,7 +523,8 @@ every stage of the scheme (coefficients, Dirichlet values of the stage, forms, p
 Dirichlet projection of the static tangent when `ProjectDirichlet` —, solve, `commit_stage!`). A failed
 solve bisects the increment ([`bisect!`](@ref), `on_bisection(t, Δt)`); with `AdaptiveStepping` a step
 whose error estimate exceeds the tolerance is rejected ([`reject!`](@ref), `on_reject(t, Δt, err)`);
-otherwise the step is accepted: `post(t)`, `internal(xh, xh⁻)`, the commit of the scheme (history,
+otherwise the step is accepted: `post(t)` (the state is uₙ₊₁ and the Dirichlet values those of t; the
+velocity and acceleration of the history are still vₙ, aₙ — the commit comes after), `internal(xh, xh⁻)`, the commit of the scheme (history,
 velocities and accelerations, Dirichlet values) and [`accept!`](@ref). Returns whether the step was
 accepted. On failure or rejection the state, the time, the Dirichlet values and the history are those of
 the last accepted step.
@@ -548,18 +553,24 @@ function step!(m::TransientModel, st::TimeStep, stepping::TimeControl;
     for i in 1:nstages(s)
         _build_stage!(m, st, i, tn, Δt, load)
         predict!(y, s, h, i, Δt)
-        if ProjectDirichlet && i == 1 && implicit(s, i)
+        if ProjectDirichlet && i == 1 && implicit(s, i) && projectable(s)
             α = _project_dirichlet!(m, st, tn, Δt, load)
             α > 0 || error("HyperFEM: the Dirichlet projection at t = $tn gives a zero safe load factor (α = $α): the " *
                            "state already violates the injectivity bound of the line search along the Dirichlet increment")
             if α < 1
-                # the safe load factor cuts the increment (as the static driver cuts ΔΛ): the stage is rebuilt for Δt α
+                # the safe load factor cuts the increment (as the static driver cuts ΔΛ): the stage is rebuilt
+                # for Δt α, and the physics and the presolver hear the real increment
                 Δt = α * Δt
                 t = tn + Δt
                 st.t_target, st.Δt_attempt, st.cut = t, Δt, true
+                m.physics === nothing || update_time_step!(m.physics, Δt)
+                _hook(presolver, tn, Δt)
                 _build_stage!(m, st, i, tn, Δt, load)
                 predict!(y, s, h, i, Δt)
             end
+            # the projection factorised the Newton cache with the static tangent: the linear policies must
+            # re-assemble the stage tangent
+            c.Δt_assembled = NaN
             y .+= α .* get_free_dof_values(FEFunction(m.spaces[3], c.nls_cache.dx))
         end
         ok = _solve_stage!(m, y, Δt, implicit(s, i))
@@ -570,7 +581,7 @@ function step!(m::TransientModel, st::TimeStep, stepping::TimeControl;
     err = NaN
     if ok && adaptive
         error_estimate!(s, h, y, Δt, h.Δt⁻)
-        err = weighted_error(h.e, _field_np1!(x, s, h, y, Δt), h.xn, stepping.rtol, stepping.atol, _inertia_mask(m))
+        err = weighted_error(h.e, _field_np1!(x, s, h, y, Δt), h.xn, stepping.rtol, stepping.atol, c.inertia_mask)
         ok = err <= 1.0
     end
     en = c.energies
@@ -614,6 +625,7 @@ function _build_stage!(m::TransientModel, st::TimeStep, i::Int, tn::Float64, Δt
     s = m.scheme
     t = tn + Δt
     if i == 1
+        _dirichlet_ahead!(s, m, U, t, Δt, load)
         TrialFESpace!(U, m.applicators[1], load(t); stage=t)
         _dcopy!(h.gd, _dirichlet_values(U))
     end
@@ -622,7 +634,7 @@ function _build_stage!(m::TransientModel, st::TimeStep, i::Int, tn::Float64, Δt
     ctx = TimeContext(ti, Δt, st.nsteps + 1, i, coef, h, m.history)
     o.c = coef
     o.use_b0 = h.use_β0
-    o.structured ? _stage_dirichlet!(U, s, h, coef) : _dcopy!(_dirichlet_values(U), h.gd)
+    o.structured ? _stage_dirichlet!(U, s, h, coef) : _dcopy!(_dirichlet_values(U), _unknown_dirichlet(s, h))
     r, j = _stage_forms(m.res, m.jac, o.structured, ctx, m.neumann, ti, load)
     o.inner = build_operator(c.backend, r, j, U, V, c.assem, o.inner)
     if o.structured
@@ -656,17 +668,49 @@ function _field_np1!(x::AbstractVector, s::SDIRK, h::StageHistory, y, Δt::Float
     x
 end
 
-# Dirichlet values of the trial space during a stage of the structured level: the stage field's
-_stage_dirichlet!(U, s::TimeScheme, h::StageHistory, c::StageCoefficients) =
-    h.use_β0 ? _dcombine!(_dirichlet_values(U), c.α0, h.gd, 1.0, h.b0d) : _dcombine!(_dirichlet_values(U), c.α0, h.gd, 0.0, h.gd)
-_stage_dirichlet!(U, ::SDIRK, h::StageHistory, ::StageCoefficients) = _dcopy!(_dirichlet_values(U), h.b0d)
+# Dirichlet velocity and acceleration at t0 by one-sided differences of the prescribed values at t0, t0 + Δt,
+# t0 + 2Δt (the velocity only when no `vh` was given; nothing when the values do not move)
+function _initial_dirichlet_kinematics!(m::TransientModel, U, t0::Float64, Δt::Float64, load)
+    h = m.hist
+    g0 = h.gdn                      # the values at t0 (initialize! has set them)
+    TrialFESpace!(U, m.applicators[1], load(t0 + Δt); stage=t0 + Δt)
+    g1 = deepcopy(_dirichlet_values(U))
+    TrialFESpace!(U, m.applicators[1], load(t0 + 2Δt); stage=t0 + 2Δt)
+    g2 = _dirichlet_values(U)
+    for i in eachindex(g0)
+        h.adn[i] .= (g0[i] .- 2.0 .* g1[i] .+ g2[i]) ./ Δt^2
+        m.velocity_given || (h.vdn[i] .= (-3.0 .* g0[i] .+ 4.0 .* g1[i] .- g2[i]) ./ (2Δt))
+    end
+    TrialFESpace!(U, m.applicators[1], load(t0); stage=t0)
+    nothing
+end
 
-# dofs with a time derivative (rows of the mass with entries), for the error norm; all on the general level
-function _inertia_mask(m::TransientModel)
-    o = m.caches.op
-    o.structured || return trues(length(m.caches.x))
-    # rows with a nonzero entry (the compiled backend stores the whole pattern of the space, with zeros on
-    # the fields the mass form does not touch)
+# the prescribed values one step ahead, g(tₙ₊₁ + Δt), for the central differences of the Dirichlet kinematics
+# of the explicit scheme (into h.kd; the trial space is set to tₙ₊₁ right after)
+_dirichlet_ahead!(::TimeScheme, m::TransientModel, U, t, Δt, load) = nothing
+function _dirichlet_ahead!(::CentralDifference, m::TransientModel, U, t, Δt, load)
+    TrialFESpace!(U, m.applicators[1], load(t + Δt); stage=t + Δt)
+    _dcopy!(m.hist.kd, _dirichlet_values(U))
+    nothing
+end
+
+# Dirichlet values of the stage unknown: the prescribed values g_{n+1} (the unknown is uₙ₊₁), the Dirichlet
+# derivative kd (SDIRK: the unknown is a stage derivative); for an explicit stage (α₀ = 0) they do not
+# enter the stage field
+_unknown_dirichlet(::TimeScheme, h::StageHistory) = h.gd
+_unknown_dirichlet(::SDIRK, h::StageHistory) = h.kd
+_unknown_dirichlet(::CentralDifference, h::StageHistory) = h.b2d
+# Dirichlet values of the trial space during a stage of the structured level: the stage field's, α₀ g_y + β₀d
+function _stage_dirichlet!(U, s::TimeScheme, h::StageHistory, c::StageCoefficients)
+    gy = _unknown_dirichlet(s, h)
+    h.use_β0 ? _dcombine!(_dirichlet_values(U), c.α0, gy, 1.0, h.b0d) : _dcombine!(_dirichlet_values(U), c.α0, gy, 0.0, gy)
+end
+
+# dofs with a time derivative (rows of the mass with entries), for the error norm and the initial
+# acceleration; all on the general level. Rows with a nonzero value: the compiled backend stores the whole
+# pattern of the space, with zeros on the fields the mass form does not touch.
+function _inertia_mask(o::TransientStepOperator, n::Int)
+    o.structured || return trues(n)
     M = o.M
     mask = falses(size(M, 1))
     rv, nz = rowvals(M), nonzeros(M)
@@ -675,6 +719,7 @@ function _inertia_mask(m::TransientModel)
     end
     mask
 end
+_inertia_mask(m::TransientModel) = m.caches.inertia_mask
 
 # inertia of the moving Dirichlet values (structured level): the load vector of mass(a_d, v) with the
 # algorithmic Dirichlet acceleration (or velocity, first order); skipped when it vanishes
@@ -687,12 +732,14 @@ function _dirichlet_inertia!(m::TransientModel, c::StageCoefficients)
     βd = second ? h.b2d : h.b1d
     α = second ? c.α2 : c.α1
     # algorithmic time derivative of the Dirichlet values: α × (Dirichlet stage unknown) + β_d
+    # skipped when it vanishes up to round-off (a constant Dirichlet value gives α g + β_d = O(ε α g), not 0)
     nz = false
     for i in eachindex(βd)
         for k in eachindex(βd[i])
-            v = α * _dirichlet_unknown(m.scheme, h, i, k) + βd[i][k]
+            gy = _dirichlet_unknown(m.scheme, h, i, k)
+            v = α * gy + βd[i][k]
             o.ad[i][k] = v
-            v == 0.0 || (nz = true)
+            abs(v) <= 1e-12 * (abs(α * gy) + abs(βd[i][k])) || (nz = true)
         end
     end
     nz || return
@@ -713,9 +760,11 @@ function _dirichlet_inertia!(m::TransientModel, c::StageCoefficients)
     o.use_bd = true
     nothing
 end
+# the stage unknown's Dirichlet values that the algorithmic derivative multiplies by α: g_{n+1} (the unknown
+# is uₙ₊₁), kd (SDIRK: ∂t = kᵢ, with b1d = 0), nothing for CentralDifference (b1d, b2d carry the full values)
 _dirichlet_unknown(::TimeScheme, h::StageHistory, i::Int, k::Int) = h.gd[i][k]
-_dirichlet_unknown(::CentralDifference, h::StageHistory, i::Int, k::Int) = h.b2d[i][k]
-_dirichlet_unknown(::SDIRK, h::StageHistory, i::Int, k::Int) = 0.0          # ∂t = kᵢ: no Dirichlet part of the stage derivative (b1d = 0)
+_dirichlet_unknown(::CentralDifference, h::StageHistory, i::Int, k::Int) = 0.0
+_dirichlet_unknown(::SDIRK, h::StageHistory, i::Int, k::Int) = h.kd[i][k]
 
 function _reassemble_mass!(m::TransientModel)
     c = m.caches
@@ -736,7 +785,7 @@ function _solve_stage!(m::TransientModel, y::AbstractVector, Δt::Float64, impli
     policy = implicit_stage ? m.tangent_update : :Δt
     mop = _model_operator(m.hooks, m.spaces, c.op, c.op.structured)
     if policy === :iteration
-        Algebra.solve!(y, nls, mop, cache; r_reference=_residual_reference(c.op, y))
+        Algebra.solve!(y, nls, mop, cache; r_reference=_residual_reference(c.op, m.hist, y))
         return nls_converged(nls)
     end
     A, b, dx = cache.A, cache.b, cache.dx
@@ -755,18 +804,23 @@ function _solve_stage!(m::TransientModel, y::AbstractVector, Δt::Float64, impli
 end
 # scale of the stage residual for the relative criterion of the Newton: the inertia term at the initial
 # guess (structured level; one SpMV), which a good predictor makes `‖R₀‖` much smaller than
-function _residual_reference(o::TransientStepOperator, y::AbstractVector)
+function _residual_reference(o::TransientStepOperator, h::StageHistory, y::AbstractVector)
     o.structured || return 0.0
     c = o.c
     if o.dorder == 2
         o.w .= c.α2 .* y .+ o.b2
+        hist = h.an
     elseif o.dorder == 1
         o.w .= c.α1 .* y .+ o.b1
+        hist = h.ẋn
     else
         return 0.0
     end
     mul!(o.x_eval, o.M, o.w)        # x_eval is rebuilt by the next residual/jacobian call
-    norm(o.x_eval)
+    r = norm(o.x_eval)
+    # at the Newmark predictor α₂ ũ + β₂ = αm aₙ vanishes (αm = 0): the inertia of the history is the scale then
+    mul!(o.x_eval, o.M, hist)
+    max(r, norm(o.x_eval))
 end
 nls_iterations_of(m::TransientModel, implicit_stage::Bool) =
     implicit_stage && m.tangent_update === :iteration ? nls_iterations(m.caches.nls) : 1
@@ -867,7 +921,7 @@ function initialize!(m::TransientModel, st::TimeStep; load=identity)
     h.nstored = 0
     h.Δt⁻ = 0.0
     h.Δt⁻⁻ = 0.0
-    m.initial_acceleration === :solve && _initial_acceleration!(m, st.t, load)
+    m.initial_acceleration === :solve && _initial_acceleration!(m, st.t, st.Δt, load)
     c.Δt_assembled = NaN
     _start_energies!(c.energies, m, st.t, nls_verbosity(c.nls))
     nothing
@@ -875,7 +929,7 @@ end
 
 # a₀ from M a₀ = −r(t0, u₀) (structured level): the residual of the inner forms at the initial state and the
 # lumped or consistent mass
-function _initial_acceleration!(m::TransientModel, t0::Float64, load)
+function _initial_acceleration!(m::TransientModel, t0::Float64, Δt::Float64, load)
     c = m.caches
     o = c.op
     U, V = m.spaces[1], m.spaces[2]
@@ -885,7 +939,28 @@ function _initial_acceleration!(m::TransientModel, t0::Float64, load)
     b = c.nls_cache.b
     residual!(b, o.inner, h.xn)
     b .*= -1.0
-    mask = _inertia_mask(m)
+    o.C === nothing || mul!(b, o.C, h.vn, -1.0, 1.0)       # − C v₀ (free values)
+    # the Dirichlet kinematics at t0 from the prescribed values ahead (one-sided differences with the first
+    # increment): the inertia M_fd g̈₀ (and the damping C_fd ġ₀) of the moving Dirichlet values enter a₀ — a
+    # start with a₀ = 0 on a boundary that accelerates costs the explicit scheme one order
+    _initial_dirichlet_kinematics!(m, U, t0, Δt, load)
+    o.use_bd = false
+    nz = false
+    for i in eachindex(h.adn), k in eachindex(h.adn[i])
+        o.ad[i][k] = h.adn[i][k]
+        h.adn[i][k] == 0.0 || (nz = true)
+    end
+    if nz
+        zh = _fe_function(U, o.zfree, o.ad)
+        o.opbd = load_vector!(c.backend, o.bd, v -> m.mass(zh, v), U, V, c.assem, o.opbd)
+        b .-= o.bd
+        if o.C !== nothing
+            for i in eachindex(h.vdn); o.ad[i] .= h.vdn[i]; end
+            o.opbdC = load_vector!(c.backend, o.w, v -> m.damping(zh, v), U, V, c.assem, o.opbdC)
+            b .-= o.w
+        end
+    end
+    mask = c.inertia_mask
     if all(mask)
         h.an .= o.M \ b
     else

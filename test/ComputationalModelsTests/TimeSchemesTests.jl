@@ -113,6 +113,16 @@ end
   commit!(Newmark(), h, y, Δt)
   @test h.an[1] ≈ -ω0^2 * y[1]
   @test h.vn[1] ≈ v(0.0) + 0.5Δt * (a(0.0) + h.an[1])
+  # SDIRK: inside a stage `at(ctx, u, :np1)` is the stage field, and the Dirichlet values of the stage unknown
+  # are the derivative of the prescribed ones
+  h = StageHistory(U, [x(0.0)], 2)
+  h.xn .= x(0.0); h.nstored = 1; h.Δt⁻ = Δt
+  h.gd[1] .= 1.0; h.gdn[1] .= 0.5
+  s2 = SDIRK(2)
+  c = stage_coefficients!(s2, h, 1, Δt, Δt)
+  @test h.use_β0_np1 && h.α0_np1 == c.α0 && h.b0np1 == h.b0 && h.b0np1d[1] == h.b0d[1]
+  @test h.kd[1][1] ≈ 0.5 / Δt
+  @test c.α0 * h.kd[1][1] + h.b0d[1][1] ≈ (1 - s2.c[1]) * 0.5 + s2.c[1] * 1.0   # the stage field's Dirichlet value g(t₁)
   # central differences: the explicit field and the commit
   h = StageHistory(U, [x(0.0)], 1)
   h.xn .= x(0.0); h.vn .= v(0.0); h.an .= a(0.0); h.nstored = 1

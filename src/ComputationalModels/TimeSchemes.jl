@@ -159,6 +159,10 @@ derivative_order(::SDIRK) = 1
 nstages(s::SDIRK) = length(s.b)
 has_error_estimate(::SDIRK) = true
 
+"Whether the Dirichlet projection applies to the first stage: the stage unknown is the field uₙ₊₁ (not a stage derivative)."
+projectable(::TimeScheme) = true
+projectable(::SDIRK) = false
+
 "Whether the scheme works with a stage time distinct from the end of the step (loads at `ctx.t`)."
 stage_time(s::TimeScheme, t::Float64, Δt::Float64, stage::Int) = t + Δt
 stage_time(s::GeneralizedAlpha, t::Float64, Δt::Float64, ::Int) = t + (1 - s.αf) * Δt
@@ -347,6 +351,7 @@ mutable struct StageHistory{V<:AbstractVector,D,F}
     const b1d::D
     const b2d::D
     const b0np1d::D
+    const kd::D               # Dirichlet kinematics scratch: a stage derivative (SDIRK: (g_{n+1} − gₙ)/Δt), g_{n+2} (central differences)
     const un::F
     const unm1::F
     const vnh::F
@@ -369,12 +374,12 @@ function StageHistory(U, x::AbstractVector, nks::Int)
     zd() = [zeros(num_dirichlet_dofs(s)) for s in _single_spaces(U)]
     ks = [z() for _ in 1:nks]
     xn, xnm1, xnm2, vn, an, ẋn, ẋnm1, xp, e, w, b0, b1, b2, b0np1 = z(), z(), z(), z(), z(), z(), z(), z(), z(), z(), z(), z(), z(), z()
-    gd, gdn, gdnm1, vdn, adn, ẋdn, ẋdnm1, b0d, b1d, b2d, b0np1d = zd(), zd(), zd(), zd(), zd(), zd(), zd(), zd(), zd(), zd(), zd()
+    gd, gdn, gdnm1, vdn, adn, ẋdn, ẋdnm1, b0d, b1d, b2d, b0np1d, kd = zd(), zd(), zd(), zd(), zd(), zd(), zd(), zd(), zd(), zd(), zd(), zd()
     fe(v, d) = _fe_function(U, v, d)
     un, unm1, vnh, anh = fe(xn, gdn), fe(xnm1, gdnm1), fe(vn, vdn), fe(an, adn)
     β0, β1, β2, β0_np1 = fe(b0, b0d), fe(b1, b1d), fe(b2, b2d), fe(b0np1, b0np1d)
     StageHistory{typeof(x),typeof(gd),typeof(un)}(xn, xnm1, xnm2, vn, an, ẋn, ẋnm1, ks, xp, e, w, b0, b1, b2, b0np1,
-        gd, gdn, gdnm1, vdn, adn, ẋdn, ẋdnm1, b0d, b1d, b2d, b0np1d,
+        gd, gdn, gdnm1, vdn, adn, ẋdn, ẋdnm1, b0d, b1d, b2d, b0np1d, kd,
         un, unm1, vnh, anh, β0, β1, β2, β0_np1, false, false, 1.0, 0, 0.0, 0.0, 0.0)
 end
 
@@ -571,9 +576,12 @@ function stage_coefficients!(::CentralDifference, h::StageHistory, ::Int, Δt::F
     for i in eachindex(h.gd)
         h.b0d[i] .= h.gd[i]                            # the Dirichlet values of uₙ₊₁ are the prescribed ones
         h.b0np1d[i] .= h.gd[i]
-        ad = (2 / Δt^2) .* (h.gd[i] .- h.gdn[i] .- Δt .* h.vdn[i]) .- h.adn[i]   # consistent with uₙ₊₁ = uₙ + Δt vₙ + ½Δt² aₙ
-        h.b1d[i] .= h.vdn[i] .+ (0.5 * Δt) .* h.adn[i] .+ (0.5 * Δt) .* ad
-        h.b2d[i] .= ad
+        # Dirichlet velocity and acceleration at tₙ₊₁ by central differences of the prescribed values gₙ,
+        # g_{n+1}, g_{n+2} (the driver writes g(tₙ₊₁ + Δt) into kd; second order — the Newmark recursion
+        # inverted on g oscillates, backward differences are first order); b1d and b2d carry the full values
+        # of the stage (the inertia of the Dirichlet dofs adds nothing of the stage unknown to them)
+        h.b1d[i] .= (h.kd[i] .- h.gdn[i]) ./ (2Δt)
+        h.b2d[i] .= (h.kd[i] .- 2.0 .* h.gd[i] .+ h.gdn[i]) ./ Δt^2
     end
     StageCoefficients(0.0, 0.5 * Δt, 1.0, 0.0, 0.0)
 end
@@ -597,13 +605,21 @@ function stage_coefficients!(s::SDIRK, h::StageHistory, i::Int, Δt::Float64, Δ
     for j in 1:i-1
         h.b0 .+= (Δt * s.A[i, j]) .* h.ks[j]
     end
-    h.use_β0 = true; h.use_β0_np1 = false; h.α0_np1 = 1.0
-    # Dirichlet values of the stage field: the prescribed values at the stage time, taken as the
-    # interpolation g(tₙ + cᵢΔt) ≈ (1 − cᵢ) gₙ + cᵢ g_{n+1} (the loads at the stage time are the user's)
-    _dcombine!(h.b0d, 1 - s.c[i], h.gdn, s.c[i], h.gd)
+    α0 = Δt * s.A[i, i]
+    # uₙ₊₁ is not available inside a stage (the later stages are unknown): :np1 is the stage field
+    h.use_β0 = true; h.use_β0_np1 = true; h.α0_np1 = α0
+    h.b0np1 .= h.b0
+    # Dirichlet values: the stage unknown is a derivative, kd = (g_{n+1} − gₙ)/Δt on the Dirichlet dofs; the
+    # stage field's prescribed values g(tₙ + cᵢΔt) ≈ (1 − cᵢ) gₙ + cᵢ g_{n+1} are α0 kd + b0d
+    ci = s.c[i]
+    for f in eachindex(h.gd)
+        h.kd[f] .= (h.gd[f] .- h.gdn[f]) ./ Δt
+        h.b0d[f] .= (1 - ci) .* h.gdn[f] .+ ci .* h.gd[f] .- α0 .* h.kd[f]
+        h.b0np1d[f] .= h.b0d[f]
+        h.b1d[f] .= 0.0
+    end
     h.b1 .= 0.0
-    for d in h.b1d; d .= 0.0; end
-    StageCoefficients(Δt * s.A[i, i], 1.0, 0.0, 0.0, Δt * s.A[i, i])
+    StageCoefficients(α0, 1.0, 0.0, 0.0, α0)
 end
 function predict!(y, s::SDIRK, h::StageHistory, i::Int, Δt::Float64)
     y .= i == 1 ? h.ẋn : h.ks[i-1]

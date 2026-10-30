@@ -73,7 +73,7 @@ using Test
   st = TimeStep(s)
   next_target!(st, s); bisect!(st, s)
   next_target!(st, s); accept!(st, s, 1)
-  @test st.Δt == 0.1                               # min(4 · 0.05, Δt0 = 0.1, Δtmax) = 0.1
+  @test st.Δt == 0.15                              # min(4 · 0.05, Δtmax) = 0.15 (the growth is bounded by Δtmax, not by Δt0)
 end
 
 @testset "AdaptiveStepping" begin
@@ -173,4 +173,23 @@ end
   w2 = 1e-6 + 1e-3 * 3.0
   @test weighted_error(e, x, xn, 1e-3, 1e-6, mask) ≈ sqrt(((1e-4 / w1)^2 + (2e-4 / w2)^2) / 2)
   @test weighted_error(e, x, xn, 1e-3, 1e-6, [false, false, false]) == 0.0
+end
+
+@testset "Cut steps keep the proposed increment; Δtmax of TimeStepping" begin
+  # AdaptiveStepping: a step cut at a tstop does not restart the controller from the cut
+  s = AdaptiveStepping(; Δt=0.1, t_end=1.0, rtol=1e-3, tstops=[0.15])
+  st = TimeStep(s)
+  next_target!(st, s); accept!(st, s, 3, 0.5, 1)          # t = 0.1
+  Δt1 = st.Δt
+  t, Δt = next_target!(st, s)                             # cut at 0.15
+  @test st.cut && Δt ≈ 0.05
+  accept!(st, s, 3, 1e-6, 1)
+  @test st.Δt >= Δt1                                       # not 0.05 × fmax
+  # TimeStepping: the increment grows up to Δtmax, not only back to Δt0
+  s = TimeStepping(; Δt=0.1, t_end=10.0, grow=2.0, easy=10, Δtmax=0.3)
+  st = TimeStep(s)
+  for _ in 1:4
+    next_target!(st, s); accept!(st, s, 3)
+  end
+  @test st.Δt == 0.3
 end

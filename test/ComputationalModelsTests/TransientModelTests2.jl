@@ -257,3 +257,107 @@ end
     @test flag == 1
   end
 end
+
+@testset "TransientModel: moving Dirichlet values on every scheme and both levels" begin
+  # the Dirichlet kinematics of every scheme (the algorithmic derivatives of the prescribed values, the
+  # Dirichlet values of the stage unknown and of the stage field) on both levels: general = structured to
+  # round-off; the explicit scheme against the trapezoidal rule at a fine step (order 2 with a moving boundary)
+  nls = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-14, rtol=1e-10, verbose=0)
+  # first order: heat with a Dirichlet ramp
+  p = heat_dirichlet_problem()
+  (; U, V, dΩ, κ, bc) = p
+  t_end = 0.4
+  res(t) = (u, v) -> ∫(κ * (∇(u) ⋅ ∇(v)))dΩ
+  jac(t) = (u, du, v) -> ∫(κ * (∇(du) ⋅ ∇(v)))dΩ
+  mass = (u, v) -> ∫(u * v)dΩ
+  resg(ctx) = (u, v) -> ∫(∂t(ctx, u) * v)dΩ + ∫(κ * (∇(field(ctx, u)) ⋅ ∇(v)))dΩ
+  jacg(ctx) = (u, du, v) -> ∫(δ∂t(ctx, du) * v)dΩ + ∫(κ * (∇(δfield(ctx, du)) ⋅ ∇(v)))dΩ
+  xfine, ffine = solve!(TransientModel(res, jac, U, V, bc; scheme=BDF(2), mass, nls); stepping=TimeStepping(; Δt=t_end / 512, t_end))
+  @test ffine == 1
+  xfine = copy(xfine)
+  for scheme in (BDF(1), BDF(2), Theta(1.0), Theta(0.5), Theta(0.7), SDIRK(2)), backend in TEST_BACKENDS_T
+    xs, fs = solve!(TransientModel(res, jac, U, V, bc; scheme, mass, nls, backend); stepping=TimeStepping(; Δt=t_end / 8, t_end))
+    xs = copy(xs)
+    xg, fg = solve!(TransientModel(resg, jacg, U, V, bc; scheme, nls, backend); stepping=TimeStepping(; Δt=t_end / 8, t_end))
+    @test fs == 1 && fg == 1
+    @test norm(xs - xg) <= 1e-9 * norm(xg)
+    @test norm(xs - xfine) <= 0.2 * norm(xfine)         # a sane solution (a missing Dirichlet inertia is an O(1) error)
+  end
+  # second order: the bar with a smooth Dirichlet ramp (the Newton tolerances of the analytical tests: at
+  # the fine step of the reference the residual of the linear problem is at the round-off of the inertia)
+  nls = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-12, rtol=1e-9, verbose=0)
+  b = bar_dirichlet_problem(; law=EvolutionFunctions.smoothstep(0.5))
+  (; U, V, dΩ, bc, res, jac, mass) = b
+  ρ = 1.0
+  resb(ctx) = (u, v) -> ∫(ρ * (∂tt(ctx, u) ⋅ v))dΩ + res(ctx.t)(field(ctx, u), v)
+  jacb(ctx) = (u, du, v) -> ∫(ρ * (δ∂tt(ctx, du) ⋅ v))dΩ + jac(ctx.t)(field(ctx, u), δfield(ctx, du), v)
+  t_end = 1.0
+  xref, fref = solve!(TransientModel(res, jac, U, V, bc; scheme=Newmark(), mass, nls, initial_acceleration=:solve); stepping=TimeStepping(; Δt=t_end / 2048, t_end))
+  @test fref == 1
+  xref = copy(xref)
+  for scheme in (Newmark(), GeneralizedAlpha(0.8), HHT(0.1), Midpoint()), backend in TEST_BACKENDS_T
+    xs, fs = solve!(TransientModel(res, jac, U, V, bc; scheme, mass, nls, backend); stepping=TimeStepping(; Δt=t_end / 16, t_end))
+    xs = copy(xs)
+    xg, fg = solve!(TransientModel(resb, jacb, U, V, bc; scheme, nls, backend); stepping=TimeStepping(; Δt=t_end / 16, t_end))
+    @test fs == 1 && fg == 1
+    @test norm(xs - xg) <= 1e-9 * norm(xg)
+    @test norm(xs - xref) <= 0.2 * norm(xref)
+  end
+  # central differences with the moving boundary: second order towards the fine trapezoidal solution
+  errs = Float64[]
+  Δts = t_end ./ [128, 256, 512]
+  for Δt in Δts
+    xc, fc = solve!(TransientModel(res, jac, U, V, bc; scheme=CentralDifference(), mass, nls, initial_acceleration=:solve); stepping=TimeStepping(; Δt, t_end))
+    @test fc == 1
+    push!(errs, norm(xc - xref))
+  end
+  @test errs[end] <= 1e-3 * norm(xref)
+  @test abs(log(errs[1] / errs[end]) / log(Δts[1] / Δts[end]) - 2) < 0.4
+end
+
+@testset "TransientModel: Dirichlet projection with the linear tangent policies; a₀ with damping" begin
+  # the projection factorises the Newton cache with the static tangent: the :Δt policy must re-assemble
+  # the stage tangent afterwards (the same solution as :iteration with projection)
+  p = heat_dirichlet_problem()
+  (; U, V, dΩ, κ, bc) = p
+  nls = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-14, rtol=1e-10, verbose=0)
+  t_end = 0.4
+  res(t) = (u, v) -> ∫(κ * (∇(u) ⋅ ∇(v)))dΩ
+  jac(t) = (u, du, v) -> ∫(κ * (∇(du) ⋅ ∇(v)))dΩ
+  mass = (u, v) -> ∫(u * v)dΩ
+  run(policy; project) = copy(solve!(TransientModel(res, jac, U, V, bc; scheme=BDF(1), mass, nls, tangent_update=policy);
+                                     stepping=TimeStepping(; Δt=t_end / 8, t_end), ProjectDirichlet=project)[1])
+  x0 = run(:iteration; project=false)
+  for policy in (:iteration, :step, :Δt)
+    @test norm(run(policy; project=true) - x0) <= 1e-9 * norm(x0)
+  end
+  # the projection is skipped for a Runge–Kutta stage (the stage unknown is a derivative)
+  xk = copy(solve!(TransientModel(res, jac, U, V, bc; scheme=SDIRK(2), mass, nls); stepping=TimeStepping(; Δt=t_end / 8, t_end), ProjectDirichlet=true)[1])
+  xk0 = copy(solve!(TransientModel(res, jac, U, V, bc; scheme=SDIRK(2), mass, nls); stepping=TimeStepping(; Δt=t_end / 8, t_end))[1])
+  @test xk == xk0
+  # initial acceleration with damping: M a₀ = −r(u₀) − C v₀
+  b = bar_dirichlet_problem()
+  (; U, V, dΩ, bc, res, jac, mass) = b
+  damping = (v, w) -> ∫(0.3 * (v ⋅ w))dΩ
+  v0 = interpolate(x -> VectorValue(0.1 * x[1], 0.0), U)
+  nlsb = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-12, rtol=1e-9, verbose=0)
+  m = TransientModel(res, jac, U, V, bc; scheme=Newmark(), mass, damping, nls=nlsb, vh=v0, initial_acceleration=:solve)
+  st = TimeStep(TimeStepping(; Δt=0.1, t_end=0.3))
+  initialize!(m, st)
+  M = m.caches.op.M
+  r = assemble_vector(v -> res(0.0)(FEFunction(U, m.caches.x), v), V)
+  Cv = assemble_vector(v -> damping(v0, v), V)           # C v₀ with the Dirichlet values of v₀
+  a0 = M \ (-r - Cv)                                     # the Dirichlet ramp has g̈₀ = 0
+  @test norm(m.hist.an - a0) <= 1e-10 * norm(a0)
+  # the start of the explicit scheme on an accelerating boundary: a₀ with the Dirichlet inertia keeps the
+  # second order (a₀ = 0 costs one order: the velocity error of the first step persists)
+  bs = bar_dirichlet_problem(; law=EvolutionFunctions.smoothstep(0.5))
+  (; U, V, dΩ, bc, res, jac, mass) = bs
+  t_end = 1.0
+  xref, _ = solve!(TransientModel(res, jac, U, V, bc; scheme=Newmark(), mass, nls=nlsb, initial_acceleration=:solve); stepping=TimeStepping(; Δt=t_end / 4096, t_end))
+  xref = copy(xref)
+  Δts = t_end ./ [128, 256, 512]
+  errs = [norm(copy(solve!(TransientModel(res, jac, U, V, bc; scheme=CentralDifference(), mass, nls=nlsb, initial_acceleration=:solve);
+                           stepping=TimeStepping(; Δt, t_end))[1]) - xref) for Δt in Δts]
+  @test abs(log(errs[1] / errs[end]) / log(Δts[1] / Δts[end]) - 2) < 0.3
+end

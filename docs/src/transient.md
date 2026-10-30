@@ -94,9 +94,11 @@ m = TransientModel(res, jac, U, V, D_bc; scheme=GeneralizedAlpha(0.9), mass, xh=
 solve!(m; stepping=AdaptiveStepping(; Δt=1e-3, t_end=2.0, rtol=1e-4), post)
 ```
 
-`initial_acceleration = :solve` takes `a₀` from `M a₀ = −r(0, u₀)`: with the default `:zero` the first
-steps of the second-order schemes see an inconsistent acceleration (their orders and the energy
-conservation degrade). The mass form of a multi-field problem is written on the tuples and is zero on
+`initial_acceleration = :solve` takes `a₀` from `M a₀ = −r(0, u₀) − C v₀ − M_fd g̈₀` (the Dirichlet
+kinematics at the start from one-sided differences of the prescribed values): with the default `:zero`
+the first steps of the second-order schemes see an inconsistent acceleration (their orders and the
+energy conservation degrade, and the explicit scheme loses one order on a boundary that accelerates
+from the start). The mass form of a multi-field problem is written on the tuples and is zero on
 the fields without inertia. The inertia of moving Dirichlet values enters as a load vector.
 
 ## Tangent update
@@ -116,8 +118,9 @@ makes `‖R₀‖` tiny, and the relative criterion alone would stall at the rou
 ## Step control
 
 `TimeStepping` is the analogue of `LoadStepping`: fixed Δt, bisection when a solve fails
-(`maxbisec` consecutive bisections), growth `Δt ← min(grow Δt, Δt0, Δtmax)` after a step converged in
-at most `easy` iterations, exact output times `tstops`.
+(`maxbisec` consecutive bisections), growth `Δt ← min(grow Δt, Δtmax)` after a step converged in at
+most `easy` iterations (`Δtmax = Δt` by default: back to the initial increment after a bisection),
+exact output times `tstops`.
 
 `AdaptiveStepping` controls Δt with the local error estimate of the scheme (Milne's device with
 extrapolation predictors on the past values for the first-order schemes, Zienkiewicz–Xie for the
@@ -142,7 +145,8 @@ step is accepted, with the new state and the state of the previous step, and is 
 the internal variables (`update_state!`, with `CellState` or `KernelState`, through the engine when
 `backend = :compiled`). Post-processing (`post`) runs before the internal variables are updated, so it
 sees the state the residual of the step was evaluated with; inside it `get_previous_state(m)` is the
-state of the previous step.
+state of the previous step, and `get_velocity`/`get_acceleration` are still those of the previous step
+(the commit of the scheme comes after).
 
 ## Energies and output
 
