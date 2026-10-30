@@ -25,7 +25,9 @@
 #
 # The configuration of the note "Solver improvements for third-medium contact" (2026-10-25) is
 # `weight = false, kb = 1.0, pvol = 2, λsolid = 6.0, hybrid = true, armijo = true, jmin = 1e-6, maxiter = 500`
-# (local long test in runtests.jl, HYPERFEM_TEST_LONG = 1).
+# (local long tests in runtests.jl, HYPERFEM_TEST_LONG = 1: to 3.5 d with a fixed increment, and the full
+# benchmark to 15 d with the growth of the increment, `grow = 1.5`, against Horák's curve
+# test/models/horak2026_piston_f_vs_uy.json).
 using Gridap, GridapGmsh
 using Gridap.FESpaces
 using Gridap.CellData
@@ -33,7 +35,7 @@ using HyperFEM
 using LinearAlgebra
 
 
-function thirdmedium_contact_simulation(; backend=:lazy, uy_max=0.15, nsteps=15, maxbisec=5, verbose=false,
+function thirdmedium_contact_simulation(; backend=:lazy, uy_max=0.15, nsteps=15, maxbisec=5, grow=1.0, easy=10, verbose=false,
                                           writevtk=false, vtkevery=10, ProjectDirichlet=false,
                                           weight=true, kb=0.0, pvol=2, λsolid=2.0,
                                           hybrid=false, armijo=false, jmin=0.0, hrs=1e-6, hybback=1e-2, atolproj=1e-3,
@@ -141,10 +143,12 @@ function thirdmedium_contact_simulation(; backend=:lazy, uy_max=0.15, nsteps=15,
   comp_model = StaticNonlinearModel(res, jac, Uu, Vu, D_bc; nls=nls, xh=uh, backend=backend, injectivity=dΩdomain,
                                     energy=armijo ? en : nothing, tangent_switch=switch)
   post_model = PostProcessor(comp_model, driverpost; is_vtk=false, filepath=simdir)
-  x, flag = solve!(comp_model; stepping=(nsteps=nsteps, maxbisec=maxbisec), ProjectDirichlet=ProjectDirichlet, post=post_model)
+  stepping = LoadStepping(; nsteps, maxbisec, grow, easy)
+  nbisect = Ref(0)
+  x, flag = solve!(comp_model; stepping, ProjectDirichlet=ProjectDirichlet, post=post_model, on_bisection=(Λ, ΔΛ) -> nbisect[] += 1)
 
   (; u=copy(get_free_dof_values(uh)), Λ=Λs, uy_over_d=uy_max .* Λs ./ d, fpiston, fclamp, fcr, fcr_plane_strain=fcr_ps,
-     flag, nls)
+     flag, nls, nbisect=nbisect[])
 end
 
 

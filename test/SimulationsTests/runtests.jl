@@ -195,6 +195,35 @@ end
       end
       println("  Newton: $(s.nls.log.niters) iterations, $(s.nls.log.nswitches) switches, $(round(100 * s.nls.log.nprojected / max(s.nls.log.niters, 1), digits=1)) % projected")
     end
+
+    # The full benchmark (Faltus, Amato, Horák 2026, Fig. 3b): piston to 15 d with the growth of the increment
+    # (ΔΛ0 = 1/1000, ×1.5 after an easy step, 5 consecutive bisections), the acceptance run of the driver
+    # refactor R2. P1 mesh 1: the beam locks in bending (plateaus above Horák's P2 curve), so the comparison
+    # is printed, not asserted; what is checked is that the run reaches 15 d through the snaps.
+    @testset "ThirdMediumContact, full piston to 15 d (local)" begin
+      horak = JSON.parsefile(joinpath(@__DIR__, "..", "models", "horak2026_piston_f_vs_uy.json"))["piston"]
+      hx, hy = first.(horak), last.(horak)
+      t = @elapsed s = thirdmedium_contact_simulation(; backend=:lazy, uy_max=1.5, nsteps=1000, maxbisec=5, grow=1.5,
+                                                      ProjectDirichlet=true, weight=false, kb=1.0, pvol=2, λsolid=6.0,
+                                                      hybrid=true, armijo=true, jmin=1e-6, maxiter=500, verbose=1)
+      fps = s.fpiston .* (s.fcr / s.fcr_plane_strain)
+      @test s.flag == 1 && s.Λ[end] ≈ 1.0
+      @test all(isfinite, fps)
+      # equilibrium of the beam between the piston and the clamp while the beam is free of the box; later the
+      # third medium transmits part of the load to the walls of the box
+      eq = abs.(s.fpiston .- s.fclamp) .< 1e-2 .* abs.(s.fpiston)
+      @test all(eq[s.uy_over_d .<= 3.5])
+      ieq = findfirst(.!eq)
+      println("  $(length(s.Λ)) increments, $(s.nbisect) bisections, $(round(t, digits=0)) s; piston and clamp forces " *
+              (ieq === nothing ? "in equilibrium throughout" : "depart from each other from u_y/d = $(round(s.uy_over_d[ieq], digits=2))"))
+      println("  Newton: $(s.nls.log.niters) iterations, $(s.nls.log.nswitches) switches, $(round(100 * s.nls.log.nprojected / max(s.nls.log.niters, 1), digits=1)) % projected")
+      println("  u_y/d   f/f_cr (P1 mesh 1)   Horák (P2)")
+      for x in 1.0:1.0:15.0
+        i = argmin(abs.(s.uy_over_d .- x))
+        j = argmin(abs.(hx .- x))
+        println("  $(lpad(x, 4))    $(lpad(round(fps[i], digits=3), 8))             $(round(hy[j], digits=3))")
+      end
+    end
   end
 
 end
