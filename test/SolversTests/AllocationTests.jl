@@ -77,9 +77,10 @@ end
   rmul!(b, -1)
   dx .= b ./ (d .+ 3 .* x .^ 2)
   for ls in (LineSearch(), Roman_LS(; maxiter=10))
+    x0 = copy(x)
     search!(ls, w, op, x, dx, b)
-    residual!(b, op, x); rmul!(b, -1)
+    copyto!(x, x0); residual!(b, op, x); rmul!(b, -1)
     @test (@allocated search!(ls, w, op, x, dx, b)) == 0
-    residual!(b, op, x); rmul!(b, -1)
+    copyto!(x, x0); residual!(b, op, x); rmul!(b, -1)
   end
 end

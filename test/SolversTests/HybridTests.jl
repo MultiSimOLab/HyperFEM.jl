@@ -17,8 +17,8 @@ function HyperFEM.Solvers.search!(ls::FailFirstLS, w, op, x, dx, b)
     residual!(b, op, x)
     return 0.0
   end
-  w .= x .+ dx
-  residual!(b, op, w)
+  x .+= dx
+  residual!(b, op, x)
   return 1.0
 end
 

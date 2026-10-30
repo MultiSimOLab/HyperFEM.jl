@@ -3,13 +3,18 @@ abstract type AbstractLineSearch end
 """
     search!(ls, w, op, x, dx, b) -> α
 
-Step length `α` along the Newton direction `dx` from `x` chosen by the line search `ls`. On entry
-`b = -R(x)`; on return `b = R(x + α dx)` (the residual Newton continues with). `w` is a work vector
-of the size of `x` (the trial points `x + α dx` are built there, without allocating). A failed
-search returns `α = 0` with `b = R(x)`. Line searches that implement the former callable interface
-`ls(x, dx, b, op)` keep working through the fallback.
+Step length `α` along the Newton direction `dx` from `x` chosen by the line search `ls`, which
+also takes the step: on entry `b = -R(x)`; on return `x ← x + α dx` and `b = R(x)` at the new point
+(the residual Newton continues with). `w` is a work vector of the size of `x` for the trial points
+(no allocation). A failed search returns `α = 0` with `x` unchanged and `b = R(x)`. Line searches
+that implement the former callable interface `ls(x, dx, b, op) -> α` (which does not move `x`)
+keep working through the fallback.
 """
-search!(ls::AbstractLineSearch, w, op, x, dx, b) = ls(x, dx, b, op)
+function search!(ls::AbstractLineSearch, w, op, x, dx, b)
+  α = ls(x, dx, b, op)
+  x .+= α .* dx
+  α
+end
 
 """
     update_cellstate!(ls, xh, dxh) -> α
@@ -35,8 +40,8 @@ Full Newton step (`α = 1`). Former name `LineSearch()`.
 struct FullStepLS <: AbstractLineSearch end
 
 function search!(::FullStepLS, w, op, x, dx, b)
-  w .= x .+ dx
-  residual!(b, op, w)
+  x .+= dx
+  residual!(b, op, x)
   return 1.0
 end
 
@@ -79,13 +84,15 @@ function search!(obj::BacktrackingLS, w, op, x, dx, b)
     m += 1
   end
   obj.last[] = (1.0, m)
+  x .+= α .* dx              # the last trial point (b holds its residual unless α fell below αmin first)
   return α
 end
 
 linesearch_info(obj::BacktrackingLS) = "$(obj.last[][2]) reductions"
 
 function (obj::BacktrackingLS)(x::AbstractVector, dx::AbstractVector, b::AbstractVector, op::NonlinearOperator)
-  search!(obj, similar(x), op, x, dx, b)
+  y = copy(x)
+  search!(obj, similar(x), op, y, dx, b)
 end
 
 
@@ -152,6 +159,7 @@ function search!(obj::InjectivityLS, w, op, x, dx, b)
       return 0.0
     end
     _trial_residual!(b, w, op, x, dx, α)
+    copyto!(x, w)
     return α
   else
     R₀ = abs(dot(b, dx))
@@ -160,6 +168,7 @@ function search!(obj::InjectivityLS, w, op, x, dx, b)
       R = abs(dot(b, dx))
       if R <= obj.c * R₀
         obj.last[] = (αinj, m, true)
+        copyto!(x, w)
         return α
       end
       α *= obj.ρ
@@ -234,11 +243,13 @@ function search!(obj::Injectivity_Preserving_LS, w, op, x, dx, b)
     α *= ρ
     m += 1
   end
+  x .+= α .* dx
   return α
 end
 
 function (obj::Injectivity_Preserving_LS)(x::AbstractVector, dx::AbstractVector, b::AbstractVector, op::NonlinearOperator)
-  search!(obj, similar(x), op, x, dx, b)
+  y = copy(x)
+  search!(obj, similar(x), op, y, dx, b)
 end
 
 function InjectivityCheck(α, ∇u, ∇du, β)

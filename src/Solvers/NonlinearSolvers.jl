@@ -417,13 +417,15 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op)
       break
     end
 
-    # curvature criterion, relative to the first iteration
-    c = abs(dot(b, dx))
-    if log.num_iters == 0
-      c0 = c
-    elseif c < tols.ctol * c0
-      reason = :converged_ctol
-      break
+    # curvature criterion, relative to the first iteration (only computed when enabled)
+    if tols.ctol > 0
+      c = abs(dot(b, dx))
+      if log.num_iters == 0
+        c0 = c
+      elseif c < tols.ctol * c0
+        reason = :converged_ctol
+        break
+      end
     end
 
     # back to the consistent tangent once the residual has dropped enough in projected mode
@@ -434,9 +436,8 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op)
     end
 
     t1 = time()
-    α = search!(linesearch, w, op, x, dx, b)    # on return b = R(x + α dx); α = 0 is a failure
+    α = search!(linesearch, w, op, x, dx, b)    # takes the step: x ← x + α dx, b = R(x); α = 0 is a failure
     log.t_linesearch += time() - t1
-    x .+= α .* dx
     r = norm(b)
     _record!(log, r, α, mode)
     if log.verbose >= 2
