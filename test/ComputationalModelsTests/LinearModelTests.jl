@@ -82,4 +82,13 @@ end
   xv = solve!(mv; Assembly=true)
   @test (ls.setups, ls.updates) == (1, 1)
   @test_throws MethodError StaticLinearModel(1.0, p.a, p.U, p.V, p.bc)
+
+  # the functor over an FE function (L2 projection through the model's backend, no Dirichlet lift)
+  ls = CountingLinearSolver(0, 0)
+  m0 = StaticLinearModel(p.a, p.U, p.V, p.bc; ls)
+  fh() = interpolate_everywhere(x -> x[1], p.U)       # the functor solves into the free values of its argument
+  bref = assemble_vector(v -> ∫(fh() * v)p.dΩ, p.V)
+  xf = copy(m0(fh(); Measure=p.dΩ))
+  @test xf ≈ m0.caches.K \ bref && (ls.setups, ls.updates) == (1, 0)
+  @test copy(m0(fh(); Measure=p.dΩ, Assembly=true)) == xf && (ls.setups, ls.updates) == (1, 1)
 end

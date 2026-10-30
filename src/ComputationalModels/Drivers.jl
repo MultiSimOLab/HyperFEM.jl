@@ -661,12 +661,13 @@ struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
         return x
     end
 
+    # L2 projection of `xh`: the load vector ∫(xh v) dMeasure assembled by the backend of the model (no Dirichlet lift)
     function (m::StaticLinearModel)(xh::SingleFieldFEFunction; Measure=nothing, Assembly=false, kwargs...)
         x_ = get_free_dof_values(xh)
         U, V = m.spaces
         c = m.caches
-        assemble_vector!((v) -> ∫(xh * v)Measure, c.b, c.assem, V)
         Assembly && assemble_stiffness!(m, m.bf, U, V, c.assem)
+        c.op = load_vector!(c.backend, c.b, (v) -> ∫(xh * v)Measure, U, V, c.assem, c.op)
         Algebra.solve!(x_, numerical_setup!(c), c.b)
         return x_
     end
