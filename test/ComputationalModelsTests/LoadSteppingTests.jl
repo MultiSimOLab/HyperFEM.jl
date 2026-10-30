@@ -91,3 +91,23 @@ HyperFEM.ComputationalModels.nls_iterations(s::FailAt) = HyperFEM.ComputationalM
   Λs, flag = runcase(LoadStepping(nsteps=4, maxbisec=1), [1, 2])
   @test flag == 0 && isempty(Λs)
 end
+
+@testset "Hooks of the incremental loop" begin
+  nls = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-12, rtol=1e-12, verbose=0)
+  p = drivers_test_problem()
+  m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=FailAt(nls, [2]))
+  pre, bis = Tuple{Float64,Float64}[], Tuple{Float64,Float64}[]
+  x, flag = @test_logs min_level = Logging.Error begin
+    solve!(m; stepping=LoadStepping(nsteps=2, maxbisec=1), presolver=(Λ, ΔΛ) -> push!(pre, (Λ, ΔΛ)),
+           on_bisection=(Λ, ΔΛ) -> push!(bis, (Λ, ΔΛ)))
+  end
+  @test flag == 1
+  # attempts: 0 → 0.5 ✓, 0.5 → 1 ✗ (bisected to 0.25), 0.5 → 0.75 ✓, 0.75 → 1 ✓
+  @test pre == [(0.0, 0.5), (0.5, 0.5), (0.5, 0.25), (0.75, 0.25)]
+  @test bis == [(0.5, 0.25)]
+  # the model-level hooks accept nothing (default) and the loop is the same without them
+  p = drivers_test_problem()
+  m2 = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=FailAt(nls, [2]))
+  x2, _ = @test_logs min_level = Logging.Error solve!(m2; stepping=LoadStepping(nsteps=2, maxbisec=1))
+  @test x2 == x
+end

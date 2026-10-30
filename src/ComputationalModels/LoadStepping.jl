@@ -50,17 +50,20 @@ LoadStep(stepping::LoadStepping) = LoadStep(0.0, 1.0 / stepping.nsteps, 1.0 / st
 finished(st::LoadStep) = isapprox(st.Λ, 1.0; atol=1e-12)
 
 """
-    step!(m::StaticNonlinearModel, st::LoadStep, stepping::LoadStepping; ProjectDirichlet, load, post) -> Bool
+    step!(m::StaticNonlinearModel, st::LoadStep, stepping::LoadStepping;
+          ProjectDirichlet, load, post, presolver, on_bisection) -> Bool
 
 One attempt of the incremental loop: the next increment of `st` from the last converged state of `m`
-(Dirichlet projection first when `ProjectDirichlet`, which may cut the increment by its safe load factor),
-the Newton solve at the target stage and, on convergence, the update of `st` and of the model (`post` is
-called at the new stage; the increment grows according to `stepping`); on failure the state, the stage and
-the Dirichlet values of the trial space return to the last converged increment and the increment is
-bisected. Returns whether the attempt converged.
+(`presolver(Λ, ΔΛ)` is called first with the stage of the last converged increment and the increment to
+try; then the Dirichlet projection when `ProjectDirichlet`, which may cut the increment by its safe load
+factor), the Newton solve at the target stage and, on convergence, the update of `st` and of the model
+(`post` is called at the new stage; the increment grows according to `stepping`); on failure the state,
+the stage and the Dirichlet values of the trial space return to the last converged increment, the increment
+is bisected and `on_bisection(Λ, ΔΛ)` is called with that stage and the halved increment. Returns whether
+the attempt converged. The hooks are `nothing` (no call) or functions of `(Λ, ΔΛ)`.
 """
 function step!(m::StaticNonlinearModel, st::LoadStep, stepping::LoadStepping;
-    ProjectDirichlet::Bool=false, load=identity, post=PostProcessor())
+    ProjectDirichlet::Bool=false, load=identity, post=PostProcessor(), presolver=nothing, on_bisection=nothing)
 
     U, V, ∆U, Un = m.spaces
     app_U, _, app_Un = m.applicators
@@ -75,6 +78,7 @@ function step!(m::StaticNonlinearModel, st::LoadStep, stepping::LoadStepping;
         ∆Λ = 1.0 - (Λ - ∆Λ)
         Λ = min(1.0, Λ)
     end
+    _hook(presolver, st.Λ, ∆Λ)
     α = ProjectDirichlet ? dirichlet_preconditioning!(x, m, Λ, ∆Λ, nls, load) : 1.0
     Λ -= ∆Λ
     ∆Λ = α * ∆Λ
@@ -109,23 +113,29 @@ function step!(m::StaticNonlinearModel, st::LoadStep, stepping::LoadStepping;
         TrialFESpace!(U, app_U, load(Λ); stage=Λ)
         st.nbisect += 1
         st.nbisect_total += 1
+        _hook(on_bisection, Λ, ∆Λ)
     end
     st.Λ, st.ΔΛ = Λ, ∆Λ
     return ok
 end
 
+_hook(::Nothing, Λ, ΔΛ) = nothing
+_hook(f, Λ, ΔΛ) = (f(Λ, ΔΛ); nothing)
+
 """
-    solve!(m::StaticNonlinearModel; stepping, RestartState, ProjectDirichlet, post, load=identity) -> (x, flagconv)
+    solve!(m::StaticNonlinearModel; stepping, RestartState, ProjectDirichlet, post, load=identity,
+           presolver=nothing, on_bisection=nothing) -> (x, flagconv)
 
 Incremental solve with the stage parameter Λ from 0 to 1 by [`step!`](@ref), controlled by `stepping`
 (a [`LoadStepping`](@ref) or a `NamedTuple` `(nsteps = …, maxbisec = …)`). The conditions and the
 Neumann term are applied at the load `load(Λ)` (`identity` by default; `StaggeredModel` passes the ramp of
-its step). `flagconv` is 1 when Λ = 1 was reached and 0 when the consecutive bisections exceeded
+its step). `presolver(Λ, ΔΛ)` runs before every attempt and `on_bisection(Λ, ΔΛ)` after every bisection
+(see `step!`). `flagconv` is 1 when Λ = 1 was reached and 0 when the consecutive bisections exceeded
 `maxbisec`.
 """
 function solve!(m::StaticNonlinearModel;
     stepping=LoadStepping(), RestartState::Bool=false, ProjectDirichlet::Bool=false,
-    post=PostProcessor(), load=identity)
+    post=PostProcessor(), load=identity, presolver=nothing, on_bisection=nothing)
 
     stepping = as_stepping(stepping)
     reset!(post)
@@ -146,7 +156,7 @@ function solve!(m::StaticNonlinearModel;
     x⁻ .= x
 
     while !finished(st)
-        step!(m, st, stepping; ProjectDirichlet, load, post)
+        step!(m, st, stepping; ProjectDirichlet, load, post, presolver, on_bisection)
         if st.nbisect > stepping.maxbisec
             @warn "Maximum number of bisections reached"
             flagconv = 0
