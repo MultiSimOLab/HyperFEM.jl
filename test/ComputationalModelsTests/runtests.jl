@@ -29,6 +29,14 @@ using Test
   end
 
   @time begin
+    include("TimeSchemesTests.jl")
+  end
+
+  @time begin
+    include("TransientModelTests.jl")
+  end
+
+  @time begin
     include("LinearModelTests.jl")
   end
 

@@ -379,7 +379,16 @@ function Algebra.solve!(x::AbstractVector, nls::NewtonRaphson, op::Algebra.Nonli
   solve!(x, nls, op, NewtonCache(x, nls, op))
 end
 
-function Algebra.solve!(x::AbstractVector, nls::NewtonRaphson, op::Algebra.NonlinearOperator, cache::NewtonCache)
+"""
+    solve!(x, nls::NewtonRaphson, op, cache::NewtonCache; r_reference=0.0) -> cache
+
+Newton solve from `x`. `r_reference` is a scale of the residual for the relative criterion: the
+convergence test uses `max(‖R₀‖, r_reference)` in place of `‖R₀‖`, so that a good initial guess (a
+transient predictor whose `‖R₀‖` is already near round-off) does not make `rtol` unattainable; the
+transient driver passes the magnitude of the terms of the stage residual. `0` (the default) keeps
+the plain criterion.
+"""
+function Algebra.solve!(x::AbstractVector, nls::NewtonRaphson, op::Algebra.NonlinearOperator, cache::NewtonCache; r_reference::Float64=0.0)
   A, b = cache.A, cache.b
   log = nls.log
   t1 = time()
@@ -391,7 +400,7 @@ function Algebra.solve!(x::AbstractVector, nls::NewtonRaphson, op::Algebra.Nonli
   t3 = time()
   log.t_assembly += t2 - t1
   log.t_setup += t3 - t2
-  _solve_nr!(x, cache, nls, op)
+  _solve_nr!(x, cache, nls, op, r_reference)
   log.t_solve += t3 - t1
   return cache
 end
@@ -417,7 +426,7 @@ fails the Newton iteration like a failed line search.
 """
 linear_converged(::Algebra.NumericalSetup) = true
 
-function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op)
+function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::Float64=0.0)
   A, b, dx, ns, w = cache.A, cache.b, cache.dx, numerical_setup(cache), cache.w
   log, tols, linesearch, tangent = nls.log, nls.tols, nls.linesearch, nls.tangent
   t0 = time()
@@ -425,10 +434,11 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op)
 
   mode = _start_mode(tangent)           # the tangent in A was assembled in this mode
   r_sw = 0.0                            # ‖R‖ at the last switch to the projected tangent
-  r = r0 = norm(b)
-  _start!(log, r0)
-  _print_header(log, r0)
-  reason = _check(tangent, tols, mode, r0, r0)
+  r = norm(b)
+  _start!(log, r)
+  r0 = max(r, r_reference)              # reference of the relative criterion (the log keeps ‖R₀‖ itself)
+  _print_header(log, r)
+  reason = _check(tangent, tols, mode, r, r0)
   if reason === :running && tols.maxiter == 0
     reason = :maxiter
   end
