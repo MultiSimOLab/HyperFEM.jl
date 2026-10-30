@@ -45,6 +45,10 @@ using Test
   end
 
   @time begin
+    include("TransientGridapTests.jl")
+  end
+
+  @time begin
     include("LinearModelTests.jl")
   end
 

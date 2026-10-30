@@ -361,3 +361,64 @@ end
                            stepping=TimeStepping(; Δt, t_end))[1]) - xref) for Δt in Δts]
   @test abs(log(errs[1] / errs[end]) / log(Δts[1] / Δts[end]) - 2) < 0.3
 end
+
+@testset "AdaptiveStepping: the global error follows rtol; a sharp load peak" begin
+  # heat with a smooth source on the general level: the global error decreases with rtol and the number of
+  # steps grows like rtol^(-1/(p+1)) (BDF2: p = 2)
+  model = CartesianDiscreteModel((0, 1, 0, 1), (4, 4))
+  reffe = ReferenceFE(lagrangian, Float64, 1)
+  bc = BoundaryConditions(BoundaryCondition("boundary", 0.0, EvolutionFunctions.constant()))
+  V = TestFESpace(model, reffe, bc; conformity=:H1); U = TrialFESpace(V, bc, 0.0)
+  Ω = Triangulation(model); dΩ = Measure(Ω, 2)
+  κ = 0.3; t_end = 1.0
+  nls = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-14, rtol=1e-12, verbose=0)
+  # the structured level with the source in the static form; `initial_acceleration = :solve` gives ẋ₀ (the
+  # start-up estimate of the first step needs it: the source is not zero at t = 0)
+  function heat_model(f; scheme=BDF(2))
+    res(t) = (u, v) -> ∫(κ * (∇(u) ⋅ ∇(v)))dΩ - ∫(f(t) * v)dΩ
+    jac(t) = (u, du, v) -> ∫(κ * (∇(du) ⋅ ∇(v)))dΩ
+    mass = (u, v) -> ∫(u * v)dΩ
+    TransientModel(res, jac, U, V, bc; scheme, mass, nls, initial_acceleration=:solve)
+  end
+  fsmooth(t) = sin(2π * t) + 0.5
+  xref = copy(solve!(heat_model(fsmooth); stepping=TimeStepping(; Δt=t_end / 2048, t_end))[1])
+  errs = Float64[]; nsteps = Int[]
+  for rtol in (1e-2, 1e-3, 1e-4)
+    ts = Float64[]
+    m = heat_model(fsmooth)
+    post = PostProcessor(m, p -> push!(ts, p.Λ[end]); is_vtk=false, filepath=mktempdir())
+    x, flag = solve!(m; stepping=AdaptiveStepping(; Δt=0.05, t_end, rtol, atol=1e-10), post)
+    @test flag == 1
+    push!(errs, norm(copy(x) - xref) / norm(xref)); push!(nsteps, length(ts))
+  end
+  @test errs[1] > errs[2] > errs[3]
+  @test errs[3] < 5e-3
+  ratio = nsteps[3] / nsteps[1]                       # 100^(1/3) ≈ 4.6 for an order-2 scheme
+  @test 2.5 < ratio < 8
+  # a sharp source peak at t = 0.5: the increment shrinks through the peak and recovers after it
+  fpeak(t) = 20.0 * exp(-((t - 0.5) / 0.03)^2)
+  ts = Float64[]
+  m = heat_model(fpeak)
+  post = PostProcessor(m, p -> push!(ts, p.Λ[end]); is_vtk=false, filepath=mktempdir())
+  x, flag = solve!(m; stepping=AdaptiveStepping(; Δt=0.05, t_end, rtol=1e-4, atol=1e-10), post)
+  @test flag == 1
+  Δts = diff(vcat(0.0, ts))
+  peak = findall(t -> 0.4 <= t <= 0.6, ts)
+  @test length(peak) >= 3
+  @test minimum(Δts[peak]) < 0.1 * maximum(Δts[1:peak[1]-1])        # it shrinks through the peak
+  @test Δts[end] > 5 * minimum(Δts[peak])                           # and recovers afterwards
+  # the same start on the general level with ẋ₀ given through `vh`: the first attempt is accepted
+  resg(ctx) = (u, v) -> ∫(∂t(ctx, u) * v)dΩ + ∫(κ * (∇(field(ctx, u)) ⋅ ∇(v)))dΩ - ∫(fsmooth(ctx.t) * v)dΩ
+  jacg(ctx) = (u, du, v) -> ∫(δ∂t(ctx, du) * v)dΩ + ∫(κ * (∇(δfield(ctx, du)) ⋅ ∇(v)))dΩ
+  M = assemble_matrix((u, v) -> ∫(u * v)dΩ, U, V)
+  ẋ0 = FEFunction(U, M \ assemble_vector(v -> ∫(fsmooth(0.0) * v)dΩ, V))
+  mg = TransientModel(resg, jacg, U, V, bc; scheme=BDF(2), nls, vh=ẋ0)
+  stepping = AdaptiveStepping(; Δt=0.05, t_end, rtol=1e-3, atol=1e-10)
+  xg, flag = solve!(mg; stepping)
+  @test flag == 1
+  # without ẋ₀ the start-up estimate is O(Δt) against a solution of the same size: every attempt is rejected
+  # down to Δtmin and the loop is exhausted (documented: give `vh`, or start at rest)
+  mg0 = TransientModel(resg, jacg, U, V, bc; scheme=BDF(2), nls)
+  x0, flag0 = @test_logs (:warn, r"exhausted") match_mode = :any solve!(mg0; stepping)
+  @test flag0 == 0
+end

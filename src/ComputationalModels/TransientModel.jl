@@ -269,6 +269,7 @@ struct TransientModel{R,J,S<:TimeScheme,SP,D,N,AP,H<:StageHistory,C,HK,MF,PH,IN,
         dorder < 2 && damping !== nothing && error("HyperFEM: the damping form is for second-order schemes")
         implicit(scheme, 1) || structured || error("HyperFEM: an explicit scheme needs the mass form (structured level)")
         initial_acceleration === :solve && !structured && error("HyperFEM: initial_acceleration = :solve needs the mass form")
+        initial_acceleration === :solve && dorder == 0 && error("HyperFEM: QuasiStatic has no initial time derivative to solve for")
 
         ∆U = TrialFESpace(U, dirbc, 0.0)
         app_U = dirichlet_applicator(U, dirbc)
@@ -280,8 +281,15 @@ struct TransientModel{R,J,S<:TimeScheme,SP,D,N,AP,H<:StageHistory,C,HK,MF,PH,IN,
         hist.xn .= x
         _dcopy!(hist.gdn, _dirichlet_values(U))
         if vh !== nothing
-            hist.vn .= get_free_dof_values(vh)
-            _dcopy!(hist.vdn, _dirichlet_values(get_fe_space(vh)))
+            # the initial time derivative: the velocity of the second-order schemes, ẋ₀ of the first-order ones
+            # (the start-up error estimate of the adaptive control needs it unless the system starts at rest)
+            if dorder == 2
+                hist.vn .= get_free_dof_values(vh)
+                _dcopy!(hist.vdn, _dirichlet_values(get_fe_space(vh)))
+            else
+                hist.ẋn .= get_free_dof_values(vh)
+                _dcopy!(hist.ẋdn, _dirichlet_values(get_fe_space(vh)))
+            end
         end
         bk = as_backend(backend)
         assem = assembler(bk, assem_U, U, V)
@@ -677,9 +685,14 @@ function _initial_dirichlet_kinematics!(m::TransientModel, U, t0::Float64, Δt::
     g1 = deepcopy(_dirichlet_values(U))
     TrialFESpace!(U, m.applicators[1], load(t0 + 2Δt); stage=t0 + 2Δt)
     g2 = _dirichlet_values(U)
+    second = m.caches.op.dorder == 2
     for i in eachindex(g0)
-        h.adn[i] .= (g0[i] .- 2.0 .* g1[i] .+ g2[i]) ./ Δt^2
-        m.velocity_given || (h.vdn[i] .= (-3.0 .* g0[i] .+ 4.0 .* g1[i] .- g2[i]) ./ (2Δt))
+        if second
+            h.adn[i] .= (g0[i] .- 2.0 .* g1[i] .+ g2[i]) ./ Δt^2
+            m.velocity_given || (h.vdn[i] .= (-3.0 .* g0[i] .+ 4.0 .* g1[i] .- g2[i]) ./ (2Δt))
+        else
+            m.velocity_given || (h.ẋdn[i] .= (-3.0 .* g0[i] .+ 4.0 .* g1[i] .- g2[i]) ./ (2Δt))
+        end
     end
     TrialFESpace!(U, m.applicators[1], load(t0); stage=t0)
     nothing
@@ -934,41 +947,45 @@ function _initial_acceleration!(m::TransientModel, t0::Float64, Δt::Float64, lo
     o = c.op
     U, V = m.spaces[1], m.spaces[2]
     h = m.hist
+    second = o.dorder == 2
     r, j = _stage_forms(m.res, m.jac, true, nothing, m.neumann, t0, load)
     o.inner = build_operator(c.backend, r, j, U, V, c.assem, o.inner)
     b = c.nls_cache.b
     residual!(b, o.inner, h.xn)
     b .*= -1.0
-    o.C === nothing || mul!(b, o.C, h.vn, -1.0, 1.0)       # − C v₀ (free values)
+    second && o.C !== nothing && mul!(b, o.C, h.vn, -1.0, 1.0)       # − C v₀ (free values)
     # the Dirichlet kinematics at t0 from the prescribed values ahead (one-sided differences with the first
-    # increment): the inertia M_fd g̈₀ (and the damping C_fd ġ₀) of the moving Dirichlet values enter a₀ — a
-    # start with a₀ = 0 on a boundary that accelerates costs the explicit scheme one order
+    # increment): the inertia M_fd g̈₀ (second order; M_fd ġ₀ first order) and the damping C_fd ġ₀ of the moving
+    # Dirichlet values enter the initial derivative — a start with a₀ = 0 on a boundary that accelerates costs
+    # the explicit scheme one order, and a start with ẋ₀ = 0 away from rest stalls the adaptive start-up
     _initial_dirichlet_kinematics!(m, U, t0, Δt, load)
+    gd0 = second ? h.adn : h.ẋdn
     o.use_bd = false
     nz = false
-    for i in eachindex(h.adn), k in eachindex(h.adn[i])
-        o.ad[i][k] = h.adn[i][k]
-        h.adn[i][k] == 0.0 || (nz = true)
+    for i in eachindex(gd0), k in eachindex(gd0[i])
+        o.ad[i][k] = gd0[i][k]
+        gd0[i][k] == 0.0 || (nz = true)
     end
     if nz
         zh = _fe_function(U, o.zfree, o.ad)
         o.opbd = load_vector!(c.backend, o.bd, v -> m.mass(zh, v), U, V, c.assem, o.opbd)
         b .-= o.bd
-        if o.C !== nothing
+        if second && o.C !== nothing
             for i in eachindex(h.vdn); o.ad[i] .= h.vdn[i]; end
             o.opbdC = load_vector!(c.backend, o.w, v -> m.damping(zh, v), U, V, c.assem, o.opbdC)
             b .-= o.w
         end
     end
+    target = second ? h.an : h.ẋn
     mask = c.inertia_mask
     if all(mask)
-        h.an .= o.M \ b
+        target .= o.M \ b
     else
-        # fields without inertia (electric potential, pressure): their acceleration is not defined and
-        # their rows of the mass matrix are empty; the solve is on the dofs with inertia
+        # fields without inertia (electric potential, pressure): their derivative is not defined and their
+        # rows of the mass matrix are empty; the solve is on the dofs with inertia
         idx = findall(mask)
-        fill!(h.an, zero(eltype(h.an)))
-        h.an[idx] .= o.M[idx, idx] \ b[idx]
+        fill!(target, zero(eltype(target)))
+        target[idx] .= o.M[idx, idx] \ b[idx]
     end
     nothing
 end

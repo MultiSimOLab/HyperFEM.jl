@@ -94,11 +94,14 @@ m = TransientModel(res, jac, U, V, D_bc; scheme=GeneralizedAlpha(0.9), mass, xh=
 solve!(m; stepping=AdaptiveStepping(; Δt=1e-3, t_end=2.0, rtol=1e-4), post)
 ```
 
-`initial_acceleration = :solve` takes `a₀` from `M a₀ = −r(0, u₀) − C v₀ − M_fd g̈₀` (the Dirichlet
+`vh` is the initial time derivative: the velocity of the second-order schemes, `ẋ₀` of the first-order
+ones. `initial_acceleration = :solve` takes `a₀` from `M a₀ = −r(0, u₀) − C v₀ − M_fd g̈₀` (the Dirichlet
 kinematics at the start from one-sided differences of the prescribed values): with the default `:zero`
 the first steps of the second-order schemes see an inconsistent acceleration (their orders and the
 energy conservation degrade, and the explicit scheme loses one order on a boundary that accelerates
-from the start). The mass form of a multi-field problem is written on the tuples and is zero on
+from the start); for the first-order schemes it solves `M ẋ₀ = −r(0, u₀) − M_fd ġ₀` instead. The adaptive
+control needs `ẋ₀` (or `a₀`) when the system does not start at rest: the error estimate of the first step is
+built on the predictor `u₀ + Δt ẋ₀`, and with `ẋ₀ = 0` away from rest every attempt would be rejected. The mass form of a multi-field problem is written on the tuples and is zero on
 the fields without inertia. The inertia of moving Dirichlet values enters as a load vector.
 
 ## Tangent update

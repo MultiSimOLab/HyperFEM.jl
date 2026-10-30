@@ -465,7 +465,10 @@ function predict!(y, s::BDF, h::StageHistory, ::Int, Δt::Float64)
 end
 function _extrapolate!(y, h::StageHistory, Δt::Float64, order::Int)
     if h.nstored < 1
-        y .= h.xn
+        # before the first accepted step: xₙ + Δt ẋ₀ (ẋ₀ given through `vh` or `initial_acceleration = :solve`;
+        # zero at rest). With ẋ₀ = 0 away from rest the Milne estimate of the first step would be O(Δt) against a
+        # solution of the same size and every attempt would be rejected
+        y .= h.xn .+ Δt .* h.ẋn
     elseif order == 1 || h.nstored < 2
         ω = Δt / h.Δt⁻
         y .= h.xn .+ ω .* (h.xn .- h.xnm1)
