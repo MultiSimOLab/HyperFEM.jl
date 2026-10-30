@@ -97,8 +97,8 @@ function step!(m::StaticNonlinearModel, st::LoadStep, stepping::LoadStepping;
     t_step = time()
     Algebra.solve!(x, nls, model_operator(m, op, Λ, load(Λ)), nls_cache)
     ok = nls_converged(nls)
-    # growth of the increment after an easy step (grow = 1: never)
-    ∆Λnext = ok && stepping.grow > 1 && nls_iterations(nls) <= stepping.easy ? min(stepping.grow * ∆Λ, st.ΔΛ0) : ∆Λ
+    # growth of the increment after an easy step (grow = 1: never; shared with the time stepping)
+    ∆Λnext = grown_increment(stepping.grow, stepping.easy, ∆Λ, st.ΔΛ0, ok, nls_iterations(nls))
     step_line(verbose, nls, st.nsteps + 1, Λ, ∆Λ, ok, time() - t_step, ∆Λnext > ∆Λ)
     if ok
         st.nsteps += 1

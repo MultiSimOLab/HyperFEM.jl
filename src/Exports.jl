@@ -167,6 +167,9 @@ end
 @publish ComputationalModels  NonlinearStepCache
 @publish ComputationalModels  LinearSystemCache
 @publish ComputationalModels  solve!
+@publish ComputationalModels  TimeStepping
+@publish ComputationalModels  AdaptiveStepping
+@publish ComputationalModels  TimeStep
 @publish ComputationalModels  LoadStepping
 @publish ComputationalModels  LoadStep
 @publish ComputationalModels  step!

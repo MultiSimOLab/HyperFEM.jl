@@ -25,6 +25,10 @@ using Test
   end
 
   @time begin
+    include("TimeSteppingTests.jl")
+  end
+
+  @time begin
     include("LinearModelTests.jl")
   end
 

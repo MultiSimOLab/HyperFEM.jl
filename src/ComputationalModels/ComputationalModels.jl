@@ -63,7 +63,11 @@ export GmshDiscreteModel
 export evaluate!
 
 include("Drivers.jl")
+include("TimeStepping.jl")
 include("LoadStepping.jl")
+export TimeStepping
+export AdaptiveStepping
+export TimeStep
 export LoadStepping
 export LoadStep
 export step!
