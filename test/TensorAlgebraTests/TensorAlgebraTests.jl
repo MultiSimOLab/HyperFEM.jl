@@ -3,6 +3,7 @@ using Gridap.Arrays
 using HyperFEM.TensorAlgebra
 using Test
 import LinearAlgebra
+import Random
 
 
 digits1(D) = [Float64(i) for i in 1:D]
@@ -270,7 +271,12 @@ end
     tensor((A + A') / 2)
   end
   allocs(C, δ) = @allocated regularize_hessian(C, δ)
+  # Both computations are backward stable: the eigenvectors carry an absolute error ~ ε‖C‖, which is the
+  # error to expect in the result, whatever its own size (an indefinite C with large negative eigenvalues
+  # clamped to a small δ gives ‖R‖ ≪ ‖C‖, and a tolerance relative to ‖R‖ alone fails on those draws)
+  close(X, Y, C) = isapprox(X, Y; rtol=1e-12, atol=1e3 * eps() * LinearAlgebra.norm(get_array(C)))
 
+  Random.seed!(20261030)
   for N in (4, 9), _ in 1:200
     scale = 10.0^rand(-2:5)
     δ = 1e-6 * scale
@@ -282,12 +288,12 @@ end
     for λ in spectra
       C = random_symmetric(N, λ)
       R = reference_regularization(C, δ)
-      @test isapprox(regularize_hessian(C, δ), R, rtol=1e-12)
+      @test close(regularize_hessian(C, δ), R, C)
     end
     # only the upper triangle counts, as with Symmetric
     C = random_symmetric(N, scale .* randn(N))
     A = get_array(C) + 1e-3 * scale * LinearAlgebra.triu(randn(N, N), 1)'
-    @test isapprox(regularize_hessian(tensor(A), δ), reference_regularization(tensor(A), δ), rtol=1e-12)
+    @test close(regularize_hessian(tensor(A), δ), reference_regularization(tensor(A), δ), tensor(A))
   end
 
   # positive definite above δ: returned unchanged

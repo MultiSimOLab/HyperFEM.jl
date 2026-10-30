@@ -112,7 +112,7 @@ step (0 and NaN before the first), the accepted steps `nsteps`, the consecutive 
 `nbisect`/`nbisect_total`, the consecutive and total rejections `nreject`/`nreject_total`, whether the
 last attempt was rejected (`rejected`, the controller does not grow the increment right after one),
 and the running attempt: its target `t_target`, its increment `Δt_attempt` and whether it was `cut`
-(less than the proposed increment, at `t_end` or at a `tstop`), set by [`next_target!`](@ref).
+(less than the proposed increment, at `t_end` or at a `tstop`), set by `next_target!`.
 """
 mutable struct TimeStep
     t::Float64

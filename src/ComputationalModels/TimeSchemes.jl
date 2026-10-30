@@ -195,7 +195,7 @@ end
 
 What the weak forms of a transient model see at a stage: the stage time `t`, the step `Δt`, the
 step count `step` (the one being computed, n + 1), the stage `stage`, the coefficients `c`
-([`StageCoefficients`](@ref)) and the history `h` ([`StageHistory`](@ref): the FE functions `uₙ`,
+(`StageCoefficients`) and the history `h` (`StageHistory`: the FE functions `uₙ`,
 `uₙ₋₁`, `vₙ`, `aₙ` and the β functions). `ctx.u⁻`, `ctx.u⁻⁻`, `ctx.v⁻`, `ctx.a⁻` are the history FE
 functions; `ctx.history` the user's history object (`history = …` of the model), `nothing` by default.
 The functions of the contract: [`field`](@ref), [`∂t`](@ref), [`∂tt`](@ref), [`at`](@ref) and their

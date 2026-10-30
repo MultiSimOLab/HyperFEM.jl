@@ -278,7 +278,7 @@ _on_failure(::HybridTangent, mode) = mode === :consistent ? :projected : nothing
                   linesearch=FullStepLS(), tangent=ConsistentTangent())
 
 Newton–Raphson solver of HyperFEM, a Gridap `NonlinearSolver`. `ls` is the linear solver of the
-tangent systems (any Gridap `LinearSolver`; see [`numerical_setup_state!`](@ref) for solvers whose setup
+tangent systems (any Gridap `LinearSolver`; see [`numerical_setup_state`](@ref) for solvers whose setup
 depends on the current state `x`).
 The stopping criteria are those of [`NewtonTolerances`](@ref); `linesearch` chooses the step length
 along the Newton direction ([`FullStepLS`](@ref), [`BacktrackingLS`](@ref), [`InjectivityLS`](@ref));

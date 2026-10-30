@@ -221,10 +221,10 @@ is a user object available as `ctx.history` and committed with `commit!(history,
 `x`), `vh` the initial velocity (second order), `initial_acceleration` `:zero` or `:solve` (`M a₀ = −r(0, u₀)`,
 structured level, pure mechanics). `injectivity`, `energy` and `tangent_switch` are the hooks of
 `StaticNonlinearModel`: `energy(t) = u -> ∫(Ψ…)dΩ` is the stored energy of the model, reported per step
-when the solver is verbose ([`EnergyLog`](@ref), with the kinetic energy of the `mass` form — or of the
+when the solver is verbose (`EnergyLog`, with the kinetic energy of the `mass` form — or of the
 `kinetic(vh)` functional on the velocity — and the work of the `neumann` loads) and, on the structured
 level, turned into the incremental functional of the stage whose gradient is the stage residual
-([`stage_energy`](@ref)) for the Armijo line search and the hybrid tangent; on the general level that
+(`stage_energy`) for the Armijo line search and the hybrid tangent; on the general level that
 functional is the user's `stage_energy(ctx) = y -> …` on the stage FE function.
 """
 struct TransientModel{R,J,S<:TimeScheme,SP,D,N,AP,H<:StageHistory,C,HK,MF,PH,IN,UH} <: ComputationalModel
@@ -437,7 +437,7 @@ get_previous_state(m::TransientModel) = m.hist.un
 #    					 Energies and verbose output
 #*******************************************************************************
 
-"Energies of the run as a named tuple `(; K, Π, W, balance)` (`NaN` when not tracked; see [`EnergyLog`](@ref))."
+"Energies of the run as a named tuple `(; K, Π, W, balance)` (`NaN` when not tracked; see `EnergyLog`)."
 get_energies(m::TransientModel) = (e = m.caches.energies; (; K=e.K, Π=e.Π, W=e.W, balance=balance(e)))
 
 # kinetic and stored energies at the state of the history (after the commit of a step, or at the start)
@@ -525,15 +525,15 @@ end
 """
     step!(m::TransientModel, st::TimeStep, stepping; ProjectDirichlet, load, post, presolver, on_bisection, on_reject) -> Bool
 
-One attempt of the time loop: the next target of `st` ([`next_target!`](@ref)) from the last accepted
+One attempt of the time loop: the next target of `st` (`next_target!`) from the last accepted
 step; `presolver(t, Δt)` first, `update_time_step!(physics, Δt)`, the Dirichlet values at `load(t)`; then
 every stage of the scheme (coefficients, Dirichlet values of the stage, forms, predictor — with the
 Dirichlet projection of the static tangent when `ProjectDirichlet` —, solve, `commit_stage!`). A failed
-solve bisects the increment ([`bisect!`](@ref), `on_bisection(t, Δt)`); with `AdaptiveStepping` a step
-whose error estimate exceeds the tolerance is rejected ([`reject!`](@ref), `on_reject(t, Δt, err)`);
+solve bisects the increment (`bisect!`, `on_bisection(t, Δt)`); with `AdaptiveStepping` a step
+whose error estimate exceeds the tolerance is rejected (`reject!`, `on_reject(t, Δt, err)`);
 otherwise the step is accepted: `post(t)` (the state is uₙ₊₁ and the Dirichlet values those of t; the
 velocity and acceleration of the history are still vₙ, aₙ — the commit comes after), `internal(xh, xh⁻)`, the commit of the scheme (history,
-velocities and accelerations, Dirichlet values) and [`accept!`](@ref). Returns whether the step was
+velocities and accelerations, Dirichlet values) and `accept!`. Returns whether the step was
 accepted. On failure or rejection the state, the time, the Dirichlet values and the history are those of
 the last accepted step.
 """

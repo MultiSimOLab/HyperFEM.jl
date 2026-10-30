@@ -142,11 +142,11 @@ Work data of the incremental nonlinear drivers, typed so that the hot path of th
 dynamic dispatch: the nonlinear solver `nls` and its cache, the free values `x` of the state and
 `x⁻` of the last converged step, the assembler `assem` of the lazy backend (`nothing` for the
 others), the `backend` and its operator `op` of the current step (rebuilt or updated by
-[`build_operator`](@ref) at every step, hence a field of a fixed type), and the backend operator of
+`build_operator` at every step, hence a field of a fixed type), and the backend operator of
 the Dirichlet projection, `projection` (`nothing` until the first projection and for the lazy
 backend; the kernel operator on `∆U` of the compiled one, reused with `update`; its type depends on
 the backend, so it is untyped — one dynamic dispatch per projected step). The projection system
-itself lives in the tangent, residual and increment of `nls_cache` ([`dirichlet_projection!`](@ref)).
+itself lives in the tangent, residual and increment of `nls_cache` (`dirichlet_projection!`).
 """
 mutable struct NonlinearStepCache{N<:NonlinearSolver,C,X<:AbstractVector,A,B<:AbstractBackend,O}
     const nls::N
@@ -269,7 +269,7 @@ projection_setup!(c, x) = numerical_setup!(c.ns, c.A)
 the driver at the load of every step. The model owns the Dirichlet applicators of its spaces
 (`get_applicators`: those of `U`, `∆U` and the space of `xh⁻`). `backend` (`:lazy`, `:compiled` or an
 [`AbstractBackend`](@ref)) selects who evaluates and assembles the forms (see `build_operator`);
-`assem_U` is a custom Gridap assembler for the lazy backend only (see [`assembler`](@ref)).
+`assem_U` is a custom Gridap assembler for the lazy backend only (see `assembler`).
 
 `injectivity` is the measure whose quadrature points must keep `det F > 0` (`dΩ`, or `(dΩ, i)` when
 the displacement is the field `i` of a multi-field space); it gives the injectivity step of
@@ -483,7 +483,7 @@ several right-hand sides on the repeated spaces of `U0`, `V0`. The matrix is fac
 setup of `ls`) at construction and again only when it is re-assembled (`Assembly = true`).
 `backend` selects who assembles (see `linear_system`): `:lazy` (default), `:compiled`
 (HyperFEMKernels extension, `using HyperFEMKernels`) or an [`AbstractBackend`](@ref); `assem_U`
-is a custom Gridap assembler for the lazy backend only (see [`assembler`](@ref)).
+is a custom Gridap assembler for the lazy backend only (see `assembler`).
 """
 struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
     lf::A
