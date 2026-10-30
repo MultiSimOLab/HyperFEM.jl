@@ -218,22 +218,34 @@ build_operator(::LazyBackend, res, jac, U, V, assem, previous) =
 build_operator(b::AbstractBackend, res, jac, U, V, assem, previous) = Backends.not_available(b, "the drivers")
 
 """
-    dirichlet_projection(backend, res, jac, uh, ∆U, V, ls, previous) -> (duh, op)
+    dirichlet_projection!(backend, A, b, res, jac, uh, ∆U, V, assem, previous) -> op
 
-Linearised problem of the Dirichlet projection (`solve!` with `ProjectDirichlet=true`): solves
-`jac(uh, du, v) = -res(uh, v)` for `du` in `∆U`, whose Dirichlet values hold the increment of the
-conditions of the step, with the linear solver `ls`. Returns the increment `duh` (an `FEFunction` of
-`∆U`) and the operator used, handed back as `previous` in the next step so that a backend can reuse
-its structure (`nothing` the first time). `LazyBackend` assembles an `AffineFEOperator`;
+Linear system of the Dirichlet projection (`solve!` with `ProjectDirichlet=true`), assembled into
+the tangent `A` and the residual `b` of the Newton cache: `A du = b` is `jac(uh, du, v) = -res(uh, v)`
+for `du` in `∆U`, whose Dirichlet values hold the increment of the conditions of the step and are
+lifted to `b`. `∆U` shares the free dofs of the trial space of the model, so `A` has the pattern of
+the tangent (the backend must assemble into it; the system is then solved with the numerical setup
+of the cache, no second matrix nor factorisation structure per step). Returns the operator used,
+handed back as `previous` in the next step so that a backend can reuse its structure (`nothing` the
+first time). `LazyBackend` assembles with the Gridap assembler `assem` of the model;
 `CompiledBackend` is provided by the HyperFEMKernels extension.
 """
-function dirichlet_projection(::LazyBackend, res, jac, uh, ∆U, V, ls, previous)
+function dirichlet_projection!(::LazyBackend, A, b, res, jac, uh, ∆U, V, assem, previous)
     l(v) = -1.0 * res(uh, v)
     a(du, v) = jac(uh, du, v)
-    op = AffineFEOperator(a, l, ∆U, V)
-    solve(ls, op), nothing
+    du = get_trial_fe_basis(∆U)
+    v = get_fe_basis(V)
+    data = collect_cell_matrix_and_vector(∆U, V, a(du, v), l(v), zero(∆U))
+    assemble_matrix_and_vector!(A, b, assem, data)
+    nothing
 end
-dirichlet_projection(b::AbstractBackend, res, jac, uh, ∆U, V, ls, previous) = Backends.not_available(b, "the Dirichlet projection")
+dirichlet_projection!(bk::AbstractBackend, A, b, res, jac, uh, ∆U, V, assem, previous) = Backends.not_available(bk, "the Dirichlet projection")
+
+# Tangent, residual and increment of a Newton cache for the projection, and its numerical setup
+# (HyperFEM's `NewtonCache`; Gridap's `NewtonRaphsonCache` and GridapSolvers' cache have the same fields)
+projection_system(c) = (c.A, c.b, c.dx)
+projection_setup!(c::NewtonCache, x) = numerical_setup!(c, x)
+projection_setup!(c, x) = numerical_setup!(c.ns, c.A)
 
 """
     StaticNonlinearModel(res, jac, U, V, dirichlet; neumann=nothing, nls, xh, xh⁻, backend=:lazy,
@@ -366,6 +378,13 @@ function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel,
 end
 
 
+"""
+    get_dirichlet_preconditioner(m, Λ, ∆Λ, load=identity) -> duh
+
+Increment of the Dirichlet projection from the state of `m` at the stage `Λ - ∆Λ` to the stage `Λ`
+(`dirichlet_projection!` on the Newton cache of the model). `duh` is an `FEFunction` of `∆U` over the
+increment vector of the Newton cache: it is valid until the next Newton solve or projection.
+"""
 function get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, load=identity)
     _, V, ∆U = m.spaces
     uh = get_state(m)
@@ -374,9 +393,11 @@ function get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆�
     res = with_neumann(m.res(Λ - ∆Λ), m.neumann, load(Λ - ∆Λ))
     jac = m.jac(Λ - ∆Λ)
     c = m.caches
-    duh, op = dirichlet_projection(c.backend, res, jac, uh, ∆U, V, c.nls.ls, c.projection)
-    c.projection = op
-    return duh
+    A, b, dx = projection_system(c.nls_cache)
+    c.projection = dirichlet_projection!(c.backend, A, b, res, jac, uh, ∆U, V, c.assem, c.projection)
+    ns = projection_setup!(c.nls_cache, c.x)
+    Algebra.solve!(dx, ns, b)
+    return FEFunction(∆U, dx)
 end
 #*******************************************************************************	
 #    					 DynamicNonlinearModel
