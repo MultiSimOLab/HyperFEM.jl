@@ -41,6 +41,10 @@ using Test
   end
 
   @time begin
+    include("TransientEnergyTests.jl")
+  end
+
+  @time begin
     include("LinearModelTests.jl")
   end
 

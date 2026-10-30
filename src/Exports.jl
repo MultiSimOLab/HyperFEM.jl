@@ -188,6 +188,7 @@ end
 @publish ComputationalModels  δat
 @publish ComputationalModels  get_velocity
 @publish ComputationalModels  get_previous_state
+@publish ComputationalModels  get_energies
 @publish ComputationalModels  get_acceleration
 @publish ComputationalModels  TimeStepping
 @publish ComputationalModels  AdaptiveStepping

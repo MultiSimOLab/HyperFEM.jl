@@ -35,13 +35,15 @@ mutable struct TransientStepOperator{O<:NonlinearOperator,M,D,X<:AbstractVector}
     const ad::Vector{Vector{Float64}}   # Dirichlet values of that function
     opbd::Any
     opbdC::Any
+    energy::Any               # functional of the stage (structured: Π + Neumann work at the stage time; general: the user's Φ)
+    const w2::X               # scratch of the stage energy
 end
 
 function TransientStepOperator(inner, structured::Bool, M, C, h::StageHistory, x::AbstractVector, dorder::Int)
     z() = (v = similar(x); fill!(v, zero(eltype(x))); v)
     ad = [zeros(length(d)) for d in h.gd]
     TransientStepOperator{typeof(inner),typeof(M),typeof(C),typeof(x)}(inner, structured, M, C, Int[], Int[], z(), z(), z(), false,
-        StageCoefficients(1.0, 0.0, 0.0, 0.0, 1.0), h.b0, h.b1, h.b2, false, dorder, z(), ad, nothing, nothing)
+        StageCoefficients(1.0, 0.0, 0.0, 0.0, 1.0), h.b0, h.b1, h.b2, false, dorder, z(), ad, nothing, nothing, nothing, z())
 end
 
 Algebra.allocate_residual(o::TransientStepOperator, x::AbstractVector) = allocate_residual(o.inner, x)
@@ -113,6 +115,41 @@ end
 Algebra.residual_and_jacobian!(b::AbstractVector, A::AbstractMatrix, o::TransientStepOperator, y::AbstractVector) =
     invoke(residual_and_jacobian!, Tuple{Any,Any,TransientStepOperator,AbstractVector}, b, A, o, y)
 
+"""
+    stage_energy(o::TransientStepOperator, U, y) -> Float64
+
+Incremental functional of the stage whose gradient in the stage unknown `y` is the stage residual (the
+energy of the Armijo line search and of the hybrid tangent). Structured level:
+`Φ(y) = yᵀ M (½ α_K y + β_K) + yᵀ C (½ α₁ y + β₁) + yᵀ bd + (Π + W_N)(α₀ y + β₀) / α₀`, with `α_K`, `β_K`
+the coefficients of the derivative the mass multiplies, `Π` the model's `energy(t)` and `W_N` the work
+of the Neumann loads at the stage time — valid when `r = ∇Π` and `M`, `C` are symmetric (solids); not
+defined for an explicit stage (`α₀ = 0`). General level: the user's `energy(ctx)` on the stage FE function.
+"""
+function stage_energy(o::TransientStepOperator, U, y::AbstractVector)
+    e = o.energy
+    o.structured || return sum(e(FEFunction(U, y)))
+    c = o.c
+    c.α0 == 0.0 && error("HyperFEM: the stage energy of an explicit stage is not defined (no line search on explicit stages)")
+    Φ = 0.0
+    if o.dorder == 2
+        o.w .= (0.5 * c.α2) .* y .+ o.b2
+        mul!(o.w2, o.M, o.w)
+        Φ += dot(y, o.w2)
+        if o.C !== nothing
+            o.w .= (0.5 * c.α1) .* y .+ o.b1
+            mul!(o.w2, o.C, o.w)
+            Φ += dot(y, o.w2)
+        end
+    elseif o.dorder == 1
+        o.w .= (0.5 * c.α1) .* y .+ o.b1
+        mul!(o.w2, o.M, o.w)
+        Φ += dot(y, o.w2)
+    end
+    o.use_bd && (Φ += dot(y, o.bd))
+    xe = _stage_field!(o, y)
+    Φ + sum(e(FEFunction(U, xe))) / c.α0
+end
+
 function _add_mapped!(nzA::AbstractVector, c::Float64, nzM::AbstractVector, map::Vector{Int})
     c == 0.0 && return
     @inbounds for k in eachindex(map)
@@ -154,7 +191,8 @@ end
     TransientModel(res, jac, U, V, dirichlet; scheme, mass=nothing, damping=nothing, mass_update=:constant,
                    mass_lumping=false, tangent_update=:iteration, physics=nothing, internal=nothing,
                    history=nothing, xh, vh=nothing, initial_acceleration=:zero, nls, backend=:lazy,
-                   neumann=nothing, injectivity=nothing, energy=nothing, tangent_switch=nothing)
+                   neumann=nothing, injectivity=nothing, energy=nothing, tangent_switch=nothing,
+                   kinetic=nothing, stage_energy=nothing)
 
 Transient driver on the loop of [`step!`](@ref) with the time `scheme` (`QuasiStatic`, `BDF`, `Theta`,
 `GeneralizedAlpha` and its members, `CentralDifference`, `SDIRK`), solved with `TimeStepping` or
@@ -182,7 +220,12 @@ is a user object available as `ctx.history` and committed with `commit!(history,
 `xh` is the initial state (and the FE function of the state after every accepted step, over the model's
 `x`), `vh` the initial velocity (second order), `initial_acceleration` `:zero` or `:solve` (`M a₀ = −r(0, u₀)`,
 structured level, pure mechanics). `injectivity`, `energy` and `tangent_switch` are the hooks of
-`StaticNonlinearModel` (the energy on the structured level is the incremental functional of the stage).
+`StaticNonlinearModel`: `energy(t) = u -> ∫(Ψ…)dΩ` is the stored energy of the model, reported per step
+when the solver is verbose ([`EnergyLog`](@ref), with the kinetic energy of the `mass` form — or of the
+`kinetic(vh)` functional on the velocity — and the work of the `neumann` loads) and, on the structured
+level, turned into the incremental functional of the stage whose gradient is the stage residual
+([`stage_energy`](@ref)) for the Armijo line search and the hybrid tangent; on the general level that
+functional is the user's `stage_energy(ctx) = y -> …` on the stage FE function.
 """
 struct TransientModel{R,J,S<:TimeScheme,SP,D,N,AP,H<:StageHistory,C,HK,MF,PH,IN,UH} <: ComputationalModel
     res::R
@@ -212,7 +255,8 @@ struct TransientModel{R,J,S<:TimeScheme,SP,D,N,AP,H<:StageHistory,C,HK,MF,PH,IN,
         physics=nothing, internal=nothing, history=nothing,
         xh::FEFunction=FEFunction(U, zero_free_values(U)), vh=nothing, initial_acceleration::Symbol=:zero,
         nls::NonlinearSolver=NewtonRaphson(LUSolver(); maxiter=10, rtol=1.e-8, verbose=0),
-        backend=:lazy, assem_U=nothing, neumann=nothing, injectivity=nothing, energy=nothing, tangent_switch=nothing)
+        backend=:lazy, assem_U=nothing, neumann=nothing, injectivity=nothing, energy=nothing, tangent_switch=nothing,
+        kinetic=nothing, stage_energy=nothing)
 
         mass_update in (:constant, :step) || error("HyperFEM: mass_update must be :constant or :step (got :$mass_update)")
         tangent_update in (:iteration, :step, :Δt) || error("HyperFEM: tangent_update must be :iteration, :step or :Δt (got :$tangent_update)")
@@ -252,7 +296,9 @@ struct TransientModel{R,J,S<:TimeScheme,SP,D,N,AP,H<:StageHistory,C,HK,MF,PH,IN,
         # the Dirichlet inertia vectors are assembled by the operators of the mass and damping systems (the
         # compiled backend assembles a load vector only through an operator built by `linear_system`)
         stepop.opbd, stepop.opbdC = opM, opC
-        hooks = (injectivity=_injectivity_hook(injectivity), energy=energy, tangent_switch=tangent_switch)
+        structured && stage_energy !== nothing && error("HyperFEM: the stage energy is derived from `energy` on the structured level; `stage_energy` is for the general level")
+        !structured && energy !== nothing && stage_energy === nothing && @warn "HyperFEM: on the general level the stored energy is reported only; the energy of the line searches needs `stage_energy(ctx)`"
+        hooks = (injectivity=_injectivity_hook(injectivity), energy=energy, stage_energy=stage_energy, kinetic=kinetic, tangent_switch=tangent_switch)
         mop = _model_operator(hooks, spaces, stepop, structured)
         nls_cache = instantiate_caches(y, nls, mop)
         if structured
@@ -260,7 +306,7 @@ struct TransientModel{R,J,S<:TimeScheme,SP,D,N,AP,H<:StageHistory,C,HK,MF,PH,IN,
             append!(stepop.map_M, nonzero_map(M, A))
             C === nothing || append!(stepop.map_C, nonzero_map(C, A))
         end
-        caches = TransientStepCache(nls, nls_cache, x, y, assem, bk, stepop, opM, opC)
+        caches = TransientStepCache(nls, nls_cache, x, y, assem, bk, stepop, opM, opC, EnergyLog(x, hist.gd))
 
         new{typeof(res),typeof(jac),typeof(scheme),typeof(spaces),typeof(dirbc),typeof(neumann),typeof(applicators),
             typeof(hist),typeof(caches),typeof(hooks),typeof(mass),typeof(physics),typeof(internal),typeof(history)}(
@@ -268,6 +314,29 @@ struct TransientModel{R,J,S<:TimeScheme,SP,D,N,AP,H<:StageHistory,C,HK,MF,PH,IN,
             mass_lumping, tangent_update, physics, internal, history, initial_acceleration)
     end
 end
+
+"""
+    EnergyLog
+
+Energies of the run (tracked when the solver is verbose; `get_energies`): the kinetic energy `K`
+(`½ ∫ρ v⋅v`, from the `mass` form on the velocity of the history — second-order schemes — or from the
+`kinetic` hook), the stored energy `Π` (the model's `energy(t)` at the state), the work `W` of the
+`neumann` loads (trapezoidal rule in time; loads written inside `res` and the work of the Dirichlet
+reactions are not tracked) and the balance `W − ΔK − ΔΠ` from the start of the run. `NaN` when not
+available.
+"""
+mutable struct EnergyLog{X<:AbstractVector,D}
+    K::Float64
+    Π::Float64
+    W::Float64
+    K0::Float64
+    Π0::Float64
+    tracked::Bool
+    const dx::X                 # increment of the step (free dofs) for the work of the loads
+    const dg::D                 # and its Dirichlet values
+end
+EnergyLog(x::AbstractVector, gd) = EnergyLog{typeof(x),typeof(gd)}(NaN, NaN, 0.0, NaN, NaN, false, similar(x), deepcopy(gd))
+balance(e::EnergyLog) = e.W - (e.K - e.K0) - (e.Π - e.Π0)
 
 """
     TransientStepCache
@@ -294,10 +363,12 @@ mutable struct TransientStepCache{N<:NonlinearSolver,NC,X<:AbstractVector,A,B<:A
     Δt_assembled::Float64
     coef_assembled::StageCoefficients
     projection::Any
+    const energies::EnergyLog
 end
-TransientStepCache(nls, nls_cache, x, y, assem, backend, op, opM, opC) =
+TransientStepCache(nls, nls_cache, x, y, assem, backend, op, opM, opC, energies) =
     TransientStepCache{typeof(nls),typeof(nls_cache),typeof(x),typeof(assem),typeof(backend),typeof(op)}(
-        nls, nls_cache, x, y, assem, backend, op, opM, opC, NaN, StageCoefficients(NaN, NaN, NaN, NaN, NaN), nothing)
+        nls, nls_cache, x, y, assem, backend, op, opM, opC, NaN, StageCoefficients(NaN, NaN, NaN, NaN, NaN), nothing, energies)
+
 
 # the forms of a stage: the user's forms of the context (general level) or the static forms at the stage
 # time with the Neumann loads (structured level)
@@ -328,7 +399,9 @@ function _model_operator(hooks, spaces, stepop::TransientStepOperator, structure
             α0 = structured ? stepop.c.α0 : 1.0
             injectivity_step(inj[1], _field(FEFunction(U, xe), inj[2]), _field(FEFunction(V, α0 == 1.0 ? dy : α0 .* dy), inj[2]), β, jmin)
         end
-    ModelOperator(stepop; max_step=ms, energy=nothing, tangent_switch=hooks.tangent_switch)
+    has = structured ? hooks.energy !== nothing : hooks.stage_energy !== nothing
+    en = has ? (y -> stage_energy(stepop, U, y)) : nothing
+    ModelOperator(stepop; max_step=ms, energy=en, tangent_switch=hooks.tangent_switch)
 end
 
 # Getters
@@ -347,6 +420,91 @@ The FE function over the history `uₙ` (`ctx.u⁻` of the forms): during `post`
 step) the state the step started from; after `step!` the last accepted state (the history is committed).
 """
 get_previous_state(m::TransientModel) = m.hist.un
+
+#*******************************************************************************
+#    					 Energies and verbose output
+#*******************************************************************************
+
+"Energies of the run as a named tuple `(; K, Π, W, balance)` (`NaN` when not tracked; see [`EnergyLog`](@ref))."
+get_energies(m::TransientModel) = (e = m.caches.energies; (; K=e.K, Π=e.Π, W=e.W, balance=balance(e)))
+
+# kinetic and stored energies at the state of the history (after the commit of a step, or at the start)
+function _energies!(e::EnergyLog, m::TransientModel, t::Float64)
+    h = m.hist
+    U = m.spaces[1]
+    kin = m.hooks.kinetic
+    if kin !== nothing
+        e.K = sum(kin(h.vnh))
+    elseif m.mass !== nothing && derivative_order(m.scheme) == 2
+        e.K = 0.5 * sum(m.mass(h.vnh, h.vnh))
+    end
+    en = m.hooks.energy
+    en === nothing || (e.Π = sum(en(t)(FEFunction(U, m.caches.x))))
+    nothing
+end
+# work of the Neumann loads over the step (trapezoidal rule): ½ (f(tₙ) + f(tₙ₊₁)) ⋅ Δu, Dirichlet dofs included
+function _work_increment!(e::EnergyLog, m::TransientModel, tn::Float64, t::Float64)
+    m.neumann === nothing && return
+    h = m.hist
+    U = m.spaces[1]
+    e.dx .= m.caches.x .- h.xn
+    for i in eachindex(e.dg)
+        e.dg[i] .= h.gd[i] .- h.gdn[i]
+    end
+    e.W -= sum(residual_Neumann(m.neumann.bc, _fe_function(U, e.dx, e.dg), m.neumann.dΓ, t, tn))
+    nothing
+end
+function _start_energies!(e::EnergyLog, m::TransientModel, t0::Float64, verbose::Int)
+    e.tracked = verbose >= 1
+    e.K = NaN; e.Π = NaN; e.W = 0.0
+    e.tracked || return
+    _energies!(e, m, t0)
+    e.K0, e.Π0 = e.K, e.Π
+    nothing
+end
+
+function step_header_t(v::Int, n::Int, t, Δt)
+    v >= 2 || return
+    printstyled(@sprintf("━━ Step %d ━━ t = %.4e  Δt = %.3e ━━\n", n, t, Δt); bold=true)
+end
+function step_line_t(v::Int, m::TransientModel, n::Int, t, Δt, its::Int, ok::Bool, err::Float64, time)
+    v >= 1 || return
+    nls = m.caches.nls
+    e = m.caches.energies
+    @printf("step %4d  t = %.4e  Δt = %.3e  it = %3d", n, t, Δt, its)
+    if nls isa NewtonRaphson && m.tangent_update === :iteration && !isempty(residual_history(nls))
+        @printf("  ‖R‖ = %.3e", residual_history(nls)[end])
+    end
+    isnan(err) || @printf("  err = %.2e", err)
+    if ok && e.tracked
+        isnan(e.K) || @printf("  K = %.4e", e.K)
+        isnan(e.Π) || @printf("  Π = %.4e", e.Π)
+        isnan(e.K) || isnan(e.Π) || @printf("  K+Π = %.4e", e.K + e.Π)
+        (m.neumann !== nothing || !isnan(e.K) || !isnan(e.Π)) && @printf("  balance = %.2e", balance(e))
+    end
+    print("  ")
+    if ok
+        printstyled("✓"; color=:green)
+    else
+        printstyled(isnan(err) ? "✗ → bisect" : "✗ → reject"; color=:yellow)
+    end
+    @printf("  %.2f s\n", time)
+end
+function run_summary_t(v::Int, m::TransientModel, st::TimeStep, Δtrange, time)
+    v >= 1 || return
+    nls = m.caches.nls
+    e = m.caches.energies
+    @printf("t = %.4e reached: %d steps, %d bisections, %d rejections, Δt ∈ [%.3e, %.3e], %.2f s\n",
+            st.t, st.nsteps, st.nbisect_total, st.nreject_total, Δtrange[1], Δtrange[2], time)
+    if e.tracked && (m.neumann !== nothing || !isnan(e.K) || !isnan(e.Π))
+        @printf("energy balance W − ΔK − ΔΠ = %.3e", balance(e))
+        isnan(e.K) || @printf("  (K = %.4e", e.K)
+        isnan(e.Π) || @printf("%s Π = %.4e", isnan(e.K) ? "  (" : ",", e.Π)
+        m.neumann === nothing || @printf("%s W = %.4e", isnan(e.K) && isnan(e.Π) ? "  (" : ",", e.W)
+        print(")\n")
+    end
+    nls isa NewtonRaphson && print_summary(nls.log)
+end
 
 #*******************************************************************************
 #    					 One attempt of the time loop
@@ -383,7 +541,7 @@ function step!(m::TransientModel, st::TimeStep, stepping::TimeControl;
     m.physics === nothing || update_time_step!(m.physics, Δt)
     h.Δt⁻ = st.Δt_prev
     c.op.structured && m.mass_update === :step && _reassemble_mass!(m)
-    step_header(verbose, st.nsteps + 1, t, Δt)
+    step_header_t(verbose, st.nsteps + 1, t, Δt)
     t_step = time()
     ok = true
     its = 0
@@ -415,17 +573,21 @@ function step!(m::TransientModel, st::TimeStep, stepping::TimeControl;
         err = weighted_error(h.e, _field_np1!(x, s, h, y, Δt), h.xn, stepping.rtol, stepping.atol, _inertia_mask(m))
         ok = err <= 1.0
     end
-    step_line(verbose, nls, st.nsteps + 1, t, Δt, ok, time() - t_step, false)
+    en = c.energies
     if ok
         _field_np1!(x, s, h, y, Δt)
         _dcopy!(_dirichlet_values(U), h.gd)
+        en.tracked && _work_increment!(en, m, tn, t)
         post(t)
         m.internal === nothing || m.internal(FEFunction(U, x), h.un)
         commit!(s, h, x, Δt)
         m.history === nothing || commit!(m.history, x, h)
+        en.tracked && _energies!(en, m, t)
+        step_line_t(verbose, m, st.nsteps + 1, t, Δt, its, true, err, time() - t_step)
         adaptive ? accept!(st, stepping, its, err, error_order(s)) : accept!(st, stepping, its)
         return true
     end
+    step_line_t(verbose, m, st.nsteps + 1, t, Δt, its, false, err, time() - t_step)
     # back to the last accepted step
     x .= h.xn
     y === x || fill!(y, zero(eltype(y)))
@@ -463,6 +625,13 @@ function _build_stage!(m::TransientModel, st::TimeStep, i::Int, tn::Float64, Δt
     o.structured ? _stage_dirichlet!(U, s, h, coef) : _dcopy!(_dirichlet_values(U), h.gd)
     r, j = _stage_forms(m.res, m.jac, o.structured, ctx, m.neumann, ti, load)
     o.inner = build_operator(c.backend, r, j, U, V, c.assem, o.inner)
+    if o.structured
+        en = m.hooks.energy
+        o.energy = en === nothing ? nothing : with_neumann_energy(en(ti), m.neumann, load(ti))
+    else
+        en = m.hooks.stage_energy
+        o.energy = en === nothing ? nothing : en(ctx)
+    end
     o.structured && _dirichlet_inertia!(m, coef)
     nothing
 end
@@ -659,15 +828,18 @@ function solve!(m::TransientModel; stepping, ProjectDirichlet::Bool=false, load=
     initialize!(m, st; load)
 
     flagconv = 1
+    Δtmin, Δtmax = Inf, 0.0
     while !finished(st, stepping)
-        step!(m, st, stepping; ProjectDirichlet, load, post, presolver, on_bisection, on_reject)
+        if step!(m, st, stepping; ProjectDirichlet, load, post, presolver, on_bisection, on_reject)
+            Δtmin, Δtmax = min(Δtmin, st.Δt_prev), max(Δtmax, st.Δt_prev)
+        end
         if exhausted(st, stepping)
             @warn "Time loop exhausted (bisections, rejections or Δt below Δtmin)"
             flagconv = 0
             break
         end
     end
-    run_summary(verbose, nls, st.t, st.nsteps, st.nbisect_total, time() - t_run)
+    run_summary_t(verbose, m, st, (Δtmin, Δtmax), time() - t_run)
     vtk_save(post)
     return x, flagconv
 end
@@ -691,6 +863,7 @@ function initialize!(m::TransientModel, st::TimeStep; load=identity)
     h.Δt⁻⁻ = 0.0
     m.initial_acceleration === :solve && _initial_acceleration!(m, st.t, load)
     c.Δt_assembled = NaN
+    _start_energies!(c.energies, m, st.t, nls_verbosity(c.nls))
     nothing
 end
 
