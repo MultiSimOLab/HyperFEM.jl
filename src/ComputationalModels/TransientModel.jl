@@ -248,6 +248,9 @@ struct TransientModel{R,J,S<:TimeScheme,SP,D,N,AP,H<:StageHistory,C,HK,MF,PH,IN,
         y = structured ? similar(x) : x                 # stage unknown: the state itself on the general level
         structured && fill!(y, zero(eltype(y)))
         stepop = TransientStepOperator(op, structured, M, C, hist, x, dorder)
+        # the Dirichlet inertia vectors are assembled by the operators of the mass and damping systems (the
+        # compiled backend assembles a load vector only through an operator built by `linear_system`)
+        stepop.opbd, stepop.opbdC = opM, opC
         hooks = (injectivity=_injectivity_hook(injectivity), energy=energy, tangent_switch=tangent_switch)
         mop = _model_operator(hooks, spaces, stepop, structured)
         nls_cache = instantiate_caches(y, nls, mop)
@@ -637,9 +640,6 @@ function solve!(m::TransientModel; stepping, ProjectDirichlet::Bool=false, load=
 
     stepping = as_time_stepping(stepping)
     reset!(post)
-    U = m.spaces[1]
-    app_U = m.applicators[1]
-    h = m.hist
     c = m.caches
     nls, x = c.nls, c.x
     verbose = nls_verbosity(nls)
@@ -648,14 +648,7 @@ function solve!(m::TransientModel; stepping, ProjectDirichlet::Bool=false, load=
     st = TimeStep(stepping)
     stepping isa AdaptiveStepping && !has_error_estimate(m.scheme) &&
         error("HyperFEM: $(typeof(m.scheme)) has no local error estimate; use TimeStepping")
-
-    # initial history: the state and the Dirichlet values at t0
-    TrialFESpace!(U, app_U, load(st.t); stage=st.t)
-    h.xn .= x
-    _dcopy!(h.gdn, _dirichlet_values(U))
-    h.nstored = 0
-    m.initial_acceleration === :solve && _initial_acceleration!(m, st.t, load)
-    c.Δt_assembled = NaN
+    initialize!(m, st; load)
 
     flagconv = 1
     while !finished(st, stepping)
@@ -669,6 +662,28 @@ function solve!(m::TransientModel; stepping, ProjectDirichlet::Bool=false, load=
     run_summary(verbose, nls, st.t, st.nsteps, st.nbisect_total, time() - t_run)
     vtk_save(post)
     return x, flagconv
+end
+
+"""
+    initialize!(m::TransientModel, st::TimeStep; load=identity)
+
+History of the loop at its start `st.t`: the state of the model and the Dirichlet values at `load(st.t)`
+become step 0; the initial acceleration follows `initial_acceleration`. `solve!` calls it; a loop driven
+by hand with `step!` must call it first.
+"""
+function initialize!(m::TransientModel, st::TimeStep; load=identity)
+    U = m.spaces[1]
+    h = m.hist
+    c = m.caches
+    TrialFESpace!(U, m.applicators[1], load(st.t); stage=st.t)
+    h.xn .= c.x
+    _dcopy!(h.gdn, _dirichlet_values(U))
+    h.nstored = 0
+    h.Δt⁻ = 0.0
+    h.Δt⁻⁻ = 0.0
+    m.initial_acceleration === :solve && _initial_acceleration!(m, st.t, load)
+    c.Δt_assembled = NaN
+    nothing
 end
 
 # a₀ from M a₀ = −r(t0, u₀) (structured level): the residual of the inner forms at the initial state and the
