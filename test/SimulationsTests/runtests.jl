@@ -174,7 +174,7 @@ HyperFEM.ComputationalModels.nls_iterations(s::FailingNewton) = HyperFEM.Computa
   end
 
   @testset "TurekNavierStokes" begin
-    # DFG 2D-1 (Re = 20), P1-P1 SUPG/PSPG/LSIC, BDF2 Oseen, StaticLinearModel re-assembled at every step
+    # DFG 2D-1 (Re = 20), P1-P1 SUPG/PSPG/LSIC, BDF2 Oseen on TransientModel (one linear solve per step)
     r = run_backends(b -> turek_navier_stokes_simulation(; backend=b))
     for (b, s) in r
       @testset "$b" begin

@@ -199,3 +199,36 @@ end
     @test a_fine <= a_coarse + 400 * 800         # per-cell materialisation only; a copy of the tangent is ≈ 250 kB
   end
 end
+
+@testset "TransientModel: the context of a field of a multi-field problem" begin
+  # two copies of the heat problem as the two fields of a multi-field space: `ctx[i]` gives each field its
+  # β functions and history; the solution of each field is the single-field one
+  p = heat_dirichlet_problem()
+  (; U, V, dΩ, κ, bc) = p
+  nls = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-14, rtol=1e-10, verbose=0)
+  t_end = 0.4
+  res1(ctx) = (u, v) -> ∫(∂t(ctx, u) * v)dΩ + ∫(κ * (∇(field(ctx, u)) ⋅ ∇(v)))dΩ
+  jac1(ctx) = (u, du, v) -> ∫(δ∂t(ctx, du) * v)dΩ + ∫(κ * (∇(δfield(ctx, du)) ⋅ ∇(v)))dΩ
+  m1 = TransientModel(res1, jac1, U, V, bc; scheme=BDF(2), nls)
+  x1, flag1 = solve!(m1; stepping=TimeStepping(; Δt=t_end / 8, t_end))
+  x1 = copy(x1)
+  V2 = TestFESpace(get_background_model(get_triangulation(U)), ReferenceFE(lagrangian, Float64, 1), bc; conformity=:H1)
+  U2 = TrialFESpace(V2, bc, 0.0)
+  UU = MultiFieldFESpace([U, U2]); VV = MultiFieldFESpace([V, V2])
+  bc2 = MultiFieldBC([bc, bc])
+  res2(ctx) = ((u, w), (v, q)) -> ∫(∂t(ctx[1], u) * v)dΩ + ∫(κ * (∇(field(ctx[1], u)) ⋅ ∇(v)))dΩ +
+                                   ∫(2.0 * ∂t(ctx[2], w) * q)dΩ + ∫(2.0 * κ * (∇(field(ctx[2], w)) ⋅ ∇(q)))dΩ
+  jac2(ctx) = ((u, w), (du, dw), (v, q)) -> ∫(δ∂t(ctx[1], du) * v)dΩ + ∫(κ * (∇(δfield(ctx[1], du)) ⋅ ∇(v)))dΩ +
+                                             ∫(2.0 * δ∂t(ctx[2], dw) * q)dΩ + ∫(2.0 * κ * (∇(δfield(ctx[2], dw)) ⋅ ∇(q)))dΩ
+  for backend in TEST_BACKENDS_T
+    m2 = TransientModel(res2, jac2, UU, VV, bc2; scheme=BDF(2), nls, backend)
+    x2, flag2 = solve!(m2; stepping=TimeStepping(; Δt=t_end / 8, t_end))
+    @test flag1 == 1 && flag2 == 1
+    xh = get_state(m2)
+    @test norm(get_free_dof_values(xh[1]) - x1) <= 1e-10 * norm(x1)
+    @test norm(get_free_dof_values(xh[2]) - x1) <= 1e-10 * norm(x1)
+    # the history of a field: ctx[i].u⁻ is the field i of uₙ
+    ctx = HyperFEM.ComputationalModels.TimeContext(0.0, 1.0, 1, 1, m2.caches.op.c, m2.hist, nothing)
+    @test ctx[2].u⁻ === m2.hist.un[2] && ctx[1].u⁻ === m2.hist.un[1] && ctx.u⁻ === m2.hist.un
+  end
+end

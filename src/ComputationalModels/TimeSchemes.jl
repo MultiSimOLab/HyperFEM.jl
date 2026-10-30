@@ -195,8 +195,9 @@ step count `step` (the one being computed, n + 1), the stage `stage`, the coeffi
 `uₙ₋₁`, `vₙ`, `aₙ` and the β functions). `ctx.u⁻`, `ctx.u⁻⁻`, `ctx.v⁻`, `ctx.a⁻` are the history FE
 functions; `ctx.history` the user's history object (`history = …` of the model), `nothing` by default.
 The functions of the contract: [`field`](@ref), [`∂t`](@ref), [`∂tt`](@ref), [`at`](@ref) and their
-variations `δfield`, `δ∂t`, `δ∂tt`. Indexing `ctx[i]` gives the context of field `i` (the same one when
-all the fields share the scheme).
+variations `δfield`, `δ∂t`, `δ∂tt`. Indexing `ctx[i]` gives the context of field `i` of a multi-field
+problem: the same scheme, with the β and history functions restricted to that field, for the forms
+written on the components (`∂t(ctx[1], u)` with `(u, p)` the unknowns).
 """
 struct TimeContext{H,U}
     t::Float64
@@ -206,13 +207,18 @@ struct TimeContext{H,U}
     c::StageCoefficients
     h::H
     history::U
+    i::Int                   # field of a multi-field problem (0: the whole space)
 end
-Base.getindex(ctx::TimeContext, ::Int) = ctx
+TimeContext(t, Δt, step, stage, c, h, history) = TimeContext(t, Δt, step, stage, c, h, history, 0)
+Base.getindex(ctx::TimeContext, i::Int) =
+    TimeContext(ctx.t, ctx.Δt, ctx.step, ctx.stage, ctx.c, getfield(ctx, :h), ctx.history, i)
+# a history or β function restricted to the field of the context
+_comp(ctx::TimeContext, f) = getfield(ctx, :i) == 0 ? f : f[getfield(ctx, :i)]
 function Base.getproperty(ctx::TimeContext, s::Symbol)
-    s === :u⁻ && return getfield(ctx, :h).un
-    s === :u⁻⁻ && return getfield(ctx, :h).unm1
-    s === :v⁻ && return getfield(ctx, :h).vn
-    s === :a⁻ && return getfield(ctx, :h).an
+    s === :u⁻ && return _comp(ctx, getfield(ctx, :h).un)
+    s === :u⁻⁻ && return _comp(ctx, getfield(ctx, :h).unm1)
+    s === :v⁻ && return _comp(ctx, getfield(ctx, :h).vnh)
+    s === :a⁻ && return _comp(ctx, getfield(ctx, :h).anh)
     getfield(ctx, s)
 end
 
@@ -224,7 +230,7 @@ multistep schemes, `(1−αf) u + αf uₙ` for the generalized-α (and `θ u + 
 known `uₙ₊₁` for an explicit stage (α₀ = 0), `uₙ + Δt Σ aᵢⱼ kⱼ` for a Runge–Kutta stage. `δfield` is its
 variation along the trial direction `du`.
 """
-field(ctx::TimeContext, u) = _affine(ctx.c.α0, u, ctx.h.β0, ctx.h.use_β0)
+field(ctx::TimeContext, u) = _affine(ctx.c.α0, u, _comp(ctx, ctx.h.β0), ctx.h.use_β0)
 δfield(ctx::TimeContext, du) = _scaled(ctx.c.α0, du)
 
 """
@@ -234,7 +240,7 @@ The velocity of the residual at the stage, affine in the stage unknown: `c₀ u 
 `(u − uₙ)/Δt` (Theta), `(1−αf) vₙ₊₁ + αf vₙ` with Newmark's `vₙ₊₁` (generalized-α), `vₙ + ½Δt(aₙ + aₙ₊₁)`
 (central differences), `kᵢ` (Runge–Kutta). Not defined for `QuasiStatic`.
 """
-∂t(ctx::TimeContext, u) = _affine(ctx.c.α1, u, ctx.h.β1, true)
+∂t(ctx::TimeContext, u) = _affine(ctx.c.α1, u, _comp(ctx, ctx.h.β1), true)
 δ∂t(ctx::TimeContext, du) = _scaled(ctx.c.α1, du)
 
 """
@@ -243,7 +249,7 @@ The velocity of the residual at the stage, affine in the stage unknown: `c₀ u 
 The acceleration of the residual at the stage, affine in the stage unknown: `(1−αm) aₙ₊₁ + αm aₙ` with
 Newmark's `aₙ₊₁` (generalized-α), `aₙ₊₁` itself (central differences). Second-order schemes only.
 """
-∂tt(ctx::TimeContext, u) = _affine(ctx.c.α2, u, ctx.h.β2, true)
+∂tt(ctx::TimeContext, u) = _affine(ctx.c.α2, u, _comp(ctx, ctx.h.β2), true)
 δ∂tt(ctx::TimeContext, du) = _scaled(ctx.c.α2, du)
 
 """
@@ -254,7 +260,7 @@ schemes, the known field for an explicit stage) and `:stage` (the same as `field
 `δat(ctx, du, point)` is the variation (zero at `:n`).
 """
 function at(ctx::TimeContext, u, point::Symbol)
-    point === :n && return ctx.h.un
+    point === :n && return ctx.u⁻
     point === :stage && return field(ctx, u)
     point === :np1 && return _np1(ctx, u)
     error("HyperFEM: unknown point :$point of `at(ctx, u, point)`; use :n, :np1 or :stage")
@@ -267,7 +273,7 @@ function δat(ctx::TimeContext, du, point::Symbol)
 end
 # uₙ₊₁ as a function of the stage unknown: u (implicit), the known field (explicit), uₙ + Δt Σ bᵢ kᵢ is not
 # available inside a Runge–Kutta stage (the later stages are unknown): the stage field is used.
-_np1(ctx::TimeContext, u) = _affine(ctx.h.α0_np1, u, ctx.h.β0_np1, ctx.h.use_β0_np1)
+_np1(ctx::TimeContext, u) = _affine(ctx.h.α0_np1, u, _comp(ctx, ctx.h.β0_np1), ctx.h.use_β0_np1)
 
 # the identity (α = 1, no β: the quasi-static field, the BDF and Newmark field, the variations) is the
 # unknown itself, so the forms of those schemes are the static ones
