@@ -175,7 +175,7 @@ block-structured). Fields without modes get a `n_i × 0` matrix.
 """
 function split_nullspace(N::Matrix{Float64}, fields::Vector{UnitRange{Int}})
   [begin
-    cols = [j for j in 1:size(N, 2) if any(!iszero, view(N, r, j))]
+    cols = [j for j in 1:size(N, 2) if norm(view(N, r, j)) > 1e-8 * norm(view(N, :, j))]   # round-off of the QR is not a mode
     N[r, cols]
   end for r in fields]
 end
