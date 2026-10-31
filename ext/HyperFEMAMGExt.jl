@@ -49,6 +49,7 @@ function _update_operator!(B::SparseMatrixCSC, A::SparseMatrixCSC, negate)
   copyto!(B.nzval, A.nzval)
   _negate_rows!(B, negate)
 end
+_update_operator!(B::SparseMatrixCSC, A::AbstractMatrix, negate) = _update_operator!(B, sparse(A), negate)
 
 function negate!(b::AbstractVector, negate)
   negate === nothing && return b
@@ -61,14 +62,18 @@ end
 # ------------------------------------------------------------------------------------------------
 # Preconditioners: one V-cycle, or a block preconditioner with one V-cycle per field
 
-"Block preconditioner on the field ranges: `P[i]` one V-cycle on the diagonal block, `A[i, j]` the blocks."
+"""
+Block preconditioner on the field ranges: `P[i]` one V-cycle on the diagonal block, `A[i, j]` the off-diagonal
+blocks the triangular splits need (empty for the additive one and on the diagonal).
+"""
 struct BlockPreconditioner{TP,TA}
   fields::Vector{UnitRange{Int}}
   P::Vector{TP}
-  A::Matrix{TA}                              # off-diagonal blocks (diagonal entries unused)
+  A::Matrix{TA}
   split::Symbol
   r::Vector{Vector{Float64}}                 # work vectors per field: right-hand side of the block solve
   z::Vector{Vector{Float64}}                 # and its solution (AlgebraicMultigrid's V-cycle wants plain vectors)
+  w::Vector{Float64}                         # copy of the input of the in-place application
 end
 
 function _block_preconditioner(s::AMGSolver, B::SparseMatrixCSC)
@@ -79,8 +84,10 @@ function _block_preconditioner(s::AMGSolver, B::SparseMatrixCSC)
     ml = N === nothing || size(N[i], 2) == 0 ? smoothed_aggregation(Aii) : smoothed_aggregation(Aii; B=N[i])
     aspreconditioner(ml)
   end for (i, r) in enumerate(f)]
-  blocks = [i == j ? spzeros(0, 0) : B[f[i], f[j]] for i in 1:length(f), j in 1:length(f)]
-  BlockPreconditioner(f, P, blocks, s.split, [zeros(length(r)) for r in f], [zeros(length(r)) for r in f])
+  n = length(f)
+  needed(i, j) = s.split === :multiplicative ? j < i : s.split === :schur ? (i, j) == (1, 2) : false
+  blocks = [needed(i, j) ? B[f[i], f[j]] : spzeros(0, 0) for i in 1:n, j in 1:n]
+  BlockPreconditioner(f, P, blocks, s.split, [zeros(length(r)) for r in f], [zeros(length(r)) for r in f], zeros(size(B, 1)))
 end
 
 # one V-cycle of block i on bp.r[i], result in bp.z[i] and in y
@@ -114,7 +121,8 @@ function LinearAlgebra.ldiv!(y::AbstractVector, bp::BlockPreconditioner, x::Abst
   y
 end
 
-LinearAlgebra.ldiv!(bp::BlockPreconditioner, x::AbstractVector) = (y = copy(x); ldiv!(x, bp, y))
+# in place (the form IterativeSolvers' gmres! uses for Pr): through the work copy, no allocation per application
+LinearAlgebra.ldiv!(bp::BlockPreconditioner, x::AbstractVector) = (copyto!(bp.w, x); ldiv!(x, bp, bp.w))
 
 function _preconditioner(s::AMGSolver, B::SparseMatrixCSC)
   isempty(s.fields) || return _block_preconditioner(s, B)

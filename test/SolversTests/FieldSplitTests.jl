@@ -14,5 +14,6 @@ s2_battery("AMGSolver blocks", (U; kwargs...) -> AMGSolver(U; kwargs...); growth
   @test_throws ErrorException AMGSolver(:gmres; fields=[r[1]])               # one field is not a split
   @test_throws ErrorException AMGSolver(:gmres; fields=r, split=:lower)
   @test_throws ErrorException AMGSolver(:gmres; fields=[1:3, 5:7])           # not consecutive
+  @test_throws ErrorException AMGSolver(:gmres; fields=[2:4, 5:7])           # not from 1
   @test HyperFEM.Solvers._linear_name(AMGSolver(U)) == "GMRES+FS-schur(AMG)"
 end

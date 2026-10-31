@@ -28,8 +28,9 @@ end
 
 The S2 tests for the block solver built by `make(U; split, rtol, maxiter)`: the saddle point is solved to the LU
 solution with the three splits (where the monolithic AMG fails or crawls), the block near-null spaces reach the
-blocks, bounded iterations under refinement, and the Newton trajectory of LU on the nonlinear EM problem with
-both backends — the test S1 had to move to mechanics.
+blocks, bounded iterations under refinement (additive and Schur), the lagged preconditioner across a new matrix
+object, and the Newton trajectory of LU on the nonlinear EM problem with the three splits and both backends —
+the test S1 had to move to mechanics.
 """
 function s2_battery(name, make; growth=1.3)
   @testset "$name" begin
@@ -58,15 +59,37 @@ function s2_battery(name, make; growth=1.3)
     end
 
     @testset "bounded iterations under refinement" begin
-      its = Int[]
-      for n in (2, 4, 6)
-        Un, Vn, An, bn = s2_saddle_problem(n)
-        _, ns = s1_solve(make(Un; split=:schur, rtol=1e-8), An, bn)
-        @test linear_converged(ns)
-        push!(its, linear_iterations(ns))
+      for split in (:additive, :schur)
+        its = Int[]
+        for n in (2, 4, 6)
+          Un, Vn, An, bn = s2_saddle_problem(n)
+          _, ns = s1_solve(make(Un; split, rtol=1e-8), An, bn)
+          @test linear_converged(ns)
+          push!(its, linear_iterations(ns))
+        end
+        @info "$name: $split iterations under refinement $its"
+        @test maximum(its) ≤ growth * minimum(its) + 2
       end
-      @info "$name: Schur iterations under refinement $its"
-      @test maximum(its) ≤ growth * minimum(its) + 2
+    end
+
+    @testset "lagged preconditioner, new matrix object" begin
+      # reuse = 3: the second setup keeps the hierarchies; a new matrix object (a new pattern for PETSc) rebuilds
+      # them whatever the lag says — the path that held a use-after-free in S1
+      solver = make(U; split=:additive, rtol=1e-10, reuse=3)
+      ns = numerical_setup(symbolic_setup(solver, A), A)
+      x = zeros(length(b))
+      solve!(x, ns, b)
+      @test norm(x - xlu) ≤ 1e-7 * norm(xlu)
+      A2 = 2 * A                                       # same pattern, scaled values, same object type
+      numerical_setup!(ns, A2)                         # new object → rebuild (the lag is not applied)
+      @test preconditioner_builds(ns) == 2
+      fill!(x, 0.0); solve!(x, ns, b)
+      @test linear_converged(ns)
+      @test norm(x - xlu / 2) ≤ 1e-7 * norm(xlu)
+      numerical_setup!(ns, A2)                         # same object, lagged: no rebuild
+      @test preconditioner_builds(ns) == 2
+      fill!(x, 0.0); solve!(x, ns, b)
+      @test norm(x - xlu / 2) ≤ 1e-7 * norm(xlu)
     end
 
     @testset "Newton trajectory of LU (nonlinear EM)" begin
@@ -75,7 +98,7 @@ function s2_battery(name, make; growth=1.3)
         @testset "$backend" begin
           ref = s1_solve_nl(LUSolver(), p; backend)
           @test ref.flag
-          for split in (:schur, :multiplicative)
+          for split in (:additive, :multiplicative, :schur)
             r = s1_solve_nl(make(p.U; split, rtol=1e-8), p; backend)
             @test r.flag
             @test r.its == ref.its

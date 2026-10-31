@@ -115,9 +115,11 @@ struct PETScSolver <: Algebra.LinearSolver
       split === :schur && length(fr) != 2 && error("HyperFEM: PETScSolver: the Schur split needs exactly two fields")
       schur.fact in (:upper, :lower, :full, :diag) || error("HyperFEM: PETScSolver: schur.fact must be :upper, :lower, :full or :diag")
       schur.precondition in (:a11, :selfp) || error("HyperFEM: PETScSolver: schur.precondition must be :a11 or :selfp")
+      first(fr[1]) == 1 || error("HyperFEM: PETScSolver: the field ranges must start at 1 (got $(first(fr[1])))")
       for i in 2:length(fr)
         first(fr[i]) == last(fr[i-1]) + 1 || error("HyperFEM: PETScSolver: the field ranges must be consecutive")
       end
+      allunique(fieldnames) || error("HyperFEM: PETScSolver: fieldnames must be different (got $fieldnames)")
     elseif !isempty(fr)
       error("HyperFEM: PETScSolver: `fields` is only used with pc = :fieldsplit")
     end
@@ -170,8 +172,10 @@ end
     split_nullspace(N, fields) -> Vector{Matrix{Float64}}
 
 The near-null space `N` (dofs × modes) split by field: the block of every field with the modes that
-live in it (a mode belongs to the field where it is nonzero; the modes of [`near_nullspace`](@ref) are
-block-structured). Fields without modes get a `n_i × 0` matrix.
+live in it (a mode belongs to every field where its restriction is not round-off, more than 1e-8 of its
+norm; the modes of [`near_nullspace`](@ref) are block-structured, so each goes to one field — a user
+near-null space with modes spanning several fields is restricted to each of them). Fields without modes
+get a `n_i × 0` matrix.
 """
 function split_nullspace(N::Matrix{Float64}, fields::Vector{UnitRange{Int}})
   [begin
@@ -238,6 +242,7 @@ struct AMGSolver <: Algebra.LinearSolver
       split in (:additive, :multiplicative, :schur) || error("HyperFEM: AMGSolver: split must be :additive, :multiplicative or :schur")
       split === :schur && length(fr) != 2 && error("HyperFEM: AMGSolver: the Schur split needs exactly two fields")
       krylov === :gmres || error("HyperFEM: AMGSolver: block preconditioners are not symmetric: use krylov = :gmres")
+      first(fr[1]) == 1 || error("HyperFEM: AMGSolver: the field ranges must start at 1 (got $(first(fr[1])))")
       for i in 2:length(fr)
         first(fr[i]) == last(fr[i-1]) + 1 || error("HyperFEM: AMGSolver: the field ranges must be consecutive")
       end

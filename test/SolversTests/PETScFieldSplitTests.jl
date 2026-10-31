@@ -32,5 +32,8 @@ s2_battery("PETScSolver fieldsplit", (U; kwargs...) -> PETScSolver(U; kwargs...)
     @test_throws ErrorException PETScSolver(:gmres, :fieldsplit; fields=r, blocks=[:gamg])      # lengths
     @test_throws ErrorException PETScSolver(:gmres, :gamg; fields=r)                            # fields without fieldsplit
     @test_throws ErrorException PETScSolver(:gmres, :fieldsplit; fields=[r[1], r[2], r[2]], split=:schur)
+    @test_throws ErrorException PETScSolver(:gmres, :fieldsplit; fields=r, blocks=[:gamg, :ilu])          # unknown block pc
+    @test_throws ErrorException PETScSolver(:gmres, :fieldsplit; fields=r, fieldnames=["u", "u"])        # repeated names
+    @test_throws ErrorException PETScSolver(:gmres, :fieldsplit; fields=[r[1] .+ 1, r[2] .+ 1])          # not from 1
   end
 end
