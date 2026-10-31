@@ -89,9 +89,10 @@ jac(Λ)= ((u, φ), (du, dφ), (v, vφ)) -> ∫(∇(v)' ⊙ ((∂ΨFF ∘ (F∘�
                                         ∫(∇(vφ)' ⋅ ((∂ΨEE ∘ (F∘∇(u)', E∘∇(φ))) ⋅ ∇(dφ)))dΩ -
                                         ∫(∇(dφ) ⋅ ((∂ΨEF ∘ (F∘∇(u)', E∘∇(φ))) ⊙ ∇(v)'))dΩ -
                                         ∫(∇(vφ) ⋅ ((∂ΨEF ∘ (F∘∇(u)', E∘∇(φ))) ⊙ ∇(du)'))dΩ 
-# nonlinear solver
-ls = LUSolver()
-nls_ = NewtonRaphson(ls; maxiter=20, atol=1.e-10, rtol=1.e-8, verbose=true)
+# nonlinear solver (LU here; for large problems a PETSc Krylov + AMG solver on the assembled tangent,
+# with `using GridapPETSc`: `PETScSolver(:cg, :gamg; rtol=1e-10, nullspace=near_nullspace(U))` for
+# mechanics, `PETScSolver(:preonly, :mumps)` as a direct solver with a fraction of the memory of LU)
+nls_ = NewtonRaphson(LUSolver(); maxiter=20, atol=1.e-10, rtol=1.e-8, verbose=true)
 
 # Computational model
 comp_model = StaticNonlinearModel(res, jac, U, V, D_bc; nls=nls_)

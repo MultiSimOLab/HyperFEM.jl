@@ -17,6 +17,7 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
 
 [weakdeps]
+AlgebraicMultigrid = "2169fc97-5a83-5252-b627-83903c6c433c"
 GridapSolvers = "6d3209ee-5e3c-4db7-a716-942eb12ed534"
 HyperFEMKernels = "c52e38e0-a033-47df-8a03-a6c4ac881830"
 GridapDistributed = "f9701e48-63b3-45aa-9a63-9bc6c271f355"
@@ -27,9 +28,12 @@ PartitionedArrays = "5a9dfac6-5c52-46f7-8278-5e2210713be9"
 HyperFEMKernelsExt = "HyperFEMKernels"
 HyperFEMGridapSolversExt = "GridapSolvers"
 HyperFEMDistributed = ["GridapDistributed", "GridapPETSc", "PartitionedArrays"]
+HyperFEMPETScExt = "GridapPETSc"
+HyperFEMAMGExt = "AlgebraicMultigrid"
 
 [compat]
 AbstractTrees = "0.4"
+AlgebraicMultigrid = "1.1, 2"
 BlockArrays = "1.9"
 ForwardDiff = "1.3"
 Gridap = "=0.19.9"

@@ -237,6 +237,11 @@ end
 @publish Solvers verbosity
 @publish Solvers get_tolerances
 @publish Solvers linear_converged
+@publish Solvers linear_iterations
+@publish Solvers preconditioner_builds
+@publish Solvers PETScSolver
+@publish Solvers AMGSolver
+@publish Solvers near_nullspace
 @publish Solvers numerical_setup_state
 @publish Solvers numerical_setup_state!
 @publish Solvers FullStepLS
@@ -254,6 +259,7 @@ end
 @publish Solvers ConsistentTangent
 @publish Solvers HybridTangent
 @publish Solvers mode_history
+@publish Solvers linear_history
 @publish Solvers print_summary
 @publish Solvers reason_text
 @publish Solvers linear_info
