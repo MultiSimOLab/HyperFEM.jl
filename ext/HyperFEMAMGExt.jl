@@ -3,7 +3,7 @@ module HyperFEMAMGExt
 # Pure-Julia Krylov + AMG for HyperFEM's Newton (design/solvers.md, S1): the methods of `AMGSolver` as a
 # Gridap `LinearSolver` — IterativeSolvers' `cg!`/`gmres!` preconditioned by one V-cycle of
 # AlgebraicMultigrid's smoothed aggregation built with the near-null space. Activated by
-# `using AlgebraicMultigrid`. Serial; the CI variant of `PETScSolver` and the reference of the
+# `import AlgebraicMultigrid` (imported, not used: the package exports its own `solve!`). Serial; the CI variant of `PETScSolver` and the reference of the
 # Newton integration (`linear_converged`, lagged setups through `reuse`).
 
 using HyperFEM
@@ -50,8 +50,9 @@ end
 
 function numerical_setup!(ns::AMGSolverNS, A::AbstractMatrix)
   ns.nsetup += 1
+  rebuild = A !== ns.A || (ns.nsetup - 1) % ns.solver.reuse == 0   # a new matrix object always rebuilds (as the PETSc solver)
   ns.A = A
-  if (ns.nsetup - 1) % ns.solver.reuse == 0
+  if rebuild
     ns.ml, ns.P = _hierarchy(ns.solver, A)   # the hierarchy of the lagged setups keeps the previous tangent
     ns.nbuild += 1
   end
@@ -62,9 +63,10 @@ function solve!(x::AbstractVector, ns::AMGSolverNS, b::AbstractVector)
   s = ns.solver
   fill!(x, zero(eltype(x)))
   if s.krylov === :cg
-    _, h = cg!(x, ns.A, b; Pl=ns.P, reltol=s.rtol, abstol=s.atol, maxiter=s.maxiter, log=true)
+    _, h = cg!(x, ns.A, b; Pl=ns.P, reltol=s.rtol, abstol=s.atol, maxiter=s.maxiter, initially_zero=true, log=true)
   else
-    _, h = gmres!(x, ns.A, b; Pl=ns.P, reltol=s.rtol, abstol=s.atol, maxiter=s.maxiter, restart=min(s.restart, length(b)), log=true)
+    # right preconditioning: the residual the method monitors is the true one, ‖b - A x‖ ≤ rtol ‖b‖, as the PETSc solver
+    _, h = gmres!(x, ns.A, b; Pr=ns.P, reltol=s.rtol, abstol=s.atol, maxiter=s.maxiter, restart=min(s.restart, length(b)), initially_zero=true, log=true)
   end
   ns.iters = h.iters
   ns.converged = h.isconverged

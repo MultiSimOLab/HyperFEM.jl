@@ -133,32 +133,38 @@ function s1_battery(name, make; growth=1.3)
     end
 
     @testset "lagged preconditioner (reuse)" begin
-      B = copy(A); B.nzval .*= 2.0
+      a0 = copy(A.nzval)
+      C = copy(A); C[diagind(C)] .*= 1.5                      # a different spectrum, not a rescaling of A
+      xc = C \ b
+      # the values change in the same matrix object (what the Newton cache does): the lag counts setups
       ls = make(:cg; rtol=1e-10, reuse=3, nullspace=N)
       ns = numerical_setup(symbolic_setup(ls, A), A)
       @test preconditioner_builds(ns) == 1
-      numerical_setup!(ns, B); @test preconditioner_builds(ns) == 1   # setup 2: reused
-      numerical_setup!(ns, B); @test preconditioner_builds(ns) == 1   # setup 3: reused
-      numerical_setup!(ns, B); @test preconditioner_builds(ns) == 2   # setup 4: rebuilt
+      A.nzval .= C.nzval
+      numerical_setup!(ns, A); @test preconditioner_builds(ns) == 1   # setup 2: reused (stale hierarchy, built on A)
       x = zeros(length(b)); solve!(x, ns, b)
       @test linear_converged(ns)
-      @test norm(x - xlu / 2) ≤ 1e-8 * norm(xlu)
-      # with a stale preconditioner the Krylov still converges to the solution of the current operator
-      ls = make(:cg; rtol=1e-10, reuse=10, nullspace=N)
-      ns = numerical_setup(symbolic_setup(ls, A), A)
-      numerical_setup!(ns, B)
+      @test norm(x - xc) ≤ 1e-8 * norm(xc)                     # the operator is always the current one
+      numerical_setup!(ns, A); @test preconditioner_builds(ns) == 1   # setup 3: reused
+      numerical_setup!(ns, A); @test preconditioner_builds(ns) == 2   # setup 4: rebuilt
       fill!(x, 0.0); solve!(x, ns, b)
       @test linear_converged(ns)
-      @test norm(x - xlu / 2) ≤ 1e-8 * norm(xlu)
-      @test preconditioner_builds(ns) == 1
-      # values updated in place in the same matrix object (what the Newton cache does)
+      @test norm(x - xc) ≤ 1e-8 * norm(xc)
+      # a new matrix object forces a rebuild whatever the lag (the old preconditioner refers to the old matrix)
+      B = copy(C); B.nzval .*= 2.0
+      numerical_setup!(ns, B); @test preconditioner_builds(ns) == 3
+      fill!(x, 0.0); solve!(x, ns, b)
+      @test linear_converged(ns)
+      @test norm(x - xc / 2) ≤ 1e-8 * norm(xc)
+      A.nzval .= a0
+      # values updated in place without lag
       ls = make(:cg; rtol=1e-10, nullspace=N)
       ns = numerical_setup(symbolic_setup(ls, A), A)
       A.nzval .*= 2.0
       numerical_setup!(ns, A)
       fill!(x, 0.0); solve!(x, ns, b)
       @test norm(x - xlu / 2) ≤ 1e-8 * norm(xlu)
-      A.nzval ./= 2.0
+      A.nzval .= a0
     end
 
     @testset "Newton trajectory of LU (nonlinear mechanics)" begin

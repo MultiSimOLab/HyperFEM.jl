@@ -48,12 +48,16 @@ KSPGetConvergedReason(ksp::KSP, reason::Ref{Cint}) =
   ccall(_sym(:KSPGetConvergedReason), Cint, (KSP, Ptr{Cint}), ksp, reason)
 KSPSetReusePreconditioner(ksp::KSP, flag::PetscBool) =
   ccall(_sym(:KSPSetReusePreconditioner), Cint, (KSP, PetscBool), ksp, flag)
-# PetscObjectStateIncrease is inline in PETSc: the state is read and set instead (PetscObjectState is a 64-bit int)
-function PetscObjectStateIncrease(obj::Ptr{Cvoid})
-  state = Ref{Int64}()
-  err = ccall(_sym(:PetscObjectStateGet), Cint, (Ptr{Cvoid}, Ptr{Int64}), obj, state)
+PetscOptionsClearValue(name::String) =
+  ccall(_sym(:PetscOptionsClearValue), Cint, (Ptr{Cvoid}, Cstring), C_NULL, name)
+# "The values of the matrix changed behind PETSc's back": the Get/Restore pair bumps the object state and
+# invalidates the caches of the AIJ matrix (inverse diagonal of the SOR smoothers), which a bare state bump
+# would not do
+function MatValuesChanged(mat::Mat)
+  arr = Ref{Ptr{PetscScalar}}()
+  err = ccall(_sym(:MatSeqAIJGetArray), Cint, (Mat, Ptr{Ptr{PetscScalar}}), mat, arr)
   err == 0 || return err
-  ccall(_sym(:PetscObjectStateSet), Cint, (Ptr{Cvoid}, Int64), obj, state[] + 1)
+  ccall(_sym(:MatSeqAIJRestoreArray), Cint, (Mat, Ptr{Ptr{PetscScalar}}), mat, arr)
 end
 
 # ------------------------------------------------------------------------------------------------
@@ -104,7 +108,9 @@ end
 same_pattern(mirror::CSRMirror, A::SparseMatrixCSC) = size(A, 1) == mirror.csr.m && size(A, 2) == mirror.csr.n &&
   nnz(A) == length(mirror.perm) && A.colptr === mirror.colptr && A.rowval === mirror.rowval
 
-"Gathers the values of `A` into the CSR mirror (threaded, no allocation); the rows in `negate` change sign."
+# Gathers the values of `A` into the CSR mirror (threaded, no allocation); the rows in `negate` change sign.
+# `:static` scheduling: with the dynamic scheduler a garbage collection triggered from a worker thread runs
+# GridapPETSc's finalizers there, and they assert the main thread.
 function gather!(mirror::CSRMirror, A::SparseMatrixCSC, negate=nothing)
   v, src, perm = mirror.csr.nzval, A.nzval, mirror.perm
   if negate === nothing
@@ -193,9 +199,10 @@ function _options(s::PETScSolver)
   i = 1
   while i ≤ length(words)
     w = words[i]
-    startswith(w, "-") || error("HyperFEM: PETScSolver options: expected a flag starting with '-', got '$w'")
+    startswith(w, "-") && tryparse(Float64, w) === nothing ||
+      error("HyperFEM: PETScSolver options: expected a flag starting with '-', got '$w'")
     name = String(w[2:end])
-    if i < length(words) && !startswith(words[i+1], "-")
+    if i < length(words) && (!startswith(words[i+1], "-") || tryparse(Float64, words[i+1]) !== nothing)   # a value, e.g. -0.01
       push!(opts, name => String(words[i+1])); i += 2
     else
       push!(opts, name => ""); i += 1
@@ -222,7 +229,9 @@ function _petsc_matrix(A::AbstractMatrix, negate)
 end
 
 function _set_nullspace!(ns::PETScSolverNS, N::Matrix{Float64})
+  ns.B.comm == MPI.COMM_SELF || error("HyperFEM: PETScSolver: the near-null space is only supported on serial matrices")
   n, k = size(N)
+  k == 0 && return nothing                       # nothing to tell PETSc (every mode vanished on the free dofs)
   size(ns.B, 1) == n || error("HyperFEM: PETScSolver: the near-null space has $n rows but the matrix has $(size(ns.B, 1))")
   ns.nullvecs = [PETScVector(N[:, j]) for j in 1:k]      # own copies of the columns, aliased by PETSc
   vecs = [v.vec[] for v in ns.nullvecs]
@@ -252,9 +261,10 @@ function numerical_setup(ss::PETScSolverSS, A::AbstractMatrix)
   @check_error_code PETSC.KSPCreate(B.comm, ns.ksp)
   @check_error_code PETSC.KSPSetOptionsPrefix(ns.ksp[], prefix)
   @check_error_code PETSC.KSPSetOperators(ns.ksp[], B.mat[], B.mat[])
-  _set_options!(prefix, s)
-  @check_error_code PETSC.KSPSetFromOptions(ns.ksp[])   # the options stay in the database: the multigrid levels read theirs at KSPSetUp
   @check_error_code PETSC.KSPSetTolerances(ns.ksp[], s.rtol, s.atol, PetscReal(1e10), PetscInt(s.maxiter))
+  _set_options!(prefix, s)
+  @check_error_code PETSC.KSPSetFromOptions(ns.ksp[])   # after the tolerances, so that -ksp_rtol etc. in `options` win; the options
+                                                        # stay in the database until destroy: the multigrid levels read theirs at KSPSetUp
   @check_error_code PETSC.KSPSetUp(ns.ksp[])
   _init!(ns)
 end
@@ -262,20 +272,25 @@ end
 function numerical_setup!(ns::PETScSolverNS, A::AbstractMatrix)
   s = ns.solver
   ns.nsetup += 1
+  rebuilt = false
   if ns.mirror !== nothing && A isa SparseMatrixCSC && same_pattern(ns.mirror, A)
     gather!(ns.mirror, A, s.negate)
-    @check_error_code PetscObjectStateIncrease(ns.B.mat[].ptr)
+    @check_error_code MatValuesChanged(ns.B.mat[])
   else
-    # new matrix object or pattern: rebuild the PETSc matrix (the near-null space goes with it)
+    # new matrix object or pattern: rebuild the PETSc matrix (the near-null space goes with it) and the
+    # preconditioner, whatever `reuse` says: a lagged AMG keeps references to the old matrix (its smoothers),
+    # whose arrays are owned by the Julia mirror that goes away here
     ns.has_nullspace && @check_error_code PETSC.MatNullSpaceDestroy(ns.nullsp)
     ns.has_nullspace = false
+    foreach(GridapPETSc.destroy, ns.nullvecs); empty!(ns.nullvecs)
     GridapPETSc.destroy(ns.B)
     ns.mirror, ns.B = _petsc_matrix(A, s.negate)
     _set_blocksize!(ns.B, s.blocksize)
     s.nullspace === nothing || _set_nullspace!(ns, s.nullspace)
+    rebuilt = true
   end
   ns.A = A
-  reuse = (ns.nsetup - 1) % s.reuse != 0
+  reuse = (ns.nsetup - 1) % s.reuse != 0 && !rebuilt
   @check_error_code KSPSetReusePreconditioner(ns.ksp[], reuse ? PETSC_TRUE : PETSC_FALSE)
   @check_error_code PETSC.KSPSetOperators(ns.ksp[], ns.B.mat[], ns.B.mat[])
   @check_error_code PETSC.KSPSetUp(ns.ksp[])
@@ -303,8 +318,8 @@ end
 
 # Julia vectors of the PETSc scalar type are aliased (no copy); others are converted by GridapPETSc.
 function solve!(x::Vector{PetscScalar}, ns::PETScSolverNS, b::Vector{PetscScalar})
-  fill!(x, zero(PetscScalar))                  # zero initial guess (PETSc ignores x unless told otherwise)
-  negate!(b, ns.solver.negate)
+  x === b && error("HyperFEM: PETScSolver: x and b must be different vectors")
+  negate!(b, ns.solver.negate)                 # (PETSc starts from x = 0: the initial guess is zero unless told otherwise)
   X = PETScVector(x); Bv = PETScVector(b)
   _solve_vec!(ns, X, Bv)
   GridapPETSc.destroy(X); GridapPETSc.destroy(Bv)
@@ -313,6 +328,8 @@ function solve!(x::Vector{PetscScalar}, ns::PETScSolverNS, b::Vector{PetscScalar
 end
 
 function solve!(x::AbstractVector, ns::PETScSolverNS, b::AbstractVector)
+  (x isa PETScVector || b isa PETScVector) &&
+    error("HyperFEM: PETScSolver: mixed PETSc / Julia vectors are not supported (pass two PETScVectors or two Julia vectors)")
   negate!(b, ns.solver.negate)
   X = convert(PETScVector, x); Bv = convert(PETScVector, b)
   _solve_vec!(ns, X, Bv)
@@ -353,6 +370,9 @@ end
 
 function GridapPETSc.destroy(ns::PETScSolverNS)
   if ns.initialized && GridapPETSc.Initialized()
+    for (name, _) in _options(ns.solver)
+      PetscOptionsClearValue("-" * ns.prefix * name)
+    end
     @check_error_code PETSC.KSPDestroy(ns.ksp)
     ns.has_nullspace && @check_error_code PETSC.MatNullSpaceDestroy(ns.nullsp)
     ns.has_nullspace = false

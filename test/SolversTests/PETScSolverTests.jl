@@ -32,7 +32,7 @@ s1_battery("PETScSolver CG/GMRES + GAMG", (krylov; rtol=1e-6, maxiter=500, reuse
   end
 
   @testset "options and names" begin
-    x, ns = s1_solve(PETScSolver(:gmres, :gamg; rtol=1e-10, nullspace=N, options="-ksp_gmres_restart 50 -pc_gamg_threshold 0.02"), A, b)
+    x, ns = s1_solve(PETScSolver(:gmres, :gamg; rtol=1e-10, nullspace=N, options="-ksp_gmres_restart 50 -pc_gamg_threshold -0.01"), A, b)
     @test linear_converged(ns)
     @test norm(x - xlu) ≤ 1e-8 * norm(xlu)
     @test HyperFEM.Solvers._linear_name(PETScSolver(:cg, :gamg)) == "CG+GAMG"
@@ -52,8 +52,10 @@ s1_battery("PETScSolver CG/GMRES + GAMG", (krylov; rtol=1e-6, maxiter=500, reuse
     @test ref.flag
     nu = num_free_dofs(pem.U[1]); n = num_free_dofs(pem.U)
     r = s1_solve_nl(PETScSolver(:gmres, :gamg; rtol=1e-8, maxiter=200, nullspace=Nem, negate=nu+1:n), pem; backend=:lazy)
-    @test !r.flag
-    @test r.reason === :linear_failed
+    # today GAMG fails on it (documented limitation, S2); a PETSc that converged would be welcome, so the test only
+    # requires a clean outcome: either the trajectory of LU or a reported linear failure
+    @test (r.flag && r.its == ref.its) || (!r.flag && r.reason === :linear_failed)
+    @info "EM saddle point with GMRES + GAMG (negated φ block): $(r.flag ? "converged" : "linear failure, as expected")"
     # on the plain linear system the negation is transparent, and b is left as it was
     b0 = copy(b)
     x, ns = s1_solve(PETScSolver(:gmres, :gamg; rtol=1e-12, nullspace=N, negate=1:10), A, b)

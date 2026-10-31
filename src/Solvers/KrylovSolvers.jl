@@ -29,10 +29,13 @@ activates the extension). The PETSc binary of GridapPETSc provides everything th
   `atol = 0` inside a Newton: the right-hand side is the residual, which becomes tiny near convergence,
   and an absolute tolerance would accept an unsolved increment there.
 - `reuse`: the preconditioner is rebuilt every `reuse` numerical setups (lagged AMG: `reuse = 3`
-  keeps the hierarchy for three Newton iterations; `1` rebuilds it at every tangent).
+  keeps the hierarchy for three Newton iterations; `1` rebuilds it at every tangent). With a direct
+  solver (`:preonly`) a lagged factorisation is a modified Newton: the increments solve an old tangent
+  and the quadratic rate is lost, with no failure reported. A new matrix object always rebuilds.
 - `nullspace`: near-null space of the tangent (free dofs × modes, from [`near_nullspace`](@ref)),
   passed to the matrix with `MatSetNearNullSpace`; the rigid-body modes are essential for AMG on
-  elasticity. `nothing` leaves PETSc's default (the constant vector).
+  elasticity. GAMG reads it by default; BoomerAMG only with its interpolation-vector options
+  (`-pc_hypre_boomeramg_interp_vec_variant`). `nothing` leaves PETSc's default (the constant vector).
 - `negate`: range of equations multiplied by −1 (tangent rows and right-hand side) before PETSc sees
   the system; the solution is unchanged. A symmetric saddle-point tangent, concave in the electric
   or magnetic potential (the monolithic EM system: `negate = nu+1:n` for the φ block), becomes a
@@ -100,8 +103,8 @@ end
 """
     AMGSolver(krylov=:cg; rtol=1e-6, atol=0.0, maxiter=500, restart=30, reuse=1, nullspace=nothing)
 
-Pure-Julia counterpart of [`PETScSolver`](@ref) (needs `using AlgebraicMultigrid`, which activates the
-extension): IterativeSolvers' `cg` or `gmres` preconditioned by one V-cycle of AlgebraicMultigrid's
+Pure-Julia counterpart of [`PETScSolver`](@ref) (needs `import AlgebraicMultigrid`, which activates the
+extension; imported rather than used because the package exports its own `solve!`): IterativeSolvers' `cg` or `gmres` preconditioned by one V-cycle of AlgebraicMultigrid's
 smoothed aggregation, built with the near-null space `nullspace` (free dofs × modes, see
 [`near_nullspace`](@ref)). `reuse` rebuilds the hierarchy every `reuse` numerical setups (lagged
 AMG); `atol = 0` for the same reason as in [`PETScSolver`](@ref). Serial; it is the variant used in CI, where installing PETSc is slow, and the reference for
@@ -126,7 +129,7 @@ end
 
 Algebra.symbolic_setup(s::AMGSolver, A::AbstractMatrix) = amg_symbolic_setup(s, A)
 amg_symbolic_setup(::AMGSolver, A) =
-  error("HyperFEM: `AMGSolver` needs AlgebraicMultigrid: add `using AlgebraicMultigrid` (it activates the extension HyperFEMAMGExt)")
+  error("HyperFEM: `AMGSolver` needs AlgebraicMultigrid: add `import AlgebraicMultigrid` (it activates the extension HyperFEMAMGExt)")
 
 _linear_name(s::AMGSolver) = _KSP_NAMES[s.krylov] * "+AMG"
 
@@ -185,7 +188,8 @@ Near-null space of a tangent assembled on the trial space `U`, as an orthonormal
 vector-valued Lagrangian field and the constant mode of every scalar field, interpolated on the
 space, so that the Dirichlet dofs are left out and the modes of a multi-field space live in their
 own block (a mode of u is zero on φ). Modes that vanish on the free dofs (e.g. a translation fully
-constrained by Dirichlet conditions) are dropped. Independent of the Dirichlet values, so it is
+constrained by Dirichlet conditions) are dropped; an error if none is left. A vector field with fewer
+or more components than the space dimension gets its translations only. Independent of the Dirichlet values, so it is
 computed once per space and passed to the solver: `PETScSolver(:cg, :gamg; nullspace = near_nullspace(U))`.
 """
 function near_nullspace(U::SingleFieldFESpace)
@@ -211,9 +215,13 @@ Orthonormal basis of the columns of `B` (thin QR without pivoting, so that the f
 first modes: the modes of a field stay in its block), dropping the numerically dependent columns.
 """
 function _orthonormal(B::Matrix{Float64})
-  F = qr(B)
-  d = abs.(diag(F.R))
-  keep = findall(>(1e-10 * max(maximum(d), eps())), d)
-  length(keep) == size(B, 2) || (F = qr(B[:, keep]))
-  Matrix(F.Q)[:, 1:length(keep)]
+  size(B, 2) == 0 && error("HyperFEM: near_nullspace: the space has no modes")
+  while true
+    F = qr(B)
+    d = abs.(diag(F.R))
+    keep = findall(>(1e-10 * max(maximum(d), eps())), d)
+    isempty(keep) && error("HyperFEM: near_nullspace: every mode vanishes on the free dofs (fully constrained space)")
+    length(keep) == size(B, 2) && return Matrix(F.Q)[:, 1:length(keep)]
+    B = B[:, keep]                              # dropping a column can expose another dependency: check again
+  end
 end
