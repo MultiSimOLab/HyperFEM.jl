@@ -56,16 +56,18 @@ end
 
 # --- nonlinear electro-mechanics (the EM box of the solver benchmarks, coarse): a symmetric indefinite tangent ----------
 function s1_em_problem()
-  model = CartesianDiscreteModel((0.0, 0.1, 0.0, 0.01, 0.0, 0.002), (8, 2, 2))
+  # unit-scale block (the thin box of the benchmarks, 0.1 × 0.01 × 0.002 with 8 × 2 × 2 cells, is a cantilever with
+  # elements of aspect ratio 12:5:1 whose u block has a condition number of 4e7: no AMG converges on it at this size)
+  model = CartesianDiscreteModel((0.0, 1.0, 0.0, 0.2, 0.0, 0.2), (10, 2, 4))
   labels = get_face_labeling(model)
   add_tag_from_tags!(labels, "fixedup", CartesianTags.face0YZ⁺)
   add_tag_from_tags!(labels, "topsuf", CartesianTags.faceXY1⁺)
-  add_tag_from_vertex_filter!(labels, "midsuf", model, x -> abs(x[3] - 0.001) < 1e-9)
+  add_tag_from_vertex_filter!(labels, "midsuf", model, x -> abs(x[3] - 0.1) < 1e-9)
   physmodel = ElectroMechModel(IdealDielectric(ε=1.0), NeoHookean3D(λ=10.0, μ=1.0))
   k = (Kinematics(Mechano, Solid), Kinematics(Electro, Solid))
   Ω = Triangulation(model); dΩ = Measure(Ω, 2)
   Du = BoundaryConditions(BoundaryCondition("fixedup", [0.0, 0.0, 0.0]))
-  Dφ = BoundaryConditions(BoundaryCondition("midsuf", 0.0, Λ -> Λ), BoundaryCondition("topsuf", 5e-5, Λ -> Λ))
+  Dφ = BoundaryConditions(BoundaryCondition("midsuf", 0.0, Λ -> Λ), BoundaryCondition("topsuf", 0.02, Λ -> Λ))
   D = MultiFieldBC([Du, Dφ])
   Vu = TestFESpace(model, ReferenceFE(lagrangian, VectorValue{3,Float64}, 1), Du, conformity=:H1)
   Vφ = TestFESpace(model, ReferenceFE(lagrangian, Float64, 1), Dφ, conformity=:H1)

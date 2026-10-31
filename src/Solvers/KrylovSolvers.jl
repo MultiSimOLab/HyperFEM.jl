@@ -14,6 +14,9 @@ algebraic multigrid work on elasticity.
 """
     PETScSolver(ksp=:cg, pc=:gamg; rtol=1e-6, atol=0.0, maxiter=500, reuse=1, nullspace=nothing,
                 negate=nothing, blocksize=1, options="", monitor=false)
+    PETScSolver(ksp, :fieldsplit; fields, blocks=fill(:gamg, length(fields)), split=:additive,
+                schur=(fact=:upper, precondition=:a11), fieldnames=["f1", …], kwargs...)
+    PETScSolver(U::MultiFieldFESpace; ksp=:gmres, blocks, split, schur, negate=:last, kwargs...)
 
 Linear solver of the assembled tangent through a PETSc `KSP` (needs `using GridapPETSc`, which
 activates the extension). The PETSc binary of GridapPETSc provides everything the solver uses.
@@ -23,7 +26,7 @@ activates the extension). The PETSc binary of GridapPETSc provides everything th
   `:preonly` (apply the preconditioner once: direct solvers).
 - `pc`: preconditioner, `:gamg` (PETSc's smoothed-aggregation AMG), `:boomeramg` (hypre),
   `:mumps` (LU of MUMPS, the direct reference), `:mumps_cholesky`, `:lu` (PETSc's own LU),
-  `:jacobi`, `:none`.
+  `:jacobi`, `:none`, or `:fieldsplit` (block preconditioner by fields, stage S2, below).
 - `rtol`, `atol`, `maxiter`: Krylov tolerances (relative to the right-hand side, as PETSc's
   `KSPSetTolerances` with `-ksp_norm_type unpreconditioned`) and maximum number of iterations. Keep
   `atol = 0` inside a Newton: the right-hand side is the residual, which becomes tiny near convergence,
@@ -47,6 +50,23 @@ activates the extension). The PETSc binary of GridapPETSc provides everything th
   (the prefix of the solver is added automatically).
 - `monitor`: print PETSc's residual history (`-ksp_monitor`).
 
+**Block preconditioners (`pc = :fieldsplit`, PETSc's `PCFIELDSPLIT`).** `fields` are the dof ranges of
+the fields ([`field_ranges`](@ref) of a consecutive multi-field space); `blocks` the preconditioner of
+each diagonal block (`:gamg`, `:boomeramg`, `:mumps`, `:lu`, `:jacobi`), applied once per outer
+iteration (`preonly`); `split` is `:additive` (block Jacobi), `:multiplicative` (block Gauss–Seidel),
+`:symmetric_multiplicative` or `:schur` (two fields: block triangular with the Schur complement, `schur
+= (fact = :upper | :lower | :full | :diag, precondition = :a11 | :selfp)`). The default is `:additive`: on the
+electro-mechanical cases of the S2 benchmark Schur saves 10–25 % of the iterations but each of its
+applications costs 2–3× an additive one in PETSc (design/solvers-s2-status.md). `fieldnames` give the option
+prefixes `fieldsplit_<name>_…`. The near-null space of the whole space is split by field (a mode of u
+goes to the u block, the constant to φ). On the symmetric saddle point of the monolithic
+electro-mechanical tangent (K_φφ negative definite) negate the φ equations: with `negate = range_φ`
+both diagonal blocks are SPD and the Schur complement too, and GMRES converges with any of the four
+splits; without it the AMG of the φ block sees a negative definite matrix. The constructor from the
+space, `PETScSolver(U; …)`, fills `fields`, `nullspace = near_nullspace(U)` and `negate` (`:last`, the
+last field, the potential by HyperFEM's convention; a range or `nothing` otherwise):
+`NewtonRaphson(PETScSolver(U))` is the production path of the multi-field drivers.
+
 Three configurations of the plan: `PETScSolver(:cg, :gamg; nullspace)`, `PETScSolver(:gmres, :boomeramg;
 nullspace)` and `PETScSolver(:preonly, :mumps)`. The solver reports [`linear_converged`](@ref),
 [`linear_iterations`](@ref) and [`linear_info`](@ref) to the Newton: a Krylov solve that does not
@@ -69,19 +89,101 @@ struct PETScSolver <: Algebra.LinearSolver
   blocksize::Int
   options::String
   monitor::Bool
+  fields::Vector{UnitRange{Int}}             # fieldsplit: dof range of every field (empty otherwise)
+  fieldnames::Vector{String}
+  blocks::Vector{Symbol}
+  split::Symbol
+  schur::NamedTuple{(:fact, :precondition),Tuple{Symbol,Symbol}}
   function PETScSolver(ksp::Symbol=:cg, pc::Symbol=:gamg; rtol::Real=1e-6, atol::Real=0.0, maxiter::Integer=500,
                        reuse::Integer=1, nullspace::Union{Nothing,AbstractMatrix}=nothing,
                        negate::Union{Nothing,AbstractUnitRange}=nothing, blocksize::Integer=1, options::AbstractString="",
-                       monitor::Bool=false)
-    ksp in (:cg, :gmres, :preonly) || error("HyperFEM: PETScSolver: unknown Krylov method $ksp (use :cg, :gmres or :preonly)")
-    pc in (:gamg, :boomeramg, :mumps, :mumps_cholesky, :lu, :jacobi, :none) ||
-      error("HyperFEM: PETScSolver: unknown preconditioner $pc (use :gamg, :boomeramg, :mumps, :mumps_cholesky, :lu, :jacobi or :none)")
+                       monitor::Bool=false, fields::AbstractVector{<:AbstractUnitRange}=UnitRange{Int}[],
+                       fieldnames::AbstractVector{<:AbstractString}=["f$i" for i in 1:length(fields)],
+                       blocks::AbstractVector{Symbol}=fill(:gamg, length(fields)), split::Symbol=:additive,
+                       schur::NamedTuple=(fact=:upper, precondition=:a11))
+    ksp in (:cg, :gmres, :fgmres, :preonly) || error("HyperFEM: PETScSolver: unknown Krylov method $ksp (use :cg, :gmres, :fgmres or :preonly)")
+    pc in (:gamg, :boomeramg, :mumps, :mumps_cholesky, :lu, :jacobi, :none, :fieldsplit) ||
+      error("HyperFEM: PETScSolver: unknown preconditioner $pc (use :gamg, :boomeramg, :mumps, :mumps_cholesky, :lu, :jacobi, :none or :fieldsplit)")
     reuse ≥ 1 || error("HyperFEM: PETScSolver: reuse must be ≥ 1")
     blocksize ≥ 1 || error("HyperFEM: PETScSolver: blocksize must be ≥ 1")
+    fr = [UnitRange{Int}(r) for r in fields]
+    if pc === :fieldsplit
+      length(fr) ≥ 2 || error("HyperFEM: PETScSolver: :fieldsplit needs the dof ranges of at least two fields (`fields = field_ranges(U)`)")
+      length(fieldnames) == length(fr) == length(blocks) || error("HyperFEM: PETScSolver: fields, fieldnames and blocks must have the same length")
+      all(b -> b in (:gamg, :boomeramg, :mumps, :lu, :jacobi, :none), blocks) ||
+        error("HyperFEM: PETScSolver: block preconditioners are :gamg, :boomeramg, :mumps, :lu, :jacobi or :none")
+      split in (:additive, :multiplicative, :symmetric_multiplicative, :schur) ||
+        error("HyperFEM: PETScSolver: split must be :additive, :multiplicative, :symmetric_multiplicative or :schur")
+      split === :schur && length(fr) != 2 && error("HyperFEM: PETScSolver: the Schur split needs exactly two fields")
+      schur.fact in (:upper, :lower, :full, :diag) || error("HyperFEM: PETScSolver: schur.fact must be :upper, :lower, :full or :diag")
+      schur.precondition in (:a11, :selfp) || error("HyperFEM: PETScSolver: schur.precondition must be :a11 or :selfp")
+      first(fr[1]) == 1 || error("HyperFEM: PETScSolver: the field ranges must start at 1 (got $(first(fr[1])))")
+      for i in 2:length(fr)
+        first(fr[i]) == last(fr[i-1]) + 1 || error("HyperFEM: PETScSolver: the field ranges must be consecutive")
+      end
+      allunique(fieldnames) || error("HyperFEM: PETScSolver: fieldnames must be different (got $fieldnames)")
+    elseif !isempty(fr)
+      error("HyperFEM: PETScSolver: `fields` is only used with pc = :fieldsplit")
+    end
     ns = nullspace === nothing ? nothing : Matrix{Float64}(nullspace)
     neg = negate === nothing ? nothing : UnitRange{Int}(negate)
-    new(ksp, pc, rtol, atol, maxiter, reuse, ns, neg, Int(blocksize), String(options), monitor)
+    new(ksp, pc, rtol, atol, maxiter, reuse, ns, neg, Int(blocksize), String(options), monitor,
+        fr, String.(fieldnames), Symbol.(blocks), split, (fact=Symbol(schur.fact), precondition=Symbol(schur.precondition)))
   end
+end
+
+"""
+    PETScSolver(U::MultiFieldFESpace; ksp=:gmres, blocks=fill(:gamg, num_fields(U)), split=:additive,
+                schur=(fact=:upper, precondition=:a11), negate=:last, fieldnames, kwargs...)
+
+Block preconditioner (`pc = :fieldsplit`) for the tangent assembled on the consecutive multi-field
+space `U`: `fields = field_ranges(U)`, `nullspace = near_nullspace(U)` (the rigid modes of the vector
+fields, the constants of the scalar ones, split by block), and `negate = :last` (the equations of
+the last field, the potential of the electro- and magneto-mechanical drivers, so that the saddle point
+becomes positive-real; a range or `nothing` otherwise). `fieldnames` default to `"u"` for a vector
+field and `"phi"` for a scalar one when there is one of each, `"f1", "f2", …` otherwise.
+"""
+function PETScSolver(U::MultiFieldFESpace; ksp::Symbol=:gmres, blocks=fill(:gamg, num_fields(U)), split::Symbol=:additive,
+                     schur::NamedTuple=(fact=:upper, precondition=:a11), negate=:last, fieldnames=_default_fieldnames(U), kwargs...)
+  fields = field_ranges(U)
+  neg = negate === :last ? fields[end] : negate
+  PETScSolver(ksp, :fieldsplit; fields, blocks, split, schur, nullspace=near_nullspace(U), negate=neg, fieldnames, kwargs...)
+end
+
+function _default_fieldnames(U::MultiFieldFESpace)
+  nc = [_num_components(U[i]) for i in 1:num_fields(U)]
+  num_fields(U) == 2 && nc[1] > 1 && nc[2] == 1 ? ["u", "phi"] : ["f$i" for i in 1:num_fields(U)]
+end
+
+"""
+    field_ranges(U::MultiFieldFESpace) -> Vector{UnitRange{Int}}
+
+Free-dof range of every field of a consecutive multi-field space (`ConsecutiveMultiFieldStyle`, the
+layout of HyperFEM's multi-field drivers): the blocks of the assembled tangent. Block-style spaces
+(`BlockMultiFieldStyle`, where the matrix is a `BlockMatrix`) are not supported.
+"""
+function field_ranges(U::MultiFieldFESpace)
+  MultiFieldStyle(U) isa ConsecutiveMultiFieldStyle ||
+    error("HyperFEM: field_ranges needs a consecutive multi-field space (ConsecutiveMultiFieldStyle)")
+  n = [num_free_dofs(U[i]) for i in 1:num_fields(U)]
+  offsets = cumsum([0; n])
+  [offsets[i]+1:offsets[i+1] for i in 1:length(n)]
+end
+
+"""
+    split_nullspace(N, fields) -> Vector{Matrix{Float64}}
+
+The near-null space `N` (dofs × modes) split by field: the block of every field with the modes that
+live in it (a mode belongs to every field where its restriction is not round-off, more than 1e-8 of its
+norm; the modes of [`near_nullspace`](@ref) are block-structured, so each goes to one field — a user
+near-null space with modes spanning several fields is restricted to each of them). Fields without modes
+get a `n_i × 0` matrix.
+"""
+function split_nullspace(N::Matrix{Float64}, fields::Vector{UnitRange{Int}})
+  [begin
+    cols = [j for j in 1:size(N, 2) if norm(view(N, r, j)) > 1e-8 * norm(view(N, :, j))]   # round-off of the QR is not a mode
+    N[r, cols]
+  end for r in fields]
 end
 
 Algebra.symbolic_setup(s::PETScSolver, A::AbstractMatrix) = petsc_symbolic_setup(s, A)
@@ -89,11 +191,13 @@ petsc_symbolic_setup(::PETScSolver, A) =
   error("HyperFEM: `PETScSolver` needs GridapPETSc: add `using GridapPETSc` (it activates the extension HyperFEMPETScExt)")
 
 const _PC_NAMES = Dict(:gamg => "GAMG", :boomeramg => "BoomerAMG", :mumps => "MUMPS", :mumps_cholesky => "MUMPS-Chol",
-                       :lu => "PETSc-LU", :jacobi => "Jacobi", :none => "none")
-const _KSP_NAMES = Dict(:cg => "CG", :gmres => "GMRES", :preonly => "")
+                       :lu => "PETSc-LU", :jacobi => "Jacobi", :none => "none", :fieldsplit => "FS")
+const _KSP_NAMES = Dict(:cg => "CG", :gmres => "GMRES", :fgmres => "FGMRES", :preonly => "")
+const _SPLIT_NAMES = Dict(:additive => "add", :multiplicative => "mult", :symmetric_multiplicative => "smult", :schur => "schur")
 
 function _linear_name(s::PETScSolver)
   k, p = _KSP_NAMES[s.ksp], _PC_NAMES[s.pc]
+  s.pc === :fieldsplit && (p = "FS-" * _SPLIT_NAMES[s.split] * "(" * join((_PC_NAMES[b] for b in s.blocks), ",") * ")")
   isempty(k) ? p : k * "+" * p
 end
 
@@ -101,13 +205,20 @@ end
 # Pure-Julia Krylov + AMG (prototyping and CI, D1)
 
 """
-    AMGSolver(krylov=:cg; rtol=1e-6, atol=0.0, maxiter=500, restart=30, reuse=1, nullspace=nothing)
+    AMGSolver(krylov=:cg; rtol=1e-6, atol=0.0, maxiter=500, restart=30, reuse=1, nullspace=nothing,
+              fields=UnitRange{Int}[], split=:additive, negate=nothing)
+    AMGSolver(U::MultiFieldFESpace; krylov=:gmres, split=:additive, negate=:last, kwargs...)
 
 Pure-Julia counterpart of [`PETScSolver`](@ref) (needs `import AlgebraicMultigrid`, which activates the
 extension; imported rather than used because the package exports its own `solve!`): IterativeSolvers' `cg` or `gmres` preconditioned by one V-cycle of AlgebraicMultigrid's
 smoothed aggregation, built with the near-null space `nullspace` (free dofs × modes, see
 [`near_nullspace`](@ref)). `reuse` rebuilds the hierarchy every `reuse` numerical setups (lagged
-AMG); `atol = 0` for the same reason as in [`PETScSolver`](@ref). Serial; it is the variant used in CI, where installing PETSc is slow, and the reference for
+AMG); `atol = 0` for the same reason as in [`PETScSolver`](@ref). With `fields` (the dof ranges of
+[`field_ranges`](@ref)) the preconditioner is a block one with one hierarchy per field: `split =
+:additive` (block Jacobi), `:multiplicative` (block Gauss–Seidel, lower triangular) or `:schur` (two
+fields, upper block triangular with the Schur complement approximated by its diagonal block, PETSc's
+`upper, a11`); `negate` as in `PETScSolver` (the φ equations of a saddle point). The constructor from
+the space fills `fields`, `nullspace` and `negate = :last`. Block preconditioners need `:gmres`. Serial; it is the variant used in CI, where installing PETSc is slow, and the reference for
 the Newton integration (`linear_converged`, lagged setups).
 """
 struct AMGSolver <: Algebra.LinearSolver
@@ -118,20 +229,43 @@ struct AMGSolver <: Algebra.LinearSolver
   restart::Int
   reuse::Int
   nullspace::Union{Nothing,Matrix{Float64}}
+  fields::Vector{UnitRange{Int}}
+  split::Symbol
+  negate::Union{Nothing,UnitRange{Int}}
   function AMGSolver(krylov::Symbol=:cg; rtol::Real=1e-6, atol::Real=0.0, maxiter::Integer=500, restart::Integer=30,
-                     reuse::Integer=1, nullspace::Union{Nothing,AbstractMatrix}=nothing)
+                     reuse::Integer=1, nullspace::Union{Nothing,AbstractMatrix}=nothing,
+                     fields::AbstractVector{<:AbstractUnitRange}=UnitRange{Int}[], split::Symbol=:additive,
+                     negate::Union{Nothing,AbstractUnitRange}=nothing)
     krylov in (:cg, :gmres) || error("HyperFEM: AMGSolver: unknown Krylov method $krylov (use :cg or :gmres)")
     reuse ≥ 1 || error("HyperFEM: AMGSolver: reuse must be ≥ 1")
+    fr = [UnitRange{Int}(r) for r in fields]
+    if !isempty(fr)
+      length(fr) ≥ 2 || error("HyperFEM: AMGSolver: a block preconditioner needs at least two fields")
+      split in (:additive, :multiplicative, :schur) || error("HyperFEM: AMGSolver: split must be :additive, :multiplicative or :schur")
+      split === :schur && length(fr) != 2 && error("HyperFEM: AMGSolver: the Schur split needs exactly two fields")
+      krylov === :gmres || error("HyperFEM: AMGSolver: block preconditioners are not symmetric: use krylov = :gmres")
+      first(fr[1]) == 1 || error("HyperFEM: AMGSolver: the field ranges must start at 1 (got $(first(fr[1])))")
+      for i in 2:length(fr)
+        first(fr[i]) == last(fr[i-1]) + 1 || error("HyperFEM: AMGSolver: the field ranges must be consecutive")
+      end
+    end
     ns = nullspace === nothing ? nothing : Matrix{Float64}(nullspace)
-    new(krylov, rtol, atol, maxiter, restart, reuse, ns)
+    neg = negate === nothing ? nothing : UnitRange{Int}(negate)
+    new(krylov, rtol, atol, maxiter, restart, reuse, ns, fr, split, neg)
   end
+end
+
+function AMGSolver(U::MultiFieldFESpace; krylov::Symbol=:gmres, split::Symbol=:additive, negate=:last, kwargs...)
+  fields = field_ranges(U)
+  neg = negate === :last ? fields[end] : negate
+  AMGSolver(krylov; fields, split, nullspace=near_nullspace(U), negate=neg, kwargs...)
 end
 
 Algebra.symbolic_setup(s::AMGSolver, A::AbstractMatrix) = amg_symbolic_setup(s, A)
 amg_symbolic_setup(::AMGSolver, A) =
   error("HyperFEM: `AMGSolver` needs AlgebraicMultigrid: add `import AlgebraicMultigrid` (it activates the extension HyperFEMAMGExt)")
 
-_linear_name(s::AMGSolver) = _KSP_NAMES[s.krylov] * "+AMG"
+_linear_name(s::AMGSolver) = _KSP_NAMES[s.krylov] * (isempty(s.fields) ? "+AMG" : "+FS-" * _SPLIT_NAMES[s.split] * "(AMG)")
 
 """
     linear_iterations(ns) -> Int

@@ -36,10 +36,17 @@ using Test
     include("KrylovSolversTests.jl")
   end
 
-  # PETSc variant: local only (GridapPETSc is not in the CI test environment, see PETScSolverTests.jl)
+  @time begin
+    include("FieldSplitTests.jl")
+  end
+
+  # PETSc variants: local only (GridapPETSc is not in the CI test environment, see PETScSolverTests.jl)
   if get(ENV, "HYPERFEM_TEST_PETSC", "0") == "1"
     @time begin
       include("PETScSolverTests.jl")
+    end
+    @time begin
+      include("PETScFieldSplitTests.jl")
     end
   end
 
