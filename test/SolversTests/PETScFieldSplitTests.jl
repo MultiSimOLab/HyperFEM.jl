@@ -26,7 +26,7 @@ s2_battery("PETScSolver fieldsplit", (U; kwargs...) -> PETScSolver(U; kwargs...)
   end
 
   @testset "names, errors" begin
-    @test HyperFEM.Solvers._linear_name(PETScSolver(U)) == "GMRES+FS-schur(GAMG,GAMG)"
+    @test HyperFEM.Solvers._linear_name(PETScSolver(U)) == "GMRES+FS-add(GAMG,GAMG)"
     @test PETScSolver(U).fieldnames == ["u", "phi"]
     @test_throws ErrorException PETScSolver(:gmres, :fieldsplit)                                 # no fields
     @test_throws ErrorException PETScSolver(:gmres, :fieldsplit; fields=r, blocks=[:gamg])      # lengths

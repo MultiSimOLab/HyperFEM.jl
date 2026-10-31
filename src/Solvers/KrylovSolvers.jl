@@ -14,7 +14,7 @@ algebraic multigrid work on elasticity.
 """
     PETScSolver(ksp=:cg, pc=:gamg; rtol=1e-6, atol=0.0, maxiter=500, reuse=1, nullspace=nothing,
                 negate=nothing, blocksize=1, options="", monitor=false)
-    PETScSolver(ksp, :fieldsplit; fields, blocks=fill(:gamg, length(fields)), split=:schur,
+    PETScSolver(ksp, :fieldsplit; fields, blocks=fill(:gamg, length(fields)), split=:additive,
                 schur=(fact=:upper, precondition=:a11), fieldnames=["f1", …], kwargs...)
     PETScSolver(U::MultiFieldFESpace; ksp=:gmres, blocks, split, schur, negate=:last, kwargs...)
 
@@ -55,7 +55,9 @@ the fields ([`field_ranges`](@ref) of a consecutive multi-field space); `blocks`
 each diagonal block (`:gamg`, `:boomeramg`, `:mumps`, `:lu`, `:jacobi`), applied once per outer
 iteration (`preonly`); `split` is `:additive` (block Jacobi), `:multiplicative` (block Gauss–Seidel),
 `:symmetric_multiplicative` or `:schur` (two fields: block triangular with the Schur complement, `schur
-= (fact = :upper | :lower | :full | :diag, precondition = :a11 | :selfp)`); `fieldnames` give the option
+= (fact = :upper | :lower | :full | :diag, precondition = :a11 | :selfp)`). The default is `:additive`: on the
+electro-mechanical cases of the S2 benchmark Schur saves 10–25 % of the iterations but each of its
+applications costs 2–3× an additive one in PETSc (design/solvers-s2-status.md). `fieldnames` give the option
 prefixes `fieldsplit_<name>_…`. The near-null space of the whole space is split by field (a mode of u
 goes to the u block, the constant to φ). On the symmetric saddle point of the monolithic
 electro-mechanical tangent (K_φφ negative definite) negate the φ equations: with `negate = range_φ`
@@ -97,7 +99,7 @@ struct PETScSolver <: Algebra.LinearSolver
                        negate::Union{Nothing,AbstractUnitRange}=nothing, blocksize::Integer=1, options::AbstractString="",
                        monitor::Bool=false, fields::AbstractVector{<:AbstractUnitRange}=UnitRange{Int}[],
                        fieldnames::AbstractVector{<:AbstractString}=["f$i" for i in 1:length(fields)],
-                       blocks::AbstractVector{Symbol}=fill(:gamg, length(fields)), split::Symbol=:schur,
+                       blocks::AbstractVector{Symbol}=fill(:gamg, length(fields)), split::Symbol=:additive,
                        schur::NamedTuple=(fact=:upper, precondition=:a11))
     ksp in (:cg, :gmres, :fgmres, :preonly) || error("HyperFEM: PETScSolver: unknown Krylov method $ksp (use :cg, :gmres, :fgmres or :preonly)")
     pc in (:gamg, :boomeramg, :mumps, :mumps_cholesky, :lu, :jacobi, :none, :fieldsplit) ||
@@ -131,7 +133,7 @@ struct PETScSolver <: Algebra.LinearSolver
 end
 
 """
-    PETScSolver(U::MultiFieldFESpace; ksp=:gmres, blocks=fill(:gamg, num_fields(U)), split=:schur,
+    PETScSolver(U::MultiFieldFESpace; ksp=:gmres, blocks=fill(:gamg, num_fields(U)), split=:additive,
                 schur=(fact=:upper, precondition=:a11), negate=:last, fieldnames, kwargs...)
 
 Block preconditioner (`pc = :fieldsplit`) for the tangent assembled on the consecutive multi-field
@@ -141,7 +143,7 @@ the last field, the potential of the electro- and magneto-mechanical drivers, so
 becomes positive-real; a range or `nothing` otherwise). `fieldnames` default to `"u"` for a vector
 field and `"phi"` for a scalar one when there is one of each, `"f1", "f2", …` otherwise.
 """
-function PETScSolver(U::MultiFieldFESpace; ksp::Symbol=:gmres, blocks=fill(:gamg, num_fields(U)), split::Symbol=:schur,
+function PETScSolver(U::MultiFieldFESpace; ksp::Symbol=:gmres, blocks=fill(:gamg, num_fields(U)), split::Symbol=:additive,
                      schur::NamedTuple=(fact=:upper, precondition=:a11), negate=:last, fieldnames=_default_fieldnames(U), kwargs...)
   fields = field_ranges(U)
   neg = negate === :last ? fields[end] : negate
@@ -204,8 +206,8 @@ end
 
 """
     AMGSolver(krylov=:cg; rtol=1e-6, atol=0.0, maxiter=500, restart=30, reuse=1, nullspace=nothing,
-              fields=UnitRange{Int}[], split=:schur, negate=nothing)
-    AMGSolver(U::MultiFieldFESpace; krylov=:gmres, split=:schur, negate=:last, kwargs...)
+              fields=UnitRange{Int}[], split=:additive, negate=nothing)
+    AMGSolver(U::MultiFieldFESpace; krylov=:gmres, split=:additive, negate=:last, kwargs...)
 
 Pure-Julia counterpart of [`PETScSolver`](@ref) (needs `import AlgebraicMultigrid`, which activates the
 extension; imported rather than used because the package exports its own `solve!`): IterativeSolvers' `cg` or `gmres` preconditioned by one V-cycle of AlgebraicMultigrid's
@@ -232,7 +234,7 @@ struct AMGSolver <: Algebra.LinearSolver
   negate::Union{Nothing,UnitRange{Int}}
   function AMGSolver(krylov::Symbol=:cg; rtol::Real=1e-6, atol::Real=0.0, maxiter::Integer=500, restart::Integer=30,
                      reuse::Integer=1, nullspace::Union{Nothing,AbstractMatrix}=nothing,
-                     fields::AbstractVector{<:AbstractUnitRange}=UnitRange{Int}[], split::Symbol=:schur,
+                     fields::AbstractVector{<:AbstractUnitRange}=UnitRange{Int}[], split::Symbol=:additive,
                      negate::Union{Nothing,AbstractUnitRange}=nothing)
     krylov in (:cg, :gmres) || error("HyperFEM: AMGSolver: unknown Krylov method $krylov (use :cg or :gmres)")
     reuse ≥ 1 || error("HyperFEM: AMGSolver: reuse must be ≥ 1")
@@ -253,7 +255,7 @@ struct AMGSolver <: Algebra.LinearSolver
   end
 end
 
-function AMGSolver(U::MultiFieldFESpace; krylov::Symbol=:gmres, split::Symbol=:schur, negate=:last, kwargs...)
+function AMGSolver(U::MultiFieldFESpace; krylov::Symbol=:gmres, split::Symbol=:additive, negate=:last, kwargs...)
   fields = field_ranges(U)
   neg = negate === :last ? fields[end] : negate
   AMGSolver(krylov; fields, split, nullspace=near_nullspace(U), negate=neg, kwargs...)
