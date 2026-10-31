@@ -52,6 +52,8 @@ PCFieldSplitSetIS(pc::PC, name::String, is::IS) =
   ccall(_sym(:PCFieldSplitSetIS), Cint, (PC, Cstring, IS), pc, name, is)
 PetscObjectCompose(obj::Ptr{Cvoid}, name::String, other::Ptr{Cvoid}) =
   ccall(_sym(:PetscObjectCompose), Cint, (Ptr{Cvoid}, Cstring, Ptr{Cvoid}), obj, name, other)
+ISSetBlockSize(is::IS, bs::PetscInt) =
+  ccall(_sym(:ISSetBlockSize), Cint, (IS, PetscInt), is, bs)
 PetscOptionsClearValue(name::String) =
   ccall(_sym(:PetscOptionsClearValue), Cint, (Ptr{Cvoid}, Cstring), C_NULL, name)
 # "The values of the matrix changed behind PETSc's back": the Get/Restore pair bumps the object state and
@@ -70,23 +72,27 @@ end
 """
 CSR copy of a `SparseMatrixCSC` with the gather `perm` such that `csr.nzval[k] = A.nzval[perm[k]]`:
 the index arrays are built once, the values are gathered at every update. The mirror is valid while
-`A` keeps its index arrays (checked by identity).
+`A` keeps its index arrays (checked by identity). With a renumbering `q` (dof `i` of `A` is dof `q[i]`
+of PETSc) the mirror is the symmetrically permuted matrix Q A Qᵀ — the fieldsplit solver hands PETSc
+the dofs of a vector field node by node, so that its block has a block size.
 """
 struct CSRMirror{Ti<:Integer}
   csr::SparseMatrixCSR{0,PetscScalar,PetscInt}
   perm::Vector{Ti}
   colptr::Vector                              # the index arrays of the source matrix (identity check, no copy)
   rowval::Vector
+  q::Union{Nothing,Vector{Int}}               # renumbering (nothing: PETSc sees the dofs of A in their order)
 end
 
-function CSRMirror(A::SparseMatrixCSC{<:Real,<:Integer})
+function CSRMirror(A::SparseMatrixCSC{<:Real,<:Integer}, q::Union{Nothing,Vector{Int}}=nothing)
   m, n = size(A)
   nz = nnz(A)
   Ti = nz < typemax(Int32) ? Int32 : Int
   colptr, rowval = A.colptr, A.rowval
+  row(i) = q === nothing ? i : q[i]
   rowptr = zeros(PetscInt, m + 1)             # 0-based: rowptr[i] = nonzeros before row i, rowptr[m+1] = nnz
   @inbounds for k in 1:nz
-    rowptr[rowval[k]+1] += 1                 # count row i at rowptr[i+1]
+    rowptr[row(rowval[k])+1] += 1            # count row i at rowptr[i+1]
   end
   @inbounds for i in 1:m
     rowptr[i+1] += rowptr[i]
@@ -95,15 +101,25 @@ function CSRMirror(A::SparseMatrixCSC{<:Real,<:Integer})
   colval = Vector{PetscInt}(undef, nz)
   perm = Vector{Ti}(undef, nz)
   @inbounds for j in 1:n, k in colptr[j]:colptr[j+1]-1
-    i = rowval[k]
+    i = row(rowval[k])
     p = next[i]
-    colval[p] = j - 1
+    colval[p] = row(j) - 1
     perm[p] = k
     next[i] = p + 1
   end
+  if q !== nothing                            # the renumbered columns of a row are not sorted any more: PETSc wants them sorted
+    Threads.@threads :static for i in 1:m
+      @inbounds begin
+        lo, hi = rowptr[i] + 1, rowptr[i+1]
+        o = sortperm(view(colval, lo:hi))
+        colval[lo:hi] = colval[lo:hi][o]
+        perm[lo:hi] = perm[lo:hi][o]
+      end
+    end
+  end
   nzval = Vector{PetscScalar}(undef, nz)
   csr = SparseMatrixCSR{0}(m, n, rowptr, colval, nzval)
-  mirror = CSRMirror{Ti}(csr, perm, colptr, rowval)
+  mirror = CSRMirror{Ti}(csr, perm, colptr, rowval, q)
   gather!(mirror, A)
   mirror
 end
@@ -164,6 +180,8 @@ mutable struct PETScSolverNS{M} <: NumericalSetup
   fieldsets::Vector{PETScIndexSet}            # fieldsplit: the IS of every field, with its near-null space composed
   fieldnull::Vector{Ref{MatNullSpace}}
   fieldnullvecs::Vector{PETScVector}
+  bwork::Vector{PetscScalar}                   # renumbered right-hand side and solution (empty without renumbering)
+  xwork::Vector{PetscScalar}
   nsetup::Int                                  # numerical setups (initial one included)
   nbuild::Int                                  # preconditioner builds
   iters::Int
@@ -243,14 +261,29 @@ function _set_options!(prefix::String, s::PETScSolver)
 end
 
 "The PETSc matrix of `A`: a CSR mirror aliased by PETSc for CSC matrices, GridapPETSc's conversion otherwise."
-function _petsc_matrix(A::SparseMatrixCSC, negate)
-  mirror = CSRMirror(A)
+function _petsc_matrix(A::SparseMatrixCSC, negate, q)
+  mirror = CSRMirror(A, q)
   negate === nothing || gather!(mirror, A, negate)
   mirror, PETScMatrix(mirror.csr)
 end
-function _petsc_matrix(A::AbstractMatrix, negate)
+function _petsc_matrix(A::AbstractMatrix, negate, q)
   negate === nothing || error("HyperFEM: PETScSolver: `negate` needs a SparseMatrixCSC tangent (got $(typeof(A)))")
+  q === nothing || error("HyperFEM: PETScSolver: the blocked field order needs a SparseMatrixCSC tangent (got $(typeof(A)))")
   nothing, convert(PETScMatrix, A)
+end
+
+"The renumbering of the dofs PETSc sees (`fieldorder`: the dofs of a field node by node), or nothing."
+function _renumbering(s::PETScSolver)
+  all(isempty, s.fieldorder) && return nothing
+  n = last(s.fields[end])
+  q = collect(1:n)
+  for (r, o) in zip(s.fields, s.fieldorder)
+    isempty(o) && continue
+    for (k, i) in enumerate(o)
+      q[r[i]] = r[k]                           # dof r[i] of A takes the k-th place of the field in PETSc
+    end
+  end
+  q
 end
 
 function _set_nullspace!(ns::PETScSolverNS, N::Matrix{Float64})
@@ -268,7 +301,9 @@ function _set_nullspace!(ns::PETScSolverNS, N::Matrix{Float64})
 end
 
 # Fieldsplit: the IS of every field on the KSP's PC, with the field's near-null space composed on it under
-# "nearnullspace" (PCFIELDSPLIT hands it to the sub-matrix of the block, where GAMG reads it).
+# "nearnullspace" (PCFIELDSPLIT hands it to the sub-matrix of the block, where GAMG reads it). The dofs of a
+# field go in `fieldorder` (node by node for a vector field) and the IS carries `fieldbs`: the sub-matrix
+# PETSc extracts inherits the block size, and GAMG aggregates nodes; the near-null space follows the order.
 function _setup_fieldsplit!(ns::PETScSolverNS)
   s = ns.solver
   ns.B.comm == MPI.COMM_SELF || error("HyperFEM: PETScSolver: fieldsplit is only supported on serial matrices")
@@ -279,10 +314,12 @@ function _setup_fieldsplit!(ns::PETScSolverNS)
   @check_error_code PETSC.PCSetType(pc[], "fieldsplit")
   Ns = s.nullspace === nothing ? nothing : split_nullspace(s.nullspace, s.fields)
   for (i, r) in enumerate(s.fields)
-    is = PETScIndexSet(r)                        # 1-based indices, converted inside
+    order = s.fieldorder[i]
+    is = PETScIndexSet(r)                        # 1-based indices, converted inside (the renumbering keeps the ranges)
+    s.fieldbs[i] > 1 && @check_error_code ISSetBlockSize(is.is[], PetscInt(s.fieldbs[i]))
     push!(ns.fieldsets, is)
     if Ns !== nothing && size(Ns[i], 2) > 0
-      Ni = Ns[i]
+      Ni = isempty(order) ? Ns[i] : Ns[i][order, :]
       vecs = [PETScVector(Ni[:, j]) for j in 1:size(Ni, 2)]
       append!(ns.fieldnullvecs, vecs)
       sp = Ref{MatNullSpace}()
@@ -317,10 +354,13 @@ function numerical_setup(ss::PETScSolverSS, A::AbstractMatrix)
   s = ss.solver
   _NSOLVERS[] += 1
   prefix = "hyperfem$(_NSOLVERS[])_"
-  mirror, B = _petsc_matrix(A, s.negate)
+  q = _renumbering(s)
+  mirror, B = _petsc_matrix(A, s.negate, q)
   _set_blocksize!(B, s.blocksize)
+  nw = q === nothing ? 0 : size(A, 1)
   ns = PETScSolverNS{typeof(mirror)}(s, prefix, mirror, A, B, Ref{KSP}(), Ref{MatNullSpace}(), PETScVector[], false,
-                                      PETScIndexSet[], Ref{MatNullSpace}[], PETScVector[], 1, 1, 0, 0.0, Cint(0), false)
+                                      PETScIndexSet[], Ref{MatNullSpace}[], PETScVector[], zeros(PetscScalar, nw), zeros(PetscScalar, nw),
+                                      1, 1, 0, 0.0, Cint(0), false)
   s.nullspace === nothing || _set_nullspace!(ns, s.nullspace)
   @check_error_code PETSC.KSPCreate(B.comm, ns.ksp)
   @check_error_code PETSC.KSPSetOptionsPrefix(ns.ksp[], prefix)
@@ -349,7 +389,7 @@ function numerical_setup!(ns::PETScSolverNS, A::AbstractMatrix)
     ns.has_nullspace = false
     foreach(GridapPETSc.destroy, ns.nullvecs); empty!(ns.nullvecs)
     GridapPETSc.destroy(ns.B)
-    ns.mirror, ns.B = _petsc_matrix(A, s.negate)
+    ns.mirror, ns.B = _petsc_matrix(A, s.negate, _renumbering(s))
     _set_blocksize!(ns.B, s.blocksize)
     s.nullspace === nothing || _set_nullspace!(ns, s.nullspace)
     rebuilt = true
@@ -377,13 +417,33 @@ function _solve_vec!(ns::PETScSolverNS, X::PETScVector, Bv::PETScVector)
 end
 
 function solve!(x::PETScVector, ns::PETScSolverNS, b::PETScVector)
+  _renumbered(ns) && error("HyperFEM: PETScSolver: the blocked field order (renumbered dofs) needs Julia vectors")
   _solve_vec!(ns, x, b)
+  x
+end
+
+_renumbered(ns::PETScSolverNS) = ns.mirror !== nothing && ns.mirror.q !== nothing
+
+# Renumbered dofs: b goes to PETSc through the work copy (negated there, the caller's b untouched), x comes back.
+function _solve_renumbered!(x::AbstractVector, ns::PETScSolverNS, b::AbstractVector)
+  q, bw, xw = ns.mirror.q, ns.bwork, ns.xwork
+  @inbounds for i in eachindex(q)
+    bw[q[i]] = b[i]
+  end
+  negate!(bw, ns.solver.negate)
+  X = PETScVector(xw); Bv = PETScVector(bw)
+  _solve_vec!(ns, X, Bv)
+  GridapPETSc.destroy(X); GridapPETSc.destroy(Bv)
+  @inbounds for i in eachindex(q)
+    x[i] = xw[q[i]]
+  end
   x
 end
 
 # Julia vectors of the PETSc scalar type are aliased (no copy); others are converted by GridapPETSc.
 function solve!(x::Vector{PetscScalar}, ns::PETScSolverNS, b::Vector{PetscScalar})
   x === b && error("HyperFEM: PETScSolver: x and b must be different vectors")
+  _renumbered(ns) && return _solve_renumbered!(x, ns, b)
   negate!(b, ns.solver.negate)                 # (PETSc starts from x = 0: the initial guess is zero unless told otherwise)
   X = PETScVector(x); Bv = PETScVector(b)
   _solve_vec!(ns, X, Bv)
@@ -395,6 +455,7 @@ end
 function solve!(x::AbstractVector, ns::PETScSolverNS, b::AbstractVector)
   (x isa PETScVector || b isa PETScVector) &&
     error("HyperFEM: PETScSolver: mixed PETSc / Julia vectors are not supported (pass two PETScVectors or two Julia vectors)")
+  _renumbered(ns) && return _solve_renumbered!(x, ns, b)
   negate!(b, ns.solver.negate)
   X = convert(PETScVector, x); Bv = convert(PETScVector, b)
   _solve_vec!(ns, X, Bv)

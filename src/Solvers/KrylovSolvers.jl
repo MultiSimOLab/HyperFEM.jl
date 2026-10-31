@@ -92,13 +92,17 @@ struct PETScSolver <: Algebra.LinearSolver
   blocks::Vector{Symbol}
   split::Symbol
   schur::NamedTuple{(:fact, :precondition),Tuple{Symbol,Symbol}}
+  fieldorder::Vector{Vector{Int}}            # fieldsplit: order of the dofs of every field inside its block (empty: natural)
+  fieldbs::Vector{Int}                       # and the block size of the block (components of a node, consecutive in fieldorder)
   function PETScSolver(ksp::Symbol=:cg, pc::Symbol=:gamg; rtol::Real=1e-6, atol::Real=0.0, maxiter::Integer=500,
                        reuse::Integer=1, nullspace::Union{Nothing,AbstractMatrix}=nothing,
                        negate::Union{Nothing,AbstractUnitRange}=nothing, blocksize::Integer=1, options::AbstractString="",
                        monitor::Bool=false, fields::AbstractVector{<:AbstractUnitRange}=UnitRange{Int}[],
                        fieldnames::AbstractVector{<:AbstractString}=["f$i" for i in 1:length(fields)],
                        blocks::AbstractVector{Symbol}=fill(:gamg, length(fields)), split::Symbol=:schur,
-                       schur::NamedTuple=(fact=:upper, precondition=:a11))
+                       schur::NamedTuple=(fact=:upper, precondition=:a11),
+                       fieldorder::AbstractVector{<:AbstractVector{<:Integer}}=[Int[] for _ in fields],
+                       fieldbs::AbstractVector{<:Integer}=fill(1, length(fields)))
     ksp in (:cg, :gmres, :fgmres, :preonly) || error("HyperFEM: PETScSolver: unknown Krylov method $ksp (use :cg, :gmres, :fgmres or :preonly)")
     pc in (:gamg, :boomeramg, :mumps, :mumps_cholesky, :lu, :jacobi, :none, :fieldsplit) ||
       error("HyperFEM: PETScSolver: unknown preconditioner $pc (use :gamg, :boomeramg, :mumps, :mumps_cholesky, :lu, :jacobi, :none or :fieldsplit)")
@@ -120,32 +124,91 @@ struct PETScSolver <: Algebra.LinearSolver
         first(fr[i]) == last(fr[i-1]) + 1 || error("HyperFEM: PETScSolver: the field ranges must be consecutive")
       end
       allunique(fieldnames) || error("HyperFEM: PETScSolver: fieldnames must be different (got $fieldnames)")
+      length(fieldorder) == length(fieldbs) == length(fr) || error("HyperFEM: PETScSolver: fieldorder and fieldbs must have one entry per field")
+      for (i, r) in enumerate(fr)
+        o = fieldorder[i]
+        isempty(o) || (length(o) == length(r) && isperm(o)) ||
+          error("HyperFEM: PETScSolver: fieldorder[$i] must be a permutation of 1:$(length(r))")
+        fieldbs[i] ≥ 1 || error("HyperFEM: PETScSolver: fieldbs must be ≥ 1")
+        length(r) % fieldbs[i] == 0 || error("HyperFEM: PETScSolver: fieldbs[$i] = $(fieldbs[i]) does not divide the $(length(r)) dofs of the field")
+      end
     elseif !isempty(fr)
       error("HyperFEM: PETScSolver: `fields` is only used with pc = :fieldsplit")
     end
     ns = nullspace === nothing ? nothing : Matrix{Float64}(nullspace)
     neg = negate === nothing ? nothing : UnitRange{Int}(negate)
     new(ksp, pc, rtol, atol, maxiter, reuse, ns, neg, Int(blocksize), String(options), monitor,
-        fr, String.(fieldnames), Symbol.(blocks), split, (fact=Symbol(schur.fact), precondition=Symbol(schur.precondition)))
+        fr, String.(fieldnames), Symbol.(blocks), split, (fact=Symbol(schur.fact), precondition=Symbol(schur.precondition)),
+        [Vector{Int}(o) for o in fieldorder], Int.(fieldbs))
   end
 end
 
 """
     PETScSolver(U::MultiFieldFESpace; ksp=:gmres, blocks=fill(:gamg, num_fields(U)), split=:schur,
-                schur=(fact=:upper, precondition=:a11), negate=:last, fieldnames, kwargs...)
+                schur=(fact=:upper, precondition=:a11), negate=:last, fieldnames, blocked=false, kwargs...)
 
 Block preconditioner (`pc = :fieldsplit`) for the tangent assembled on the consecutive multi-field
 space `U`: `fields = field_ranges(U)`, `nullspace = near_nullspace(U)` (the rigid modes of the vector
 fields, the constants of the scalar ones, split by block), and `negate = :last` (the equations of
 the last field, the potential of the electro- and magneto-mechanical drivers, so that the saddle point
 becomes positive-real; a range or `nothing` otherwise). `fieldnames` default to `"u"` for a vector
-field and `"phi"` for a scalar one when there is one of each, `"f1", "f2", …` otherwise.
+field and `"phi"` for a scalar one when there is one of each, `"f1", "f2", …` otherwise. With
+`blocked = true` the dofs of every vector field whose nodes are all either free or constrained in every
+component are handed to PETSc node by node with the block size of the field ([`block_order`](@ref)), so
+that GAMG on that block aggregates nodes (the vector aggregation of elasticity, with the rigid modes as
+near-null space) instead of scalar dofs; fields with partially constrained nodes stay scalar. Off by
+default: on the hMRE cells of the S2 benchmark the node aggregation took 25–35 % more GMRES iterations
+than the scalar one with the same near-null space (design/solvers-s2-status.md).
 """
 function PETScSolver(U::MultiFieldFESpace; ksp::Symbol=:gmres, blocks=fill(:gamg, num_fields(U)), split::Symbol=:schur,
-                     schur::NamedTuple=(fact=:upper, precondition=:a11), negate=:last, fieldnames=_default_fieldnames(U), kwargs...)
+                     schur::NamedTuple=(fact=:upper, precondition=:a11), negate=:last, fieldnames=_default_fieldnames(U),
+                     blocked::Bool=false, kwargs...)
   fields = field_ranges(U)
   neg = negate === :last ? fields[end] : negate
-  PETScSolver(ksp, :fieldsplit; fields, blocks, split, schur, nullspace=near_nullspace(U), negate=neg, fieldnames, kwargs...)
+  orders = [blocked ? block_order(U[i]) : nothing for i in 1:num_fields(U)]
+  fieldorder = [o === nothing ? Int[] : o for o in orders]
+  fieldbs = [o === nothing ? 1 : _num_components(U[i]) for (i, o) in enumerate(orders)]
+  PETScSolver(ksp, :fieldsplit; fields, blocks, split, schur, nullspace=near_nullspace(U), negate=neg, fieldnames,
+              fieldorder, fieldbs, kwargs...)
+end
+
+"""
+    block_order(U::SingleFieldFESpace) -> Union{Nothing, Vector{Int}}
+
+Permutation of the free dofs of a vector-valued Lagrangian space that lists them node by node, the `nc`
+components of a node consecutively (Gridap numbers them component by component), so that a PETSc
+matrix or index set built in this order has block size `nc`; `nothing` for a scalar space or when some
+node has part of its components constrained (the blocks would be broken: PETSc then works dof by dof).
+"""
+function block_order(U::SingleFieldFESpace)
+  nc = _num_components(U)
+  nc == 1 && return nothing
+  n = num_free_dofs(U)
+  n % nc == 0 || return nothing
+  cell_dofs = get_cell_dof_ids(U)
+  bases = get_data(get_fe_dof_basis(U))
+  cd = array_cache(cell_dofs); cb = array_cache(bases)
+  order = Int[]; sizehint!(order, n)
+  seen = falses(n)
+  for cell in 1:length(cell_dofs)
+    dofs = getindex!(cd, cell_dofs, cell)
+    n2d = getindex!(cb, bases, cell).node_and_comp_to_dof
+    for node in eachindex(n2d)
+      first_dof = dofs[n2d[node][1]]
+      if first_dof > 0
+        seen[first_dof] && continue
+        for c in 1:nc
+          g = dofs[n2d[node][c]]
+          g > 0 || return nothing                 # a node free in some components and constrained in others
+          seen[g] = true
+          push!(order, g)
+        end
+      else
+        all(c -> dofs[n2d[node][c]] ≤ 0, 1:nc) || return nothing
+      end
+    end
+  end
+  length(order) == n ? order : nothing
 end
 
 function _default_fieldnames(U::MultiFieldFESpace)

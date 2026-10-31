@@ -25,6 +25,22 @@ s2_battery("PETScSolver fieldsplit", (U; kwargs...) -> PETScSolver(U; kwargs...)
     @test norm(x - xlu) ≤ 1e-7 * norm(xlu)
   end
 
+  @testset "blocked u field (node-ordered IS with block size)" begin
+    sb = PETScSolver(U; split=:additive, rtol=1e-10, blocked=true)
+    @test sb.fieldbs == [3, 1] && length(sb.fieldorder[1]) == length(r[1]) && isempty(sb.fieldorder[2])
+    xb, nsb = s1_solve(sb, A, b)
+    @test linear_converged(nsb)
+    @test norm(xb - xlu) ≤ 1e-7 * norm(xlu)
+    ss = PETScSolver(U; split=:additive, rtol=1e-10)                 # default: scalar
+    @test ss.fieldbs == [1, 1] && all(isempty, ss.fieldorder)
+    xs, nss = s1_solve(ss, A, b)
+    @test linear_converged(nss)
+    @info "additive, u block scalar: $(linear_iterations(nss)) iterations; blocked (bs = 3): $(linear_iterations(nsb))"
+    @test linear_iterations(nsb) ≤ linear_iterations(nss) + 10
+    @test_throws ErrorException PETScSolver(:gmres, :fieldsplit; fields=r, fieldbs=[length(r[1]) + 1, 1])   # does not divide
+    @test_throws ErrorException PETScSolver(:gmres, :fieldsplit; fields=r, fieldorder=[[1, 1], Int[]])
+  end
+
   @testset "names, errors" begin
     @test HyperFEM.Solvers._linear_name(PETScSolver(U)) == "GMRES+FS-schur(GAMG,GAMG)"
     @test PETScSolver(U).fieldnames == ["u", "phi"]
