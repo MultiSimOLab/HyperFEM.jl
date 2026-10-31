@@ -89,9 +89,7 @@ jac(Λ)= ((u, φ), (du, dφ), (v, vφ)) -> ∫(∇(v)' ⊙ ((∂ΨFF ∘ (F∘�
                                         ∫(∇(vφ)' ⋅ ((∂ΨEE ∘ (F∘∇(u)', E∘∇(φ))) ⋅ ∇(dφ)))dΩ -
                                         ∫(∇(dφ) ⋅ ((∂ΨEF ∘ (F∘∇(u)', E∘∇(φ))) ⊙ ∇(v)'))dΩ -
                                         ∫(∇(vφ) ⋅ ((∂ΨEF ∘ (F∘∇(u)', E∘∇(φ))) ⊙ ∇(du)'))dΩ 
-# nonlinear solver (LU here; for large problems a PETSc Krylov + AMG solver on the assembled tangent,
-# with `using GridapPETSc`: `PETScSolver(:cg, :gamg; rtol=1e-10, nullspace=near_nullspace(U))` for
-# mechanics, `PETScSolver(:preonly, :mumps)` as a direct solver with a fraction of the memory of LU)
+# nonlinear solver (LU here; see "Solvers for large problems" below)
 nls_ = NewtonRaphson(LUSolver(); maxiter=20, atol=1.e-10, rtol=1.e-8, verbose=true)
 
 # Computational model
@@ -118,6 +116,34 @@ post_model = PostProcessor(comp_model, driverpost; is_vtk=true, filepath=simdir)
 # Solve
 x = solve!(comp_model; stepping=(nsteps=5, maxbisec=5), post=post_model)
 ```
+
+## Solvers for large problems
+
+`NewtonRaphson` accepts any Gridap `LinearSolver`. Beyond ~100k degrees of freedom in 3D the LU factorisation
+dominates the time and the memory of every Newton iteration; HyperFEM then provides, with `using GridapPETSc`
+(PETSc through GridapPETSc, serial), Krylov solvers preconditioned by algebraic multigrid on the assembled
+tangent, and the direct solver MUMPS:
+
+```julia
+using GridapPETSc
+
+# Multi-field problems (u, φ): GMRES with a block (fieldsplit) preconditioner, one AMG per field with
+# rigid-body modes on the displacement block. The production solver for electro- and magneto-mechanics.
+nls = NewtonRaphson(PETScSolver(U); maxiter=20, atol=0.0, rtol=1.e-8)
+
+# Mechanics (single vector field, P1/Q1): CG + GAMG with the rigid-body modes of the space.
+nls = NewtonRaphson(PETScSolver(:cg, :gamg; nullspace=near_nullspace(U)); rtol=1.e-8)
+
+# Direct solver with a fraction of the memory of LU: the reference, and the solver for thin structures
+# (few elements across the thickness), where algebraic multigrid does not converge.
+nls = NewtonRaphson(PETScSolver(:preonly, :mumps); rtol=1.e-8)
+```
+
+Krylov tolerances (`rtol`, default 1e-10, `atol = 0`) are relative to the right-hand side; `reuse = n` keeps
+the preconditioner for `n` Newton iterations. The pure-Julia counterpart `AMGSolver(U)` (with
+`using AlgebraicMultigrid`) runs the same block preconditioners without PETSc and is what the test suite
+uses. Assembly can be delegated to compiled, threaded kernels with `backend=:compiled` in the drivers
+(`using HyperFEMKernels`); with an iterative solver this is what makes the assembly negligible.
 
 ## HyperFEM Gallery
 
