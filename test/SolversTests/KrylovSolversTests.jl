@@ -35,8 +35,10 @@ include("krylov_common.jl")
     nu = num_free_dofs(U[1])
     @test size(N) == (num_free_dofs(U), 7)
     @test norm(N' * N - I) < 1e-12
-    @test all(iszero, N[nu+1:end, 1:6])            # the rigid modes live on the u block
-    @test all(iszero, N[1:nu, 7])                  # the constant mode on the φ block
+    # the rigid modes live on the u block and the constant mode on the φ block (to the round-off of the QR:
+    # exact zeros with Accelerate, 1e-18 with OpenBLAS)
+    @test maximum(abs, N[nu+1:end, 1:6]) < 1e-14
+    @test maximum(abs, N[1:nu, 7]) < 1e-14
     @test all(≈(N[nu+1, 7]), N[nu+1:end, 7])
   end
   @testset "scalar field: the constant" begin

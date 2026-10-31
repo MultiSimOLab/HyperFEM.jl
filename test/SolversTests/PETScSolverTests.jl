@@ -25,7 +25,7 @@ s1_battery("PETScSolver CG/GMRES + GAMG", (krylov; rtol=1e-6, maxiter=500, reuse
 
   @testset "BoomerAMG" begin
     for krylov in (:cg, :gmres)
-      x, ns = s1_solve(PETScSolver(krylov, :boomeramg; rtol=1e-12, nullspace=N), A, b)
+      x, ns = s1_solve(PETScSolver(krylov, :boomeramg; rtol=1e-10, nullspace=N), A, b)
       @test linear_converged(ns)
       @test norm(x - xlu) ≤ 1e-8 * norm(xlu)
     end
@@ -58,7 +58,7 @@ s1_battery("PETScSolver CG/GMRES + GAMG", (krylov; rtol=1e-6, maxiter=500, reuse
     @info "EM saddle point with GMRES + GAMG (negated φ block): $(r.flag ? "converged" : "linear failure, as expected")"
     # on the plain linear system the negation is transparent, and b is left as it was
     b0 = copy(b)
-    x, ns = s1_solve(PETScSolver(:gmres, :gamg; rtol=1e-12, nullspace=N, negate=1:10), A, b)
+    x, ns = s1_solve(PETScSolver(:gmres, :gamg; rtol=1e-10, nullspace=N, negate=1:10), A, b)
     @test linear_converged(ns)
     @test norm(x - xlu) ≤ 1e-8 * norm(xlu)
     @test b == b0

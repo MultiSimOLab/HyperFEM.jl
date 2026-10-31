@@ -99,10 +99,12 @@ function s1_battery(name, make; growth=1.3)
     xlu = A \ b
 
     @testset "same solution as LU" begin
-      for ls in (make(:cg; rtol=1e-12, nullspace=N), make(:gmres; rtol=1e-12, nullspace=N), make(:cg; rtol=1e-12))
+      # rtol 1e-10, not 1e-12: at 1e-12 a Krylov method is at the round-off floor of the matrix (κ ~ 1e5) and whether
+      # it gets there depends on the BLAS (Accelerate vs OpenBLAS)
+      for ls in (make(:cg; rtol=1e-10, nullspace=N), make(:gmres; rtol=1e-10, nullspace=N), make(:cg; rtol=1e-10))
         x, ns = s1_solve(ls, A, b)
         @test linear_converged(ns)
-        @test norm(x - xlu) ≤ 1e-8 * norm(xlu)
+        @test norm(x - xlu) ≤ 1e-7 * norm(xlu)
         @test linear_iterations(ns) > 0
         @test preconditioner_builds(ns) == 1
       end
