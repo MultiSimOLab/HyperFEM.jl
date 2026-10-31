@@ -242,6 +242,8 @@ end
 @publish Solvers PETScSolver
 @publish Solvers AMGSolver
 @publish Solvers near_nullspace
+@publish Solvers field_ranges
+@publish Solvers split_nullspace
 @publish Solvers numerical_setup_state
 @publish Solvers numerical_setup_state!
 @publish Solvers FullStepLS

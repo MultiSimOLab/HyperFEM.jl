@@ -7,6 +7,7 @@ import Gridap.Algebra: numerical_setup, numerical_setup!
 using Gridap.CellData
 using Gridap.FESpaces: SingleFieldFESpace, get_fe_dof_basis, get_free_dof_values, interpolate, num_free_dofs
 using Gridap.MultiField: MultiFieldFESpace, num_fields
+using Gridap.MultiField: MultiFieldStyle, ConsecutiveMultiFieldStyle
 using Gridap.Geometry: num_point_dims, get_triangulation
 using Gridap.Arrays: array_cache, getindex!
 using LinearAlgebra
@@ -33,6 +34,8 @@ export preconditioner_builds
 export PETScSolver
 export AMGSolver
 export near_nullspace
+export field_ranges
+export split_nullspace
 export numerical_setup_state
 export numerical_setup_state!
 export FullStepLS

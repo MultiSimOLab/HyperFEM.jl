@@ -17,13 +17,13 @@ module HyperFEMPETScExt
 # Vectors of other types (e.g. PETSc's own, PartitionedArrays') go through GridapPETSc's `convert`.
 
 using HyperFEM
-using HyperFEM.Solvers: PETScSolver, _linear_name
+using HyperFEM.Solvers: PETScSolver, _linear_name, split_nullspace
 import HyperFEM.Solvers: petsc_symbolic_setup, linear_converged, linear_iterations, linear_info, preconditioner_builds
 using Gridap.Algebra
 import Gridap.Algebra: numerical_setup, numerical_setup!, solve!
 using GridapPETSc
-using GridapPETSc: PETSC, PETScMatrix, PETScVector, PetscScalar, PetscInt, PetscReal, @check_error_code, libpetsc_handle
-using GridapPETSc.PETSC: Mat, Vec, KSP, MatNullSpace, PETSC_TRUE, PETSC_FALSE, PetscBool
+using GridapPETSc: PETSC, PETScMatrix, PETScVector, PETScIndexSet, PetscScalar, PetscInt, PetscReal, @check_error_code, libpetsc_handle
+using GridapPETSc.PETSC: Mat, Vec, KSP, PC, IS, MatNullSpace, PETSC_TRUE, PETSC_FALSE, PetscBool
 using GridapPETSc: SparseMatrixCSR
 using SparseArrays
 using LinearAlgebra
@@ -48,6 +48,10 @@ KSPGetConvergedReason(ksp::KSP, reason::Ref{Cint}) =
   ccall(_sym(:KSPGetConvergedReason), Cint, (KSP, Ptr{Cint}), ksp, reason)
 KSPSetReusePreconditioner(ksp::KSP, flag::PetscBool) =
   ccall(_sym(:KSPSetReusePreconditioner), Cint, (KSP, PetscBool), ksp, flag)
+PCFieldSplitSetIS(pc::PC, name::String, is::IS) =
+  ccall(_sym(:PCFieldSplitSetIS), Cint, (PC, Cstring, IS), pc, name, is)
+PetscObjectCompose(obj::Ptr{Cvoid}, name::String, other::Ptr{Cvoid}) =
+  ccall(_sym(:PetscObjectCompose), Cint, (Ptr{Cvoid}, Cstring, Ptr{Cvoid}), obj, name, other)
 PetscOptionsClearValue(name::String) =
   ccall(_sym(:PetscOptionsClearValue), Cint, (Ptr{Cvoid}, Cstring), C_NULL, name)
 # "The values of the matrix changed behind PETSc's back": the Get/Restore pair bumps the object state and
@@ -157,6 +161,9 @@ mutable struct PETScSolverNS{M} <: NumericalSetup
   nullsp::Ref{MatNullSpace}
   nullvecs::Vector{PETScVector}
   has_nullspace::Bool
+  fieldsets::Vector{PETScIndexSet}            # fieldsplit: the IS of every field, with its near-null space composed
+  fieldnull::Vector{Ref{MatNullSpace}}
+  fieldnullvecs::Vector{PETScVector}
   nsetup::Int                                  # numerical setups (initial one included)
   nbuild::Int                                  # preconditioner builds
   iters::Int
@@ -186,12 +193,30 @@ function _options(s::PETScSolver)
     push!(opts, "pc_type" => "cholesky", "pc_factor_mat_solver_type" => "mumps")
   elseif s.pc === :lu
     push!(opts, "pc_type" => "lu")
+  elseif s.pc === :fieldsplit
+    push!(opts, "pc_type" => "fieldsplit", "pc_fieldsplit_type" => String(s.split))
+    if s.split === :schur
+      push!(opts, "pc_fieldsplit_schur_fact_type" => String(s.schur.fact), "pc_fieldsplit_schur_precondition" => String(s.schur.precondition))
+    end
+    for (name, b) in zip(s.fieldnames, s.blocks)   # one application of the block preconditioner per outer iteration
+      pre = "fieldsplit_" * name * "_"
+      push!(opts, pre * "ksp_type" => "preonly")
+      if b === :gamg
+        push!(opts, pre * "pc_type" => "gamg", pre * "pc_gamg_type" => "agg")
+      elseif b === :boomeramg
+        push!(opts, pre * "pc_type" => "hypre", pre * "pc_hypre_type" => "boomeramg")
+      elseif b === :mumps
+        push!(opts, pre * "pc_type" => "lu", pre * "pc_factor_mat_solver_type" => "mumps")
+      else
+        push!(opts, pre * "pc_type" => String(b))
+      end
+    end
   else
     push!(opts, "pc_type" => String(s.pc))
   end
   if s.ksp !== :preonly
     push!(opts, "ksp_norm_type" => "unpreconditioned")   # ‖b - A x‖ ≤ rtol ‖b‖: the tolerance the Newton reasons about
-    s.ksp === :gmres && push!(opts, "ksp_pc_side" => "right")
+    s.ksp in (:gmres, :fgmres) && push!(opts, "ksp_pc_side" => "right")
   end
   s.monitor && push!(opts, "ksp_monitor" => "")
   # user options: "-a b -c -d 1.5" → a=b, c="", d=1.5
@@ -229,6 +254,7 @@ function _petsc_matrix(A::AbstractMatrix, negate)
 end
 
 function _set_nullspace!(ns::PETScSolverNS, N::Matrix{Float64})
+  ns.solver.pc === :fieldsplit && return nothing   # the near-null spaces go to the blocks (see _setup_fieldsplit!)
   ns.B.comm == MPI.COMM_SELF || error("HyperFEM: PETScSolver: the near-null space is only supported on serial matrices")
   n, k = size(N)
   k == 0 && return nothing                       # nothing to tell PETSc (every mode vanished on the free dofs)
@@ -238,6 +264,44 @@ function _set_nullspace!(ns::PETScSolverNS, N::Matrix{Float64})
   @check_error_code PETSC.MatNullSpaceCreate(MPI.COMM_SELF, PETSC_FALSE, k, vecs, ns.nullsp)
   @check_error_code PETSC.MatSetNearNullSpace(ns.B.mat[], ns.nullsp[])
   ns.has_nullspace = true
+  nothing
+end
+
+# Fieldsplit: the IS of every field on the KSP's PC, with the field's near-null space composed on it under
+# "nearnullspace" (PCFIELDSPLIT hands it to the sub-matrix of the block, where GAMG reads it).
+function _setup_fieldsplit!(ns::PETScSolverNS)
+  s = ns.solver
+  ns.B.comm == MPI.COMM_SELF || error("HyperFEM: PETScSolver: fieldsplit is only supported on serial matrices")
+  n = size(ns.B, 1)
+  last(s.fields[end]) == n || error("HyperFEM: PETScSolver: the field ranges end at $(last(s.fields[end])) but the matrix has $n rows")
+  pc = Ref{PC}()
+  @check_error_code PETSC.KSPGetPC(ns.ksp[], pc)
+  @check_error_code PETSC.PCSetType(pc[], "fieldsplit")
+  Ns = s.nullspace === nothing ? nothing : split_nullspace(s.nullspace, s.fields)
+  for (i, r) in enumerate(s.fields)
+    is = PETScIndexSet(r)                        # 1-based indices, converted inside
+    push!(ns.fieldsets, is)
+    if Ns !== nothing && size(Ns[i], 2) > 0
+      Ni = Ns[i]
+      vecs = [PETScVector(Ni[:, j]) for j in 1:size(Ni, 2)]
+      append!(ns.fieldnullvecs, vecs)
+      sp = Ref{MatNullSpace}()
+      @check_error_code PETSC.MatNullSpaceCreate(MPI.COMM_SELF, PETSC_FALSE, size(Ni, 2), [v.vec[] for v in vecs], sp)
+      push!(ns.fieldnull, sp)
+      @check_error_code PetscObjectCompose(is.is[].ptr, "nearnullspace", sp[].ptr)
+    end
+    @check_error_code PCFieldSplitSetIS(pc[], s.fieldnames[i], is.is[])
+  end
+  nothing
+end
+
+function _destroy_fieldsplit!(ns::PETScSolverNS)
+  for sp in ns.fieldnull
+    @check_error_code PETSC.MatNullSpaceDestroy(sp)
+  end
+  empty!(ns.fieldnull)
+  foreach(GridapPETSc.destroy, ns.fieldnullvecs); empty!(ns.fieldnullvecs)
+  foreach(GridapPETSc.destroy, ns.fieldsets); empty!(ns.fieldsets)
   nothing
 end
 
@@ -256,11 +320,12 @@ function numerical_setup(ss::PETScSolverSS, A::AbstractMatrix)
   mirror, B = _petsc_matrix(A, s.negate)
   _set_blocksize!(B, s.blocksize)
   ns = PETScSolverNS{typeof(mirror)}(s, prefix, mirror, A, B, Ref{KSP}(), Ref{MatNullSpace}(), PETScVector[], false,
-                                      1, 1, 0, 0.0, Cint(0), false)
+                                      PETScIndexSet[], Ref{MatNullSpace}[], PETScVector[], 1, 1, 0, 0.0, Cint(0), false)
   s.nullspace === nothing || _set_nullspace!(ns, s.nullspace)
   @check_error_code PETSC.KSPCreate(B.comm, ns.ksp)
   @check_error_code PETSC.KSPSetOptionsPrefix(ns.ksp[], prefix)
   @check_error_code PETSC.KSPSetOperators(ns.ksp[], B.mat[], B.mat[])
+  s.pc === :fieldsplit && _setup_fieldsplit!(ns)
   @check_error_code PETSC.KSPSetTolerances(ns.ksp[], s.rtol, s.atol, PetscReal(1e10), PetscInt(s.maxiter))
   _set_options!(prefix, s)
   @check_error_code PETSC.KSPSetFromOptions(ns.ksp[])   # after the tolerances, so that -ksp_rtol etc. in `options` win; the options
@@ -377,6 +442,7 @@ function GridapPETSc.destroy(ns::PETScSolverNS)
     ns.has_nullspace && @check_error_code PETSC.MatNullSpaceDestroy(ns.nullsp)
     ns.has_nullspace = false
     foreach(GridapPETSc.destroy, ns.nullvecs)
+    _destroy_fieldsplit!(ns)
     GridapPETSc.destroy(ns.B)
     ns.initialized = false
     @assert Threads.threadid() == 1
@@ -390,6 +456,7 @@ function _finalize(ns::PETScSolverNS)
     if ns.B.comm == MPI.COMM_SELF
       @check_error_code PETSC.KSPDestroy(ns.ksp)
       ns.has_nullspace && @check_error_code PETSC.MatNullSpaceDestroy(ns.nullsp)
+      foreach(sp -> @check_error_code(PETSC.MatNullSpaceDestroy(sp)), ns.fieldnull)   # the ISs and vectors have their own finalizers
     else
       @check_error_code PETSC.PetscObjectRegisterDestroy(ns.ksp[].ptr)
     end
