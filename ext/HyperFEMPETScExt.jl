@@ -104,13 +104,32 @@ end
 same_pattern(mirror::CSRMirror, A::SparseMatrixCSC) = size(A, 1) == mirror.csr.m && size(A, 2) == mirror.csr.n &&
   nnz(A) == length(mirror.perm) && A.colptr === mirror.colptr && A.rowval === mirror.rowval
 
-"Gathers the values of `A` into the CSR mirror (threaded, no allocation)."
-function gather!(mirror::CSRMirror, A::SparseMatrixCSC)
+"Gathers the values of `A` into the CSR mirror (threaded, no allocation); the rows in `negate` change sign."
+function gather!(mirror::CSRMirror, A::SparseMatrixCSC, negate=nothing)
   v, src, perm = mirror.csr.nzval, A.nzval, mirror.perm
-  Threads.@threads :static for k in eachindex(perm)
-    @inbounds v[k] = src[perm[k]]
+  if negate === nothing
+    Threads.@threads :static for k in eachindex(perm)
+      @inbounds v[k] = src[perm[k]]
+    end
+  else
+    rowptr = mirror.csr.rowptr
+    Threads.@threads :static for i in 1:mirror.csr.m
+      s = i in negate ? -1.0 : 1.0
+      @inbounds for k in rowptr[i]+1:rowptr[i+1]
+        v[k] = s * src[perm[k]]
+      end
+    end
   end
   mirror
+end
+
+"Changes the sign of the entries `negate` of `b` (in place; applied before and after the solve)."
+function negate!(b::AbstractVector, negate)
+  negate === nothing && return b
+  @inbounds for i in negate
+    b[i] = -b[i]
+  end
+  b
 end
 
 # ------------------------------------------------------------------------------------------------
@@ -192,11 +211,15 @@ function _set_options!(prefix::String, s::PETScSolver)
 end
 
 "The PETSc matrix of `A`: a CSR mirror aliased by PETSc for CSC matrices, GridapPETSc's conversion otherwise."
-function _petsc_matrix(A::SparseMatrixCSC)
+function _petsc_matrix(A::SparseMatrixCSC, negate)
   mirror = CSRMirror(A)
+  negate === nothing || gather!(mirror, A, negate)
   mirror, PETScMatrix(mirror.csr)
 end
-_petsc_matrix(A::AbstractMatrix) = nothing, convert(PETScMatrix, A)
+function _petsc_matrix(A::AbstractMatrix, negate)
+  negate === nothing || error("HyperFEM: PETScSolver: `negate` needs a SparseMatrixCSC tangent (got $(typeof(A)))")
+  nothing, convert(PETScMatrix, A)
+end
 
 function _set_nullspace!(ns::PETScSolverNS, N::Matrix{Float64})
   n, k = size(N)
@@ -209,12 +232,20 @@ function _set_nullspace!(ns::PETScSolverNS, N::Matrix{Float64})
   nothing
 end
 
+function _set_blocksize!(B::PETScMatrix, bs::Int)
+  bs == 1 && return
+  n = size(B, 1)
+  n % bs == 0 || error("HyperFEM: PETScSolver: blocksize $bs does not divide the number of equations $n")
+  @check_error_code PETSC.MatSetBlockSize(B.mat[], PetscInt(bs))
+end
+
 function numerical_setup(ss::PETScSolverSS, A::AbstractMatrix)
   _ensure_init()
   s = ss.solver
   _NSOLVERS[] += 1
   prefix = "hyperfem$(_NSOLVERS[])_"
-  mirror, B = _petsc_matrix(A)
+  mirror, B = _petsc_matrix(A, s.negate)
+  _set_blocksize!(B, s.blocksize)
   ns = PETScSolverNS{typeof(mirror)}(s, prefix, mirror, A, B, Ref{KSP}(), Ref{MatNullSpace}(), PETScVector[], false,
                                       1, 1, 0, 0.0, Cint(0), false)
   s.nullspace === nothing || _set_nullspace!(ns, s.nullspace)
@@ -232,14 +263,15 @@ function numerical_setup!(ns::PETScSolverNS, A::AbstractMatrix)
   s = ns.solver
   ns.nsetup += 1
   if ns.mirror !== nothing && A isa SparseMatrixCSC && same_pattern(ns.mirror, A)
-    gather!(ns.mirror, A)
+    gather!(ns.mirror, A, s.negate)
     @check_error_code PetscObjectStateIncrease(ns.B.mat[].ptr)
   else
     # new matrix object or pattern: rebuild the PETSc matrix (the near-null space goes with it)
     ns.has_nullspace && @check_error_code PETSC.MatNullSpaceDestroy(ns.nullsp)
     ns.has_nullspace = false
     GridapPETSc.destroy(ns.B)
-    ns.mirror, ns.B = _petsc_matrix(A)
+    ns.mirror, ns.B = _petsc_matrix(A, s.negate)
+    _set_blocksize!(ns.B, s.blocksize)
     s.nullspace === nothing || _set_nullspace!(ns, s.nullspace)
   end
   ns.A = A
@@ -255,7 +287,7 @@ end
 # Solve
 
 function _solve_vec!(ns::PETScSolverNS, X::PETScVector, Bv::PETScVector)
-  @check_error_code PETSC.KSPSolve(ns.ksp[], Bv.vec[], X.vec[])
+  @check_error_code PETSC.KSPSolve(ns.ksp[], Bv.vec[], X.vec[])   # the caller negates the rows of b if asked
   its = Ref{PetscInt}(); rn = Ref{PetscReal}(); reason = Ref{Cint}()
   @check_error_code PETSC.KSPGetIterationNumber(ns.ksp[], its)
   @check_error_code PETSC.KSPGetResidualNorm(ns.ksp[], rn)
@@ -272,17 +304,21 @@ end
 # Julia vectors of the PETSc scalar type are aliased (no copy); others are converted by GridapPETSc.
 function solve!(x::Vector{PetscScalar}, ns::PETScSolverNS, b::Vector{PetscScalar})
   fill!(x, zero(PetscScalar))                  # zero initial guess (PETSc ignores x unless told otherwise)
+  negate!(b, ns.solver.negate)
   X = PETScVector(x); Bv = PETScVector(b)
   _solve_vec!(ns, X, Bv)
   GridapPETSc.destroy(X); GridapPETSc.destroy(Bv)
+  negate!(b, ns.solver.negate)
   x
 end
 
 function solve!(x::AbstractVector, ns::PETScSolverNS, b::AbstractVector)
+  negate!(b, ns.solver.negate)
   X = convert(PETScVector, x); Bv = convert(PETScVector, b)
   _solve_vec!(ns, X, Bv)
   copy!(x, X)
   GridapPETSc.destroy(X); GridapPETSc.destroy(Bv)
+  negate!(b, ns.solver.negate)
   x
 end
 

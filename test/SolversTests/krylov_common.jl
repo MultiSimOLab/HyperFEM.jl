@@ -35,7 +35,26 @@ function s1_solve(ls, A, b)
   x, ns
 end
 
-# --- nonlinear electro-mechanics (the EM box of the solver benchmarks, coarse) -------------------------------------
+# --- nonlinear mechanics: a neo-Hookean bar clamped at one end and sheared on its top face (SPD tangents along the
+# --- path, like the mechanical cases of the solver benchmarks; the stretched bar of the Dirichlet simulation test
+# --- has an indefinite tangent after the projection of the first step, which CG rightly refuses) -------------------
+function s1_mech_problem()
+  model = CartesianDiscreteModel((0, 1, 0, 0.1, 0, 0.1), (10, 3, 2))
+  labels = get_face_labeling(model)
+  add_tag_from_tags!(labels, "fixed", CartesianTags.face0YZ⁺)
+  add_tag_from_tags!(labels, "top", CartesianTags.faceXY1⁺)
+  physmodel = NeoHookean3D(λ=10.0, μ=1.0)
+  Ω = Triangulation(model); dΩ = Measure(Ω, 2)
+  D = BoundaryConditions(BoundaryCondition("fixed", [0.0, 0.0, 0.0]), BoundaryCondition("top", [0.05, 0.0, 0.0], Λ -> Λ))
+  V = TestFESpace(Ω, ReferenceFE(lagrangian, VectorValue{3,Float64}, 1), D, conformity=:H1)
+  U = TrialFESpace(V, D, 0.0)
+  k = Kinematics(Mechano, Solid)
+  res(Λ) = (u, v) -> HyperFEM.residual(physmodel, k, u, v, dΩ)
+  jac(Λ) = (u, du, v) -> HyperFEM.jacobian(physmodel, k, u, du, v, dΩ)
+  (; res, jac, U, V, D)
+end
+
+# --- nonlinear electro-mechanics (the EM box of the solver benchmarks, coarse): a symmetric indefinite tangent ----------
 function s1_em_problem()
   model = CartesianDiscreteModel((0.0, 0.1, 0.0, 0.01, 0.0, 0.002), (8, 2, 2))
   labels = get_face_labeling(model)
@@ -57,11 +76,11 @@ function s1_em_problem()
   (; res, jac, U, V, D)
 end
 
-function s1_solve_em(ls; backend, nsteps=2)
-  p = s1_em_problem()
-  nls = NewtonRaphson(ls; maxiter=20, atol=1e-12, rtol=1e-9)
+"Solves `p` (a problem above) with the Newton on `ls`; returns the solution, the flag and the Newton counters."
+function s1_solve_nl(ls, p; backend, nsteps=2)
+  nls = NewtonRaphson(ls; maxiter=20, atol=1e-14, rtol=1e-6)
   m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.D; nls, backend)
-  x, flag = solve!(m; stepping=(nsteps=nsteps, maxbisec=0))
+  x, flag = solve!(m; stepping=(nsteps=nsteps, maxbisec=0), ProjectDirichlet=true)   # the projection uses the same linear solver
   (; x=copy(x), flag=flag == 1, its=num_iterations(nls), reason=stop_reason(nls), U=p.U)
 end
 
@@ -70,7 +89,7 @@ end
 
 The S1 tests for the solver built by `make(krylov; rtol, maxiter, reuse, nullspace)`: same solution as LU, rigid
 modes reduce the iterations, bounded iterations under refinement, non-convergence reported, lagged
-preconditioner, and the Newton trajectory of LU on nonlinear electro-mechanics with both backends. `growth` is
+preconditioner, and the Newton trajectory of LU on nonlinear mechanics with both backends. `growth` is
 the admitted ratio of CG iterations between the finest and the coarsest mesh (the plan's ±30 % for PETSc).
 """
 function s1_battery(name, make; growth=1.3)
@@ -142,20 +161,25 @@ function s1_battery(name, make; growth=1.3)
       A.nzval ./= 2.0
     end
 
-    @testset "Newton trajectory of LU (nonlinear EM)" begin
+    @testset "Newton trajectory of LU (nonlinear mechanics)" begin
+      p = s1_mech_problem()
+      Nm = near_nullspace(p.U)
       for backend in S1_BACKENDS
         @testset "$backend" begin
-          ref = s1_solve_em(LUSolver(); backend)
+          ref = s1_solve_nl(LUSolver(), p; backend)
           @test ref.flag
-          N = near_nullspace(ref.U)
-          # the Krylov tolerance is well below the Newton's: same iterations; both solutions satisfy the Newton
-          # tolerance, so they agree to the accuracy the Newton tolerance gives (not to the Krylov one)
-          r = s1_solve_em(make(:gmres; rtol=1e-12, nullspace=N); backend)
-          @test r.flag
-          @test r.its == ref.its
-          @test norm(r.x - ref.x) ≤ 1e-6 * norm(ref.x)
+          @test ref.its ≥ 2
+          # the Krylov tolerance (1e-8) is well below the Newton's (1e-6) but not at round-off, where a Krylov
+          # method stagnates: same iterations; both solutions satisfy the Newton tolerance, so they agree to the
+          # accuracy that tolerance gives through the conditioning of the tangent, not to the Krylov tolerance
+          for krylov in (:cg, :gmres)
+            r = s1_solve_nl(make(krylov; rtol=1e-8, nullspace=Nm), p; backend)
+            @test r.flag
+            @test r.its == ref.its
+            @test norm(r.x - ref.x) ≤ 1e-5 * norm(ref.x)
+          end
           # a Krylov solve that cannot converge fails the Newton like a line search (no plan B: the step fails)
-          bad = s1_solve_em(make(:gmres; rtol=1e-14, maxiter=1, nullspace=N); backend)
+          bad = s1_solve_nl(make(:cg; rtol=1e-8, maxiter=1, nullspace=Nm), p; backend)
           @test !bad.flag
           @test bad.reason === :linear_failed
         end

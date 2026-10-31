@@ -12,8 +12,8 @@ algebraic multigrid work on elasticity.
 # PETSc Krylov + preconditioner (production, D1)
 
 """
-    PETScSolver(ksp=:cg, pc=:gamg; rtol=1e-6, atol=1e-12, maxiter=500, reuse=1, nullspace=nothing,
-                options="", monitor=false)
+    PETScSolver(ksp=:cg, pc=:gamg; rtol=1e-6, atol=0.0, maxiter=500, reuse=1, nullspace=nothing,
+                negate=nothing, blocksize=1, options="", monitor=false)
 
 Linear solver of the assembled tangent through a PETSc `KSP` (needs `using GridapPETSc`, which
 activates the extension). The PETSc binary of GridapPETSc provides everything the solver uses.
@@ -25,12 +25,21 @@ activates the extension). The PETSc binary of GridapPETSc provides everything th
   `:mumps` (LU of MUMPS, the direct reference), `:mumps_cholesky`, `:lu` (PETSc's own LU),
   `:jacobi`, `:none`.
 - `rtol`, `atol`, `maxiter`: Krylov tolerances (relative to the right-hand side, as PETSc's
-  `KSPSetTolerances` with `-ksp_norm_type unpreconditioned`) and maximum number of iterations.
+  `KSPSetTolerances` with `-ksp_norm_type unpreconditioned`) and maximum number of iterations. Keep
+  `atol = 0` inside a Newton: the right-hand side is the residual, which becomes tiny near convergence,
+  and an absolute tolerance would accept an unsolved increment there.
 - `reuse`: the preconditioner is rebuilt every `reuse` numerical setups (lagged AMG: `reuse = 3`
   keeps the hierarchy for three Newton iterations; `1` rebuilds it at every tangent).
 - `nullspace`: near-null space of the tangent (free dofs × modes, from [`near_nullspace`](@ref)),
   passed to the matrix with `MatSetNearNullSpace`; the rigid-body modes are essential for AMG on
   elasticity. `nothing` leaves PETSc's default (the constant vector).
+- `negate`: range of equations multiplied by −1 (tangent rows and right-hand side) before PETSc sees
+  the system; the solution is unchanged. A symmetric saddle-point tangent, concave in the electric
+  or magnetic potential (the monolithic EM system: `negate = nu+1:n` for the φ block), becomes a
+  positive-real matrix on which GMRES + AMG converge, while AMG on the indefinite form fails.
+- `blocksize`: block size of the matrix (`MatSetBlockSize`), e.g. 3 for a single vector field in 3D whose
+  free dofs come in complete nodal blocks (no component-wise Dirichlet masks): GAMG then aggregates
+  nodes instead of scalar dofs, which is what it expects on elasticity. `1` (default) sets nothing.
 - `options`: extra PETSc options for this solver, e.g. `"-pc_gamg_threshold 0.01 -ksp_gmres_restart 50"`
   (the prefix of the solver is added automatically).
 - `monitor`: print PETSc's residual history (`-ksp_monitor`).
@@ -53,17 +62,22 @@ struct PETScSolver <: Algebra.LinearSolver
   maxiter::Int
   reuse::Int
   nullspace::Union{Nothing,Matrix{Float64}}
+  negate::Union{Nothing,UnitRange{Int}}
+  blocksize::Int
   options::String
   monitor::Bool
-  function PETScSolver(ksp::Symbol=:cg, pc::Symbol=:gamg; rtol::Real=1e-6, atol::Real=1e-12, maxiter::Integer=500,
-                       reuse::Integer=1, nullspace::Union{Nothing,AbstractMatrix}=nothing, options::AbstractString="",
+  function PETScSolver(ksp::Symbol=:cg, pc::Symbol=:gamg; rtol::Real=1e-6, atol::Real=0.0, maxiter::Integer=500,
+                       reuse::Integer=1, nullspace::Union{Nothing,AbstractMatrix}=nothing,
+                       negate::Union{Nothing,AbstractUnitRange}=nothing, blocksize::Integer=1, options::AbstractString="",
                        monitor::Bool=false)
     ksp in (:cg, :gmres, :preonly) || error("HyperFEM: PETScSolver: unknown Krylov method $ksp (use :cg, :gmres or :preonly)")
     pc in (:gamg, :boomeramg, :mumps, :mumps_cholesky, :lu, :jacobi, :none) ||
       error("HyperFEM: PETScSolver: unknown preconditioner $pc (use :gamg, :boomeramg, :mumps, :mumps_cholesky, :lu, :jacobi or :none)")
     reuse ≥ 1 || error("HyperFEM: PETScSolver: reuse must be ≥ 1")
+    blocksize ≥ 1 || error("HyperFEM: PETScSolver: blocksize must be ≥ 1")
     ns = nullspace === nothing ? nothing : Matrix{Float64}(nullspace)
-    new(ksp, pc, rtol, atol, maxiter, reuse, ns, String(options), monitor)
+    neg = negate === nothing ? nothing : UnitRange{Int}(negate)
+    new(ksp, pc, rtol, atol, maxiter, reuse, ns, neg, Int(blocksize), String(options), monitor)
   end
 end
 
@@ -84,13 +98,13 @@ end
 # Pure-Julia Krylov + AMG (prototyping and CI, D1)
 
 """
-    AMGSolver(krylov=:cg; rtol=1e-6, atol=1e-12, maxiter=500, restart=30, reuse=1, nullspace=nothing)
+    AMGSolver(krylov=:cg; rtol=1e-6, atol=0.0, maxiter=500, restart=30, reuse=1, nullspace=nothing)
 
 Pure-Julia counterpart of [`PETScSolver`](@ref) (needs `using AlgebraicMultigrid`, which activates the
 extension): IterativeSolvers' `cg` or `gmres` preconditioned by one V-cycle of AlgebraicMultigrid's
 smoothed aggregation, built with the near-null space `nullspace` (free dofs × modes, see
 [`near_nullspace`](@ref)). `reuse` rebuilds the hierarchy every `reuse` numerical setups (lagged
-AMG). Serial; it is the variant used in CI, where installing PETSc is slow, and the reference for
+AMG); `atol = 0` for the same reason as in [`PETScSolver`](@ref). Serial; it is the variant used in CI, where installing PETSc is slow, and the reference for
 the Newton integration (`linear_converged`, lagged setups).
 """
 struct AMGSolver <: Algebra.LinearSolver
@@ -101,7 +115,7 @@ struct AMGSolver <: Algebra.LinearSolver
   restart::Int
   reuse::Int
   nullspace::Union{Nothing,Matrix{Float64}}
-  function AMGSolver(krylov::Symbol=:cg; rtol::Real=1e-6, atol::Real=1e-12, maxiter::Integer=500, restart::Integer=30,
+  function AMGSolver(krylov::Symbol=:cg; rtol::Real=1e-6, atol::Real=0.0, maxiter::Integer=500, restart::Integer=30,
                      reuse::Integer=1, nullspace::Union{Nothing,AbstractMatrix}=nothing)
     krylov in (:cg, :gmres) || error("HyperFEM: AMGSolver: unknown Krylov method $krylov (use :cg or :gmres)")
     reuse ≥ 1 || error("HyperFEM: AMGSolver: reuse must be ≥ 1")

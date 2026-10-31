@@ -42,6 +42,26 @@ s1_battery("PETScSolver CG/GMRES + GAMG", (krylov; rtol=1e-6, maxiter=500, reuse
     @test_throws ErrorException s1_solve(PETScSolver(:cg, :gamg; options="bad"), A, b)
   end
 
+  @testset "EM saddle point: monolithic AMG is for S2" begin
+    # the monolithic EM tangent is symmetric indefinite (concave in φ): GAMG does not converge on it, with or
+    # without the φ equations negated (positive-real form); the block preconditioners of stage S2 handle it. The
+    # failure is reported, and the Newton fails the step instead of accepting an unsolved increment
+    pem = s1_em_problem()
+    Nem = near_nullspace(pem.U)
+    ref = s1_solve_nl(LUSolver(), pem; backend=:lazy)
+    @test ref.flag
+    nu = num_free_dofs(pem.U[1]); n = num_free_dofs(pem.U)
+    r = s1_solve_nl(PETScSolver(:gmres, :gamg; rtol=1e-8, maxiter=200, nullspace=Nem, negate=nu+1:n), pem; backend=:lazy)
+    @test !r.flag
+    @test r.reason === :linear_failed
+    # on the plain linear system the negation is transparent, and b is left as it was
+    b0 = copy(b)
+    x, ns = s1_solve(PETScSolver(:gmres, :gamg; rtol=1e-12, nullspace=N, negate=1:10), A, b)
+    @test linear_converged(ns)
+    @test norm(x - xlu) ≤ 1e-8 * norm(xlu)
+    @test b == b0
+  end
+
   @testset "several solvers coexist (own option prefixes)" begin
     _, ns1 = s1_solve(PETScSolver(:cg, :gamg; rtol=1e-10, nullspace=N), A, b)
     _, ns2 = s1_solve(PETScSolver(:gmres, :boomeramg; rtol=1e-10, nullspace=N), A, b)
