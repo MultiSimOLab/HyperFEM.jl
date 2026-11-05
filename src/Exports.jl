@@ -229,6 +229,7 @@ end
 @publish Solvers linear_iterations
 @publish Solvers preconditioner_builds
 @publish Solvers set_tolerance!
+@publish Solvers tolerance
 @publish Solvers PETScSolver
 @publish Solvers AMGSolver
 @publish Solvers near_nullspace

@@ -279,10 +279,26 @@ linear_iterations(::Algebra.NumericalSetup) = 0
 
 Relative tolerance of the next solves of the numerical setup `ns` of an iterative solver: the forcing
 term of an inexact Newton ([`EisenstatWalker`](@ref)), which asks for a loose solve far from the
-solution and a tight one near it. `nothing` restores the tolerance the solver was set up with. Direct
-solvers ignore it (default method); the iterative solvers specialise it.
+solution and a tight one near it. `rtol` must be in `[0, 1)`. `nothing` restores the tolerance the solver
+was set up with. Gridap's direct solvers (`LUSolver`, `BackslashSolver`) ignore it silently; `PETScSolver`
+and `AMGSolver` apply it; any other linear solver keeps its own tolerance and a warning is printed once:
+an iterative solver used with a forcing term must specialise this method and [`tolerance`](@ref).
 """
-set_tolerance!(ns::Algebra.NumericalSetup, rtol) = ns
+set_tolerance!(ns::Algebra.NumericalSetup, rtol) =
+  (@warn "set_tolerance!: $(nameof(typeof(ns))) does not support a forcing term; the linear solver keeps its own tolerance" maxlog = 1; ns)
+set_tolerance!(ns::Union{Algebra.LUNumericalSetup,Algebra.BackslashNumericalSetup}, rtol) = ns
+
+"""
+    tolerance(ns) -> Union{Nothing,Float64}
+
+Relative tolerance the next solves of `ns` use (`nothing` for solvers without one). The Newton saves it
+before a solve with a forcing term and restores it afterwards, so that a tolerance set by the caller
+survives the solve.
+"""
+tolerance(::Algebra.NumericalSetup) = nothing
+
+"Checks a relative tolerance for `set_tolerance!`."
+_check_rtol(rtol) = (0 ≤ rtol < 1 || throw(ArgumentError("set_tolerance!: the relative tolerance must be in [0, 1) (got $rtol)")); Float64(rtol))
 
 """
     preconditioner_builds(ns) -> Int

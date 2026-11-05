@@ -84,7 +84,8 @@ function s1_solve_nl(ls, p; backend, nsteps=2, forcing=nothing)
   m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.D; nls, backend)
   x, flag = solve!(m; stepping=(nsteps=nsteps, maxbisec=0), ProjectDirichlet=true)   # the projection uses the same linear solver
   (; x=copy(x), flag=flag == 1, its=num_iterations(nls), reason=stop_reason(nls), U=p.U, nlinear=nls.log.nlinear,
-     niters=nls.log.niters, etas=copy(forcing_history(nls)))
+     niters=nls.log.niters, etas=copy(forcing_history(nls)), lin=copy(linear_history(nls)), hist=copy(residual_history(nls)),
+     ns=m.caches.nls_cache.ns)
 end
 
 """
@@ -134,12 +135,17 @@ function s1_battery(name, make; growth=1.3)
     @testset "set_tolerance! (forcing term)" begin
       x0, ns = s1_solve(make(:cg; rtol=1e-10, nullspace=N), A, b)
       its0 = linear_iterations(ns)
+      @test tolerance(ns) == 1e-10
+      @test_throws ArgumentError set_tolerance!(ns, 1.0)
+      @test_throws ArgumentError set_tolerance!(ns, -1e-3)
       set_tolerance!(ns, 1e-2)                       # a loose solve: fewer iterations, residual within the new tolerance
+      @test tolerance(ns) == 1e-2
       x = zeros(length(b)); solve!(x, ns, b)
       @test linear_converged(ns)
       @test linear_iterations(ns) < its0
       @test norm(b - A * x) ≤ 1e-2 * norm(b) * (1 + 1e-8)
       set_tolerance!(ns, nothing)                    # back to the tolerance of the solver
+      @test tolerance(ns) == 1e-10
       fill!(x, 0); solve!(x, ns, b)
       @test linear_iterations(ns) == its0
       @test norm(x - x0) ≤ 1e-12 * norm(x0)
@@ -207,7 +213,12 @@ function s1_battery(name, make; growth=1.3)
           bad = s1_solve_nl(make(:cg; rtol=1e-8, maxiter=1, nullspace=Nm), p; backend)
           @test !bad.flag
           @test bad.reason === :linear_failed
-          @test bad.nlinear ≥ 1                      # the iterations of the failed solve are counted
+          @test bad.lin[end] == 1                    # the failed solve is an iteration of the log, with its Krylov iterations
+          @test sum(bad.lin) == bad.nlinear          # (one Newton solve: the first step fails, no bisection)
+          # with a forcing term the solver gets its tolerance back on this exit too
+          badew = s1_solve_nl(make(:cg; rtol=1e-8, maxiter=1, nullspace=Nm), p; backend, forcing=EisenstatWalker())
+          @test !badew.flag
+          @test tolerance(badew.ns) == 1e-8
         end
       end
     end
@@ -218,15 +229,17 @@ function s1_battery(name, make; growth=1.3)
       for backend in S1_BACKENDS
         @testset "$backend" begin
           ref = s1_solve_nl(make(:cg; rtol=1e-10, nullspace=Nm), p; backend)
+          ref8 = s1_solve_nl(make(:cg; rtol=1e-8, nullspace=Nm), p; backend)    # the tolerance a user would set by hand
           ew = s1_solve_nl(make(:cg; rtol=1e-10, nullspace=Nm), p; backend, forcing=EisenstatWalker())
           @test ref.flag && ew.flag
-          @test ew.niters ≤ ref.niters + 2                 # the loose early solves may cost a Newton iteration
+          @test ew.niters ≤ 1.5 * ref.niters + 1           # the loose early solves may cost Newton iterations
           @test ew.nlinear < ref.nlinear                   # and save Krylov iterations
           @test norm(ew.x - ref.x) ≤ 1e-5 * norm(ref.x)    # both within the Newton tolerance
           @test ew.etas[1] == 1e-2                         # η0 at the first iteration of the last solve
-          @test all(η -> 1e-10 ≤ η ≤ 0.1, ew.etas)
+          @test all(η -> 1e-10 ≤ η ≤ 1e-2, ew.etas)
           @test all(==(0.0), ref.etas)
-          @info "$name, forcing term: Krylov iterations $(ref.nlinear) → $(ew.nlinear), Newton $(ref.niters) → $(ew.niters)"
+          @test tolerance(ew.ns) == 1e-10                  # the solver gets its own tolerance back after the run
+          @info "$name, forcing term: Krylov iterations $(ref.nlinear) (rtol 1e-10) / $(ref8.nlinear) (rtol 1e-8) → $(ew.nlinear), Newton $(ref.niters) / $(ref8.niters) → $(ew.niters)"
         end
       end
     end

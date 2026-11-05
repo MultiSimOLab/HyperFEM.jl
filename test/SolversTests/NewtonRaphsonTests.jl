@@ -166,11 +166,17 @@ end
 @testset "EisenstatWalker forcing term" begin
   ft = HyperFEM.Solvers.forcing_term
   ew = EisenstatWalker()
+  @test (ew.η0, ew.ηmax) == (1e-2, 1e-2)                              # defaults
   @test ft(ew, 0, 0.0, 1.0, 1.0, 1e-12) == 1e-2                       # η0
   @test ft(ew, 1, 1e-2, 0.1, 1.0, 1e-12) ≈ 0.9 * 0.1^2                # γ (‖R_k‖/‖R_{k-1}‖)^α
-  @test ft(ew, 1, 1e-2, 0.5, 1.0, 1e-12) == 0.1                       # bounded by ηmax (0.9·0.25 = 0.225)
+  @test ft(ew, 1, 1e-2, 0.5, 1.0, 1e-12) == 1e-2                      # bounded by ηmax (0.9·0.25 = 0.225)
   @test ft(ew, 1, 1e-2, 1e-9, 1.0, 1e-20) == 1e-10                    # floor ηmin (0.9·1e-18)
-  @test ft(ew, 3, 1e-4, 1e-7, 1e-4, 1e-8) ≈ 0.05                      # no oversolving: 0.5 τ/‖R‖ = 0.05 > 0.9·1e-6
+  @test ft(ew, 3, 1e-4, 1e-7, 1e-4, 1e-9) ≈ 0.005                     # no oversolving: 0.5 τ/‖R‖ = 0.005 > 0.9·1e-6
+  @test ft(ew, 2, 1e-2, 1e-3, 1.0, 1e-20) ≈ 0.9e-6                    # the safeguard is inactive with the defaults (γ·1e-4 < 0.1)
+  @test ft(ew, 2, 0.0, 1e-3, 1.0, 1e-20) == 1e-2                      # no previous forcing term (projected iteration): η0
+  @test ft(ew, 2, 1e-2, 1e-3, 0.0, 1e-20) == 1e-2                     # rprev = 0: η0
+  @test ft(ew, 2, 1e-2, 0.0, 1.0, 1e-12) == 1e-10                     # r = 0: no floor, η → ηmin
+  @test ft(EisenstatWalker(ηmax=0.5), 2, 0.5, 1e-3, 1.0, 1e-20) ≈ 0.225   # active above (0.1/γ)^(1/α) ≈ 0.33
   ew2 = EisenstatWalker(ηmax=0.9)
   @test ft(ew2, 2, 0.5, 1e-3, 1.0, 1e-12) ≈ 0.9 * 0.5^2               # safeguard γ η_{k-1}^α = 0.225 > 0.1
   @test ft(ew2, 2, 0.3, 1e-3, 1.0, 1e-12) ≈ 0.9 * 1e-6                # no safeguard: γ·0.09 = 0.081 < 0.1
@@ -189,4 +195,62 @@ end
     forcing === nothing ? (@test all(==(0.0), forcing_history(nls))) : (@test forcing_history(nls)[1] == 1e-2)
   end
   @test hs[1] == hs[2]
+end
+
+# A direct solver with a tolerance (LU underneath): records what the Newton asks of set_tolerance!, and can throw
+# at a given solve (TOLLU_THROW) to check the restore on an exception
+struct TolLU <: LinearSolver end
+struct TolLUSS <: SymbolicSetup end
+mutable struct TolLUNS{T} <: NumericalSetup
+  lu::T
+  rtol::Float64
+  seen::Vector{Float64}
+  nsolve::Int
+end
+const TOLLU_OWN = 0.25                                       # the "setup" tolerance that `nothing` restores
+const TOLLU_START = 0.5                                      # the tolerance the setup starts with (set by the caller)
+const TOLLU_THROW = Ref(0)
+Gridap.Algebra.symbolic_setup(::TolLU, A::AbstractMatrix) = TolLUSS()
+Gridap.Algebra.numerical_setup(::TolLUSS, A::AbstractMatrix) =
+  TolLUNS(numerical_setup(symbolic_setup(LUSolver(), A), A), TOLLU_START, Float64[], 0)
+Gridap.Algebra.numerical_setup!(ns::TolLUNS, A::AbstractMatrix) = (numerical_setup!(ns.lu, A); ns)
+function Gridap.Algebra.solve!(x::AbstractVector, ns::TolLUNS, b::AbstractVector)
+  ns.nsolve += 1
+  ns.nsolve == TOLLU_THROW[] && error("TolLU: failure requested by the test")
+  solve!(x, ns.lu, b)
+end
+HyperFEM.Solvers.set_tolerance!(ns::TolLUNS, r) = (ns.rtol = r === nothing ? TOLLU_OWN : r; push!(ns.seen, ns.rtol); ns)
+HyperFEM.Solvers.tolerance(ns::TolLUNS) = ns.rtol
+
+struct NoHookNS <: NumericalSetup end
+
+@testset "Forcing term: the tolerance in force before the Newton is restored" begin
+  p = newton_test_problem()
+  nls = NewtonRaphson(TolLU(); maxiter=20, atol=1e-10, rtol=1e-8, forcing=EisenstatWalker())
+  m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=nls, xh=FEFunction(p.U, zero_free_values(p.U)))
+  _, flag = solve!(m; stepping=(nsteps=2, maxbisec=0))
+  @test flag == 1
+  ns = m.caches.nls_cache.ns
+  @test ns.rtol == TOLLU_START                                 # not the solver's own (TOLLU_OWN): the caller's value
+  @test 1e-2 in ns.seen && TOLLU_START in ns.seen && !(TOLLU_OWN in ns.seen)
+  # an exception inside a Newton solve (the linear solve of its second iteration) restores it as well
+  m2 = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=nls, xh=FEFunction(p.U, zero_free_values(p.U)))
+  TOLLU_THROW[] = 2                                            # the linear solve of the second Newton iteration
+  try
+    @test_throws ErrorException solve!(m2; stepping=(nsteps=2, maxbisec=0))
+  finally
+    TOLLU_THROW[] = 0
+  end
+  ns2 = m2.caches.nls_cache.ns
+  @test ns2.nsolve == 2
+  @test length(ns2.seen) ≥ 2 && ns2.seen[end-1] != TOLLU_START  # a forcing term was in force when it threw
+  @test ns2.seen[end] == TOLLU_START && ns2.rtol == TOLLU_START  # and the finally put the caller's value back
+end
+
+@testset "set_tolerance!: warning for linear solvers without the hook" begin
+  @test_logs (:warn, r"does not support a forcing term") set_tolerance!(NoHookNS(), 1e-2)
+  @test tolerance(NoHookNS()) === nothing
+  A = [4.0 1.0; 1.0 3.0]
+  @test tolerance(numerical_setup(symbolic_setup(LUSolver(), A), A)) === nothing
+  @test_logs set_tolerance!(numerical_setup(symbolic_setup(BackslashSolver(), A), A), 1e-2)   # silent for direct solvers
 end

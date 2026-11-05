@@ -103,16 +103,6 @@ function interpolate_L2_field(x, dΩ::Measure, Ω₂::Triangulation=_get_triangu
   interpolate_everywhere(L2_projection(x, VL2, dΩ), VH1)
 end
 
-function interpolate_L2_field(x, Ω, dΩ::Measure, T::Type=_get_cell_field_type(x, dΩ))
-  @warn "interpolate_L2_field: This signature is kept for direct compatibility with `interpolate_L2_scalar/vector/tensor` and it will be removed after release 0.0.7. The domain `Ω` can be removed from the list of arguments." maxlog=1
-  refL2 = ReferenceFE(lagrangian, T, 0)
-  reffe = ReferenceFE(lagrangian, T, 1)
-  VL2 = FESpace(Ω, refL2, conformity=:L2)
-  VH1 = FESpace(Ω, reffe, conformity=:H1)
-  interpolate_everywhere(L2_projection(x, VL2, dΩ), VH1)
-end
-
-
 """
     L2_projection(u, V, dΩ)
 

@@ -72,3 +72,25 @@ s1_battery("PETScSolver CG/GMRES + GAMG", (krylov; rtol=1e-6, maxiter=500, reuse
     @test ns1.prefix != ns2.prefix
   end
 end
+
+@testset "PETScSolver: tolerance hooks" begin
+  U, V, A, b = s1_elasticity(2)
+  N = near_nullspace(U)
+  # -ksp_rtol in the options wins over rtol, and is what `nothing` restores
+  _, ns = s1_solve(PETScSolver(:cg, :gamg; rtol=1e-6, nullspace=N, options="-ksp_rtol 1e-3"), A, b)
+  @test tolerance(ns) == 1e-3
+  its3 = linear_iterations(ns)
+  set_tolerance!(ns, 1e-8); x = zeros(length(b)); solve!(x, ns, b)
+  @test linear_iterations(ns) > its3
+  set_tolerance!(ns, nothing); fill!(x, 0); solve!(x, ns, b)
+  @test tolerance(ns) == 1e-3 && linear_iterations(ns) == its3
+  # a direct solver: no tolerance, the forcing term changes nothing (same Newton trajectory)
+  p = s1_mech_problem()
+  for backend in S1_BACKENDS
+    r0 = s1_solve_nl(PETScSolver(:preonly, :mumps), p; backend)
+    r1 = s1_solve_nl(PETScSolver(:preonly, :mumps), p; backend, forcing=EisenstatWalker())
+    @test r0.flag && r1.flag
+    @test r1.hist == r0.hist
+    @test tolerance(r1.ns) === nothing && r1.etas[1] == 1e-2
+  end
+end

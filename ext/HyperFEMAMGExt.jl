@@ -9,7 +9,7 @@ module HyperFEMAMGExt
 
 using HyperFEM
 using HyperFEM.Solvers: AMGSolver, split_nullspace
-import HyperFEM.Solvers: amg_symbolic_setup, linear_converged, linear_iterations, linear_info, preconditioner_builds, set_tolerance!
+import HyperFEM.Solvers: amg_symbolic_setup, linear_converged, linear_iterations, linear_info, preconditioner_builds, set_tolerance!, tolerance, _check_rtol
 using Gridap.Algebra
 import Gridap.Algebra: numerical_setup, numerical_setup!, solve!
 using AlgebraicMultigrid: smoothed_aggregation, aspreconditioner
@@ -196,6 +196,7 @@ linear_converged(ns::AMGSolverNS) = ns.converged
 linear_iterations(ns::AMGSolverNS) = ns.iters
 preconditioner_builds(ns::AMGSolverNS) = ns.nbuild
 linear_info(ns::AMGSolverNS) = " $(ns.iters)"
-set_tolerance!(ns::AMGSolverNS, rtol) = (ns.rtol = rtol === nothing ? ns.solver.rtol : Float64(rtol); ns)
+set_tolerance!(ns::AMGSolverNS, rtol) = (ns.rtol = rtol === nothing ? ns.solver.rtol : _check_rtol(rtol); ns)
+tolerance(ns::AMGSolverNS) = ns.rtol
 
 end # module

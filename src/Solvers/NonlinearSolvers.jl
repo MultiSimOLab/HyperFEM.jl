@@ -153,7 +153,7 @@ function _print_row(log::NewtonLog, r, r0, α, limited::Bool, mode, linear::Stri
   @printf("  %4d  %11.3e  %11.3e  %9s  %-10s  %-12s  %8.3f\n", log.num_iters, r, r / r0, αs, mode, linear, t)
 end
 
-_eta_info(η::Float64) = η > 0 ? @sprintf(" η=%.0e", η) : ""
+_eta_info(η::Float64) = η > 0 ? @sprintf(" η=%.1e", η) : ""
 
 function _print_detail(log::NewtonLog, ls)
   log.verbose >= 3 || return
@@ -161,9 +161,9 @@ function _print_detail(log::NewtonLog, ls)
   isempty(info) || println("        line search: ", info)
 end
 
-function _print_linear_failure(log::NewtonLog, its::Int)
+function _print_linear_failure(log::NewtonLog, its::Int, η::Float64)
   log.verbose >= 2 || return
-  _styled("        ✗ linear solver did not converge ($(its) iterations)\n", :red)
+  _styled("        ✗ linear solver did not converge ($(its) iterations$(η > 0 ? @sprintf(", η = %.1e", η) : ""))\n", :red)
 end
 
 function _print_switch(log::NewtonLog, to::Symbol, r)
@@ -300,7 +300,7 @@ _on_failure(::HybridTangent, mode) = mode === :consistent ? :projected : nothing
 # ------------------------------------------------------------------------------------------------
 
 """
-    EisenstatWalker(; η0=1e-2, ηmax=0.1, ηmin=1e-10, γ=0.9, α=2.0)
+    EisenstatWalker(; η0=1e-2, ηmax=1e-2, ηmin=1e-10, γ=0.9, α=2.0)
 
 Forcing term of an inexact Newton (Eisenstat and Walker, SIAM J. Sci. Comput. 17, 1996, choice 2):
 the relative tolerance of the linear solve of iteration `k` is
@@ -308,13 +308,23 @@ the relative tolerance of the linear solve of iteration `k` is
     η₀ = η0,    η_k = γ (‖R_k‖ / ‖R_{k-1}‖)^α,
 
 safeguarded by `η_k ≥ γ η_{k-1}^α` when `γ η_{k-1}^α > 0.1` (the residual dropped by luck in one
-iteration and the next tolerance must not collapse), bounded by `ηmax`, and kept above
+iteration and the next tolerance must not collapse; the safeguard can only act when
+`ηmax > (0.1/γ)^(1/α) ≈ 0.33`, so it is inactive with the defaults), bounded by `ηmax`, and kept above
 `0.5 τ / ‖R_k‖`, `τ` the residual the Newton accepts (`max(atol, rtol ‖R₀‖)`), so that no linear solve
 goes below what the Newton tolerance can see (Kelley, *Iterative methods for linear and nonlinear
-equations*, 1995, §6.3); never below `ηmin`. A loose solve far from the solution, a tight one near it:
-the Krylov iterations of the first Newton iterations are saved without losing the final quadratic
-rate. Used with iterative linear solvers through [`set_tolerance!`](@ref); a direct solver ignores it.
-In the projected mode of [`HybridTangent`](@ref) the linear solver keeps its own tolerance.
+equations*, 1995, §6.3); never below `ηmin`. The first iteration of a solve, and the first one after a
+projected phase of [`HybridTangent`](@ref) (where the linear solver keeps the tolerance it had when the
+Newton started), use `η0`.
+
+A loose solve far from the solution, a tight one near it: the convergence is superlinear until the last
+iterations, which are solved only as tightly as the Newton tolerance needs. Every extra Newton iteration
+costs an assembly, a preconditioner setup and a line search, so the cap `ηmax` trades Krylov iterations
+for Newton iterations. The defaults are tighter than the literature's (EW: `η0 = 0.5`, `ηmax = 0.9`;
+PETSc's SNES: 0.3, 0.9), which assume the linear solve dominates: on HyperFEM's electro-mechanical and
+magneto-mechanical benchmarks (fieldsplit + GAMG, 100k–240k dofs) `ηmax = η0 = 1e-2` was the fastest of
+`1e-1`, `1e-2` and `1e-3` (×1.3–1.5 on `solve!` against Krylov at 1e-10, with 20 % more Newton iterations;
+`1e-1` costs 30–40 % more Newton iterations). Used with iterative linear solvers through
+[`set_tolerance!`](@ref); Gridap's direct solvers ignore it (the history still records η).
 """
 struct EisenstatWalker
   η0::Float64
@@ -322,7 +332,7 @@ struct EisenstatWalker
   ηmin::Float64
   γ::Float64
   α::Float64
-  function EisenstatWalker(; η0::Real=1e-2, ηmax::Real=0.1, ηmin::Real=1e-10, γ::Real=0.9, α::Real=2.0)
+  function EisenstatWalker(; η0::Real=1e-2, ηmax::Real=1e-2, ηmin::Real=1e-10, γ::Real=0.9, α::Real=2.0)
     0 < ηmin ≤ η0 ≤ ηmax < 1 || throw(ArgumentError("EisenstatWalker: needs 0 < ηmin ≤ η0 ≤ ηmax < 1"))
     0 < γ ≤ 1 || throw(ArgumentError("EisenstatWalker: γ must be in (0, 1]"))
     1 < α ≤ 2 || throw(ArgumentError("EisenstatWalker: α must be in (1, 2]"))
@@ -334,10 +344,11 @@ end
     forcing_term(ew::EisenstatWalker, k, ηprev, r, rprev, τ) -> η
 
 Forcing term of Newton iteration `k` (0-based) with residual norms `r = ‖R_k‖`, `rprev = ‖R_{k-1}‖`,
-the previous forcing term `ηprev` and the accepted residual `τ` (see [`EisenstatWalker`](@ref)).
+the previous forcing term `ηprev` (`0`: none, e.g. a projected iteration; the iteration then restarts from
+`η0` like the first one) and the accepted residual `τ` (see [`EisenstatWalker`](@ref)).
 """
 function forcing_term(ew::EisenstatWalker, k::Int, ηprev::Float64, r::Float64, rprev::Float64, τ::Float64)
-  if k == 0 || rprev == 0
+  if k == 0 || ηprev == 0 || rprev == 0
     η = ew.η0
   else
     η = ew.γ * (r / rprev)^ew.α
@@ -524,7 +535,9 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
   c0 = 0.0   # curvature |b·dx| of the first iteration
   τ = max(tols.atol, tols.rtol * r0)    # the residual the Newton accepts (floor of the forcing term)
   η, rprev = 0.0, r                     # forcing term of the current iteration (0: none) and the previous residual
+  rtol_in = ew === nothing ? nothing : tolerance(ns)   # restored at the end, also on an exception
 
+  try
   while reason === :running
     # linearised problem: A dx = -R, to the relative tolerance of the forcing term (if any)
     if ew !== nothing
@@ -533,7 +546,7 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
         set_tolerance!(ns, η)
       elseif η != 0
         η = 0.0
-        set_tolerance!(ns, nothing)
+        set_tolerance!(ns, rtol_in)
       end
     end
     rmul!(b, -1)
@@ -541,8 +554,10 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
     solve!(dx, ns, b)
     log.t_linear += time() - t1
     if !linear_converged(ns)
-      log.nlinear += linear_iterations(ns)   # the iterations of the failed solve count in the run (they cost as much)
-      _print_linear_failure(log, linear_iterations(ns))
+      # the failed solve is an iteration of the log (α = 0, residual unchanged), so that its Krylov iterations and
+      # its η are in the histories and the run counters agree with them
+      _record!(log, r, 0.0, mode, linear_iterations(ns), η)
+      _print_linear_failure(log, linear_iterations(ns), η)
       reason = :linear_failed
       break
     end
@@ -602,9 +617,10 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
       log.t_setup += time() - t2
     end
   end
-
-  mode === :projected && set_tangent!(op, :consistent)   # the model is left with the consistent tangent
-  ew === nothing || set_tolerance!(ns, nothing)          # and the linear solver with its own tolerance (the Dirichlet projection uses it)
+  finally
+    mode === :projected && set_tangent!(op, :consistent)   # the model is left with the consistent tangent
+    ew === nothing || set_tolerance!(ns, rtol_in)          # and the linear solver with the tolerance it had (the Dirichlet projection uses it)
+  end
   log.reason = reason
   log.t_solve += time() - t0
   _print_end(log)

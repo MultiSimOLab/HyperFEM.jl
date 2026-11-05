@@ -104,6 +104,24 @@ end
   @test ls.calls > 2
   @test isapprox(x, xref; rtol=1e-8)
 
+  # with a forcing term: no η on the projected iterations (the solver keeps the tolerance it had), η0 again on the
+  # first consistent iteration after them (TolLU of NewtonRaphsonTests.jl records the tolerances it is given)
+  switch = TangentSwitch()
+  p = hybrid_test_problem(; switch)
+  nls = NewtonRaphson(TolLU(); maxiter=30, atol=1e-10, rtol=1e-12, linesearch=FailFirstLS(1, 0),
+                      tangent=HybridTangent(hybback=1e-2, atol_projected=1e-20), forcing=EisenstatWalker())
+  m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=nls, tangent_switch=switch)
+  x, flag = solve!(m; stepping=(nsteps=1, maxbisec=0))
+  @test flag == 1 && converged(nls)
+  etas, modes = forcing_history(nls), mode_history(nls)
+  @test etas[1] == 1e-2                                             # the failed iteration, consistent
+  @test all(==(0.0), etas[modes .=== :projected])
+  lastproj = findlast(==(:projected), modes)
+  k = findfirst(>(0.0), etas[lastproj+1:end])
+  @test k !== nothing && etas[lastproj+k] == 1e-2                   # restart from η0
+  @test m.caches.nls_cache.ns.rtol == TOLLU_START
+  @test isapprox(x, xref; rtol=1e-8)
+
   # ConsistentTangent: a failed line search stops the solve
   p = hybrid_test_problem()
   nls = NewtonRaphson(LUSolver(); maxiter=30, atol=1e-10, rtol=1e-12, linesearch=FailFirstLS(1, 0))
