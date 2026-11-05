@@ -161,6 +161,11 @@ function _print_detail(log::NewtonLog, ls)
   isempty(info) || println("        line search: ", info)
 end
 
+function _print_linear_failure(log::NewtonLog, its::Int)
+  log.verbose >= 2 || return
+  _styled("        ✗ linear solver did not converge ($(its) iterations)\n", :red)
+end
+
 function _print_switch(log::NewtonLog, to::Symbol, r)
   log.verbose >= 2 || return
   _styled("        → $(to) tangent (‖R‖ = $(@sprintf("%.3e", r)))\n", :yellow)
@@ -536,6 +541,8 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
     solve!(dx, ns, b)
     log.t_linear += time() - t1
     if !linear_converged(ns)
+      log.nlinear += linear_iterations(ns)   # the iterations of the failed solve count in the run (they cost as much)
+      _print_linear_failure(log, linear_iterations(ns))
       reason = :linear_failed
       break
     end

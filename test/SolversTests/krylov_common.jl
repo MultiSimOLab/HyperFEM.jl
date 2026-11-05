@@ -207,6 +207,7 @@ function s1_battery(name, make; growth=1.3)
           bad = s1_solve_nl(make(:cg; rtol=1e-8, maxiter=1, nullspace=Nm), p; backend)
           @test !bad.flag
           @test bad.reason === :linear_failed
+          @test bad.nlinear ≥ 1                      # the iterations of the failed solve are counted
         end
       end
     end
