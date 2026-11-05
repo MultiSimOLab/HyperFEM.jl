@@ -51,7 +51,7 @@ function solve_twice(nls, op)
 end
 
 @testset "Newton loop without allocations" begin
-  for ls in (LineSearch(), Roman_LS(; maxiter=10))
+  for ls in (FullStepLS(), BacktrackingLS(; maxiter=10))
     nls = NewtonRaphson(DiagonalSolver(); maxiter=30, atol=1e-13, rtol=1e-14, verbose=0)
     nls = NewtonRaphson(nls.ls, nls.tols, nls.log, ls)
     bytes = solve_twice(nls, op)
@@ -76,7 +76,7 @@ end
   residual!(b, op, x)
   rmul!(b, -1)
   dx .= b ./ (d .+ 3 .* x .^ 2)
-  for ls in (LineSearch(), Roman_LS(; maxiter=10))
+  for ls in (FullStepLS(), BacktrackingLS(; maxiter=10))
     x0 = copy(x)
     search!(ls, w, op, x, dx, b)
     copyto!(x, x0); residual!(b, op, x); rmul!(b, -1)

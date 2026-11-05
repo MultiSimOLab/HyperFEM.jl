@@ -2,7 +2,6 @@ using Gridap
 using Gridap.FESpaces
 using HyperFEM
 using HyperFEM.DiscreteModeling.EvolutionFunctions
-using HyperFEM.ComputationalModels.PostMetrics
 
 """
     visco_elastic_simulation(; backend=:lazy, driver=:transient, t_end=2, writevtk=false, verbose=false, nls=nothing, stepping=nothing)

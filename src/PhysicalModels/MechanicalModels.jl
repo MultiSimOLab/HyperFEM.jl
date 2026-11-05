@@ -1227,8 +1227,3 @@ function SecondPiola(obj::IsochoricNeoHookean3D)
   return (Ψ, S, ∂S∂C)
 end
 
-function SecondPiola(obj::IncompressibleNeoHookean3D)
-  @warn "[DEPRECATED] SecondPiola(::IncompressibleNeoHookean3D) is deprecated. Use SecondPiola(::IsochoricNeoHookean3D) instead."
-  obj2 = IsochoricNeoHookean3D(obj.μ)
-  SecondPiola(obj2)
-end

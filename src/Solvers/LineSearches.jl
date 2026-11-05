@@ -56,7 +56,7 @@ end
 
 Backtracking on the directional derivative of the residual: starting from `α = 1`, `α ← ρ α` until
 `R(x + α dx)·dx ≤ c R(x)·dx` (at most `maxiter` reductions, `α > αmin`); the last `α` is taken if
-the condition is never met. Former name `Roman_LS`.
+the condition is never met.
 """
 struct BacktrackingLS <: AbstractLineSearch
   maxiter::Int
@@ -189,9 +189,8 @@ function linesearch_info(obj::InjectivityLS)
 end
 
 
-# Former names, deprecated for one release
+# Former name, deprecated for one release (still used by scripts outside HyperFEM)
 Base.@deprecate_binding LineSearch FullStepLS
-Base.@deprecate_binding Roman_LS BacktrackingLS
 
 """
     Injectivity_Preserving_LS(α::CellState, U, V; maxiter=50, αmin=1e-16, ρ=0.5, c=0.95, β=0.95, maskphys=0)

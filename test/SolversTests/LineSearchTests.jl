@@ -181,7 +181,6 @@ end
 end
 
 @testset "Deprecated line-search names" begin
-  @test Roman_LS(maxiter=3) isa BacktrackingLS
   @test HyperFEM.Solvers.LineSearch() isa FullStepLS
   @test_throws ArgumentError InjectivityLS(β=1.5)
   @test_throws ArgumentError InjectivityLS(jmin=-1.0)

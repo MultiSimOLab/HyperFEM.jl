@@ -1,6 +1,5 @@
 using HyperFEM
 using HyperFEM: jacobian, solve!
-using HyperFEM.ComputationalModels.PostMetrics
 using Gridap
 using Gridap.FESpaces
 
@@ -21,7 +20,7 @@ function staggered_visco_electric_simulation(; backend=:lazy, t_end=0.5, writevt
   labels = get_face_labeling(geometry)
   add_tag_from_tags!(labels, "fixed", CartesianTags.face0YZ⁺)
   add_tag_from_tags!(labels, "bottom", CartesianTags.faceXY0⁺)
-  add_tag_from_tags!(labels, "top", CartesianTags.faceZ1)
+  add_tag_from_tags!(labels, "top", CartesianTags.faceXY1)
   add_tag_from_vertex_filter!(labels, "mid", geometry, x -> x[3] ≈ 0.5thick)
 
   # Constitutive model
