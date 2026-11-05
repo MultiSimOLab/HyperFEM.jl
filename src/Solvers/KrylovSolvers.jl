@@ -275,6 +275,16 @@ Iterations of the last solve of an iterative linear solver (`0` for direct solve
 linear_iterations(::Algebra.NumericalSetup) = 0
 
 """
+    set_tolerance!(ns, rtol) -> ns
+
+Relative tolerance of the next solves of the numerical setup `ns` of an iterative solver: the forcing
+term of an inexact Newton ([`EisenstatWalker`](@ref)), which asks for a loose solve far from the
+solution and a tight one near it. `nothing` restores the tolerance the solver was set up with. Direct
+solvers ignore it (default method); the iterative solvers specialise it.
+"""
+set_tolerance!(ns::Algebra.NumericalSetup, rtol) = ns
+
+"""
     preconditioner_builds(ns) -> Int
 
 Number of times the numerical setup `ns` has built its preconditioner (factorisation or AMG

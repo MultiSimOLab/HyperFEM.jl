@@ -130,6 +130,20 @@ function s1_battery(name, make; growth=1.3)
       @test maximum(its) ≤ growth * minimum(its) + 2  # nearly mesh-independent (plus two for the smallest meshes)
     end
 
+    @testset "set_tolerance! (forcing term)" begin
+      x0, ns = s1_solve(make(:cg; rtol=1e-10, nullspace=N), A, b)
+      its0 = linear_iterations(ns)
+      set_tolerance!(ns, 1e-2)                       # a loose solve: fewer iterations, residual within the new tolerance
+      x = zeros(length(b)); solve!(x, ns, b)
+      @test linear_converged(ns)
+      @test linear_iterations(ns) < its0
+      @test norm(b - A * x) ≤ 1e-2 * norm(b) * (1 + 1e-8)
+      set_tolerance!(ns, nothing)                    # back to the tolerance of the solver
+      fill!(x, 0); solve!(x, ns, b)
+      @test linear_iterations(ns) == its0
+      @test norm(x - x0) ≤ 1e-12 * norm(x0)
+    end
+
     @testset "non-convergence is reported" begin
       x, ns = s1_solve(make(:cg; rtol=1e-14, maxiter=2, nullspace=N), A, b)
       @test !linear_converged(ns)

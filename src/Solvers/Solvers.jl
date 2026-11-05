@@ -31,6 +31,7 @@ export get_tolerances
 export linear_converged
 export linear_iterations
 export preconditioner_builds
+export set_tolerance!
 export PETScSolver
 export AMGSolver
 export near_nullspace

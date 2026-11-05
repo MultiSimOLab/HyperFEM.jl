@@ -240,6 +240,7 @@ end
 @publish Solvers linear_converged
 @publish Solvers linear_iterations
 @publish Solvers preconditioner_builds
+@publish Solvers set_tolerance!
 @publish Solvers PETScSolver
 @publish Solvers AMGSolver
 @publish Solvers near_nullspace
