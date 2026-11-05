@@ -26,6 +26,7 @@ end
 @publish TensorAlgebra I4
 @publish TensorAlgebra I9
 @publish TensorAlgebra Tensorize
+@publish TensorAlgebra hessian_nonaffine
 
 @publish Backends AbstractBackend
 @publish Backends LazyBackend

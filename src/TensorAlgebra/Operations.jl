@@ -70,13 +70,10 @@ function Gridap.TensorValues.outer(A::VectorValue{D}, B::VectorValue{D}) where {
   return (A ⊗₁² B)
 end
 
-function Gridap.TensorValues.outer(A::VectorValue{D}, B::TensorValue{D,D}) where {D}
-  return (A ⊗₁²³ B)
-end
-
-function Gridap.TensorValues.outer(A::TensorValue{D,D}, B::VectorValue{D}) where {D}
-  return (A ⊗₁₂³ B)
-end
+# `outer(::VectorValue, ::TensorValue)` and `outer(::TensorValue, ::VectorValue)` are left to Gridap,
+# which returns a `ThirdOrderTensorValue`. Redefining them to return the flattened `TensorValue{D,D²}`
+# changes the gradient type Gridap derives for tensor fields and gives a wrong `∇∇` for vector fields
+# (cross terms lost). The flattened products are still available as `⊗₁²³` and `⊗₁₂³`.
 
 function Gridap.TensorValues.outer(A::TensorValue{4,2}, B::VectorValue{2})
   return (A ⊗₁₂₃⁴ B)

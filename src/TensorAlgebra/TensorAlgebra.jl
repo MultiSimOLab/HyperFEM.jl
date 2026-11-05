@@ -51,6 +51,7 @@ export contraction_IP_PJKL
 export contraction_IJK_KLP
 export push_forward_C_to_F
 export regularize_hessian
+export hessian_nonaffine
 
 export Box
 export Ellipsoid
@@ -72,5 +73,7 @@ include("Operations.jl")
 include("Functions.jl")
 
 include("SymmetricEigen.jl")
+
+include("Hessian.jl")
 
 end
