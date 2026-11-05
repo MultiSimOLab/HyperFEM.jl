@@ -246,6 +246,11 @@ function s1_battery(name, make; growth=1.3)
           @test norm(lag.x - ref.x) ≤ 1e-5 * norm(ref.x)
           @test preconditioner_builds(lag.ns) < preconditioner_builds(ew.ns)
           @test tolerance(lag.ns) == 1e-10
+          # a solver configured with a loose tolerance: the forcing term never asks for more
+          loose = s1_solve_nl(make(:cg; rtol=1e-3, nullspace=Nm), p; backend, forcing=EisenstatWalker())
+          @test loose.flag
+          @test all(η -> η ≥ 1e-3, loose.etas) && any(==(1e-3), loose.etas)
+          @test tolerance(loose.ns) == 1e-3
           @info "$name, forcing term: Krylov iterations $(ref.nlinear) (rtol 1e-10) / $(ref8.nlinear) (rtol 1e-8) → $(ew.nlinear), Newton $(ref.niters) / $(ref8.niters) → $(ew.niters)"
         end
       end

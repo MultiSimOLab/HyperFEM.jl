@@ -312,7 +312,9 @@ iteration and the next tolerance must not collapse; the safeguard can only act w
 `ηmax > (0.1/γ)^(1/α) ≈ 0.33`, so it is inactive with the defaults), bounded by `ηmax`, and kept above
 `0.5 τ / ‖R_k‖`, `τ` the residual the Newton accepts (`max(atol, rtol ‖R₀‖)`), so that no linear solve
 goes below what the Newton tolerance can see (Kelley, *Iterative methods for linear and nonlinear
-equations*, 1995, §6.3); never below `ηmin`. The first iteration of a solve, and the first one after a
+equations*, 1995, §6.3); never below `ηmin`, and never below the tolerance the linear solver had when the
+Newton started (its `rtol`, or the value the caller set): the forcing term only loosens the linear solves, it
+never asks for more than the solver was configured for. The first iteration of a solve, and the first one after a
 projected phase of [`HybridTangent`](@ref) (where the linear solver keeps the tolerance it had when the
 Newton started), use `η0`.
 
@@ -543,6 +545,7 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
     if ew !== nothing
       if mode === :consistent
         η = forcing_term(ew, log.num_iters, η, r, rprev, τ)
+        rtol_in === nothing || (η = max(η, rtol_in))   # never tighter than the solver was configured for
         set_tolerance!(ns, η)
       elseif η != 0
         η = 0.0

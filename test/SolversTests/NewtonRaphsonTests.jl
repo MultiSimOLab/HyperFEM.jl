@@ -207,8 +207,8 @@ mutable struct TolLUNS{T} <: NumericalSetup
   seen::Vector{Float64}
   nsolve::Int
 end
-const TOLLU_OWN = 0.25                                       # the "setup" tolerance that `nothing` restores
-const TOLLU_START = 0.5                                      # the tolerance the setup starts with (set by the caller)
+const TOLLU_OWN = 1e-5                                       # the "setup" tolerance that `nothing` restores
+const TOLLU_START = 1e-6                                     # the tolerance the setup starts with (set by the caller)
 const TOLLU_THROW = Ref(0)
 Gridap.Algebra.symbolic_setup(::TolLU, A::AbstractMatrix) = TolLUSS()
 Gridap.Algebra.numerical_setup(::TolLUSS, A::AbstractMatrix) =
@@ -233,6 +233,7 @@ struct NoHookNS <: NumericalSetup end
   ns = m.caches.nls_cache.ns
   @test ns.rtol == TOLLU_START                                 # not the solver's own (TOLLU_OWN): the caller's value
   @test 1e-2 in ns.seen && TOLLU_START in ns.seen && !(TOLLU_OWN in ns.seen)
+  @test minimum(ns.seen) ≥ TOLLU_START                         # never tighter than the tolerance at the start
   # an exception inside a Newton solve (the linear solve of its second iteration) restores it as well
   m2 = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=nls, xh=FEFunction(p.U, zero_free_values(p.U)))
   TOLLU_THROW[] = 2                                            # the linear solve of the second Newton iteration
@@ -243,7 +244,7 @@ struct NoHookNS <: NumericalSetup end
   end
   ns2 = m2.caches.nls_cache.ns
   @test ns2.nsolve == 2
-  @test length(ns2.seen) ≥ 2 && ns2.seen[end-1] != TOLLU_START  # a forcing term was in force when it threw
+  @test length(ns2.seen) ≥ 2 && ns2.seen[1] == 1e-2            # a forcing term was in force when it threw
   @test ns2.seen[end] == TOLLU_START && ns2.rtol == TOLLU_START  # and the finally put the caller's value back
 end
 
