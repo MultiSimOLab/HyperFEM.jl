@@ -239,6 +239,13 @@ function s1_battery(name, make; growth=1.3)
           @test all(η -> 1e-10 ≤ η ≤ 1e-2, ew.etas)
           @test all(==(0.0), ref.etas)
           @test tolerance(ew.ns) == 1e-10                  # the solver gets its own tolerance back after the run
+          # with a lagged preconditioner as well (the configuration recommended for production): same solution,
+          # fewer preconditioner builds
+          lag = s1_solve_nl(make(:cg; rtol=1e-10, reuse=3, nullspace=Nm), p; backend, forcing=EisenstatWalker())
+          @test lag.flag
+          @test norm(lag.x - ref.x) ≤ 1e-5 * norm(ref.x)
+          @test preconditioner_builds(lag.ns) < preconditioner_builds(ew.ns)
+          @test tolerance(lag.ns) == 1e-10
           @info "$name, forcing term: Krylov iterations $(ref.nlinear) (rtol 1e-10) / $(ref8.nlinear) (rtol 1e-8) → $(ew.nlinear), Newton $(ref.niters) / $(ref8.niters) → $(ew.niters)"
         end
       end

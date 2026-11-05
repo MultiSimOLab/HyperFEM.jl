@@ -104,6 +104,12 @@ function s2_battery(name, make; growth=1.3)
             @test r.its == ref.its
             @test norm(r.x - ref.x) ≤ 1e-5 * norm(ref.x)
           end
+          # the production configuration (README): additive split, lagged preconditioner and forcing term
+          r = s1_solve_nl(make(p.U; split=:additive, rtol=1e-8, reuse=3), p; backend, forcing=EisenstatWalker())
+          @test r.flag
+          @test norm(r.x - ref.x) ≤ 1e-5 * norm(ref.x)
+          @test preconditioner_builds(r.ns) < r.niters
+          @test r.etas[1] == 1e-2
         end
       end
     end
