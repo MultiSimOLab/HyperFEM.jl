@@ -38,6 +38,7 @@ mutable struct NewtonLog
   const alphas::Vector{Float64}
   const modes::Vector{Symbol}
   const linear::Vector{Int}       # iterations of the linear solver at every Newton iteration (0 for direct solvers)
+  const etas::Vector{Float64}     # forcing term of every iteration (0 without one, see EisenstatWalker)
   num_iters::Int
   reason::Symbol
   const verbose::Int
@@ -57,7 +58,7 @@ mutable struct NewtonLog
   t_solve::Float64
   function NewtonLog(; maxiter::Integer=100, verbose=0, name::AbstractString="Newton-Raphson")
     v = _verbose_level(verbose)
-    new(zeros(maxiter + 1), zeros(maxiter + 1), fill(:consistent, maxiter + 1), zeros(Int, maxiter + 1), 0, :running, v, String(name),
+    new(zeros(maxiter + 1), zeros(maxiter + 1), fill(:consistent, maxiter + 1), zeros(Int, maxiter + 1), zeros(maxiter + 1), 0, :running, v, String(name),
         0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0)
   end
 end
@@ -75,6 +76,8 @@ mode_history(log::NewtonLog) = view(log.modes, 1:log.num_iters)
 
 "Iterations of the linear solver at every Newton iteration of the last solve (0 for direct solvers)."
 linear_history(log::NewtonLog) = view(log.linear, 1:log.num_iters)
+"Forcing term (relative tolerance of the linear solve) of every Newton iteration of the last solve; 0 without one."
+forcing_history(log::NewtonLog) = view(log.etas, 1:log.num_iters)
 "Number of iterations of the last solve."
 num_iterations(log::NewtonLog) = log.num_iters
 "Stop reason of the last solve (see [`NewtonLog`](@ref))."
@@ -105,18 +108,20 @@ function _start!(log::NewtonLog, r0::Float64)
   log
 end
 
-@inline function _record!(log::NewtonLog, r::Float64, α::Float64, mode::Symbol, lin::Int=0)
+@inline function _record!(log::NewtonLog, r::Float64, α::Float64, mode::Symbol, lin::Int=0, η::Float64=0.0)
   n = log.num_iters + 1
   if n + 1 > length(log.residuals)
     resize!(log.residuals, 2n)
     resize!(log.alphas, 2n)
     resize!(log.modes, 2n)
     resize!(log.linear, 2n)
+    resize!(log.etas, 2n)
   end
   log.residuals[n+1] = r
   log.alphas[n] = α
   log.modes[n] = mode
   log.linear[n] = lin
+  log.etas[n] = η
   log.nlinear += lin
   log.num_iters = n
   log.niters += 1
@@ -147,6 +152,8 @@ function _print_row(log::NewtonLog, r, r0, α, limited::Bool, mode, linear::Stri
   αs = @sprintf("%8.4f", α) * (limited ? "†" : " ")
   @printf("  %4d  %11.3e  %11.3e  %9s  %-10s  %-12s  %8.3f\n", log.num_iters, r, r / r0, αs, mode, linear, t)
 end
+
+_eta_info(η::Float64) = η > 0 ? @sprintf(" η=%.0e", η) : ""
 
 function _print_detail(log::NewtonLog, ls)
   log.verbose >= 3 || return
@@ -283,9 +290,62 @@ _on_failure(::ConsistentTangent, mode) = nothing
 _on_failure(::HybridTangent, mode) = mode === :consistent ? :projected : nothing
 
 
+# ------------------------------------------------------------------------------------------------
+# Forcing term (inexact Newton)
+# ------------------------------------------------------------------------------------------------
+
+"""
+    EisenstatWalker(; η0=1e-2, ηmax=0.1, ηmin=1e-10, γ=0.9, α=2.0)
+
+Forcing term of an inexact Newton (Eisenstat and Walker, SIAM J. Sci. Comput. 17, 1996, choice 2):
+the relative tolerance of the linear solve of iteration `k` is
+
+    η₀ = η0,    η_k = γ (‖R_k‖ / ‖R_{k-1}‖)^α,
+
+safeguarded by `η_k ≥ γ η_{k-1}^α` when `γ η_{k-1}^α > 0.1` (the residual dropped by luck in one
+iteration and the next tolerance must not collapse), bounded by `ηmax`, and kept above
+`0.5 τ / ‖R_k‖`, `τ` the residual the Newton accepts (`max(atol, rtol ‖R₀‖)`), so that no linear solve
+goes below what the Newton tolerance can see (Kelley, *Iterative methods for linear and nonlinear
+equations*, 1995, §6.3); never below `ηmin`. A loose solve far from the solution, a tight one near it:
+the Krylov iterations of the first Newton iterations are saved without losing the final quadratic
+rate. Used with iterative linear solvers through [`set_tolerance!`](@ref); a direct solver ignores it.
+In the projected mode of [`HybridTangent`](@ref) the linear solver keeps its own tolerance.
+"""
+struct EisenstatWalker
+  η0::Float64
+  ηmax::Float64
+  ηmin::Float64
+  γ::Float64
+  α::Float64
+  function EisenstatWalker(; η0::Real=1e-2, ηmax::Real=0.1, ηmin::Real=1e-10, γ::Real=0.9, α::Real=2.0)
+    0 < ηmin ≤ η0 ≤ ηmax < 1 || throw(ArgumentError("EisenstatWalker: needs 0 < ηmin ≤ η0 ≤ ηmax < 1"))
+    0 < γ ≤ 1 || throw(ArgumentError("EisenstatWalker: γ must be in (0, 1]"))
+    1 < α ≤ 2 || throw(ArgumentError("EisenstatWalker: α must be in (1, 2]"))
+    new(η0, ηmax, ηmin, γ, α)
+  end
+end
+
+"""
+    forcing_term(ew::EisenstatWalker, k, ηprev, r, rprev, τ) -> η
+
+Forcing term of Newton iteration `k` (0-based) with residual norms `r = ‖R_k‖`, `rprev = ‖R_{k-1}‖`,
+the previous forcing term `ηprev` and the accepted residual `τ` (see [`EisenstatWalker`](@ref)).
+"""
+function forcing_term(ew::EisenstatWalker, k::Int, ηprev::Float64, r::Float64, rprev::Float64, τ::Float64)
+  if k == 0 || rprev == 0
+    η = ew.η0
+  else
+    η = ew.γ * (r / rprev)^ew.α
+    sg = ew.γ * ηprev^ew.α
+    sg > 0.1 && (η = max(η, sg))
+  end
+  r > 0 && (η = max(η, 0.5 * τ / r))
+  clamp(η, ew.ηmin, ew.ηmax)
+end
+
 """
     NewtonRaphson(ls; maxiter=100, atol=1e-12, rtol=1e-6, ctol=0.0, verbose=0, name="Newton-Raphson",
-                  linesearch=FullStepLS(), tangent=ConsistentTangent())
+                  linesearch=FullStepLS(), tangent=ConsistentTangent(), forcing=nothing)
 
 Newton–Raphson solver of HyperFEM, a Gridap `NonlinearSolver`. `ls` is the linear solver of the
 tangent systems (any Gridap `LinearSolver`; see [`numerical_setup_state`](@ref) for solvers whose setup
@@ -294,27 +354,29 @@ The stopping criteria are those of [`NewtonTolerances`](@ref); `linesearch` choo
 along the Newton direction ([`FullStepLS`](@ref), [`BacktrackingLS`](@ref), [`InjectivityLS`](@ref));
 `tangent` decides which Jacobian is assembled and what happens when the line search fails
 ([`ConsistentTangent`](@ref): the solve fails and the driver bisects; [`HybridTangent`](@ref): switch
-to the projected tangent); `verbose` as in [`NewtonLog`](@ref).
+to the projected tangent); `forcing` the relative tolerance of every linear solve (`nothing`: the
+linear solver's own; [`EisenstatWalker`](@ref): an inexact Newton); `verbose` as in [`NewtonLog`](@ref).
 
 The former name `Newton_RaphsonSolver` is deprecated and kept as an alias for one release.
 """
-struct NewtonRaphson{L<:Algebra.LinearSolver,S<:AbstractLineSearch,T<:TangentStrategy} <: Algebra.NonlinearSolver
+struct NewtonRaphson{L<:Algebra.LinearSolver,S<:AbstractLineSearch,T<:TangentStrategy,F<:Union{Nothing,EisenstatWalker}} <: Algebra.NonlinearSolver
   ls::L
   tols::NewtonTolerances
   log::NewtonLog
   linesearch::S
   tangent::T
+  forcing::F
 end
 
 function NewtonRaphson(ls::Algebra.LinearSolver; maxiter=100, atol=1e-12, rtol=1.e-6, ctol=0.0, verbose=0,
                        name="Newton-Raphson", linesearch::AbstractLineSearch=FullStepLS(),
-                       tangent::TangentStrategy=ConsistentTangent())
+                       tangent::TangentStrategy=ConsistentTangent(), forcing::Union{Nothing,EisenstatWalker}=nothing)
   tols = NewtonTolerances(; maxiter, atol, rtol, ctol)
   log = NewtonLog(; maxiter, verbose, name)
-  NewtonRaphson(ls, tols, log, linesearch, tangent)
+  NewtonRaphson(ls, tols, log, linesearch, tangent, forcing)
 end
 
-NewtonRaphson(ls, tols, log, linesearch) = NewtonRaphson(ls, tols, log, linesearch, ConsistentTangent())
+NewtonRaphson(ls, tols, log, linesearch, tangent=ConsistentTangent()) = NewtonRaphson(ls, tols, log, linesearch, tangent, nothing)
 
 AbstractTrees.children(s::NewtonRaphson) = [s.ls]
 
@@ -323,6 +385,7 @@ residual_history(nls::NewtonRaphson) = residual_history(nls.log)
 step_history(nls::NewtonRaphson) = step_history(nls.log)
 mode_history(nls::NewtonRaphson) = mode_history(nls.log)
 linear_history(nls::NewtonRaphson) = linear_history(nls.log)
+forcing_history(nls::NewtonRaphson) = forcing_history(nls.log)
 num_iterations(nls::NewtonRaphson) = num_iterations(nls.log)
 stop_reason(nls::NewtonRaphson) = stop_reason(nls.log)
 verbosity(nls::NewtonRaphson) = verbosity(nls.log)
@@ -439,7 +502,7 @@ linear_converged(::Algebra.NumericalSetup) = true
 
 function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::Float64=0.0)
   A, b, dx, ns, w = cache.A, cache.b, cache.dx, numerical_setup(cache), cache.w
-  log, tols, linesearch, tangent = nls.log, nls.tols, nls.linesearch, nls.tangent
+  log, tols, linesearch, tangent, ew = nls.log, nls.tols, nls.linesearch, nls.tangent, nls.forcing
   t0 = time()
   lname = log.verbose >= 2 ? _linear_name(nls.ls) : ""
 
@@ -454,9 +517,20 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
     reason = :maxiter
   end
   c0 = 0.0   # curvature |b·dx| of the first iteration
+  τ = max(tols.atol, tols.rtol * r0)    # the residual the Newton accepts (floor of the forcing term)
+  η, rprev = 0.0, r                     # forcing term of the current iteration (0: none) and the previous residual
 
   while reason === :running
-    # linearised problem: A dx = -R
+    # linearised problem: A dx = -R, to the relative tolerance of the forcing term (if any)
+    if ew !== nothing
+      if mode === :consistent
+        η = forcing_term(ew, log.num_iters, η, r, rprev, τ)
+        set_tolerance!(ns, η)
+      elseif η != 0
+        η = 0.0
+        set_tolerance!(ns, nothing)
+      end
+    end
     rmul!(b, -1)
     t1 = time()
     solve!(dx, ns, b)
@@ -487,10 +561,11 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
     t1 = time()
     α = search!(linesearch, w, op, x, dx, b)    # takes the step: x ← x + α dx, b = R(x); α = 0 is a failure
     log.t_linesearch += time() - t1
+    rprev = r
     r = norm(b)
-    _record!(log, r, α, mode, linear_iterations(ns))
+    _record!(log, r, α, mode, linear_iterations(ns), η)
     if log.verbose >= 2
-      _print_row(log, r, r0, α, α == injectivity_limit(linesearch), mode, lname * linear_info(ns), time() - t0)
+      _print_row(log, r, r0, α, α == injectivity_limit(linesearch), mode, lname * linear_info(ns) * _eta_info(η), time() - t0)
       _print_detail(log, linesearch)
     end
 
@@ -522,6 +597,7 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
   end
 
   mode === :projected && set_tangent!(op, :consistent)   # the model is left with the consistent tangent
+  ew === nothing || set_tolerance!(ns, nothing)          # and the linear solver with its own tolerance (the Dirichlet projection uses it)
   log.reason = reason
   log.t_solve += time() - t0
   _print_end(log)

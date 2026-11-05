@@ -79,11 +79,12 @@ function s1_em_problem()
 end
 
 "Solves `p` (a problem above) with the Newton on `ls`; returns the solution, the flag and the Newton counters."
-function s1_solve_nl(ls, p; backend, nsteps=2)
-  nls = NewtonRaphson(ls; maxiter=20, atol=1e-14, rtol=1e-6)
+function s1_solve_nl(ls, p; backend, nsteps=2, forcing=nothing)
+  nls = NewtonRaphson(ls; maxiter=20, atol=1e-14, rtol=1e-6, forcing)
   m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.D; nls, backend)
   x, flag = solve!(m; stepping=(nsteps=nsteps, maxbisec=0), ProjectDirichlet=true)   # the projection uses the same linear solver
-  (; x=copy(x), flag=flag == 1, its=num_iterations(nls), reason=stop_reason(nls), U=p.U)
+  (; x=copy(x), flag=flag == 1, its=num_iterations(nls), reason=stop_reason(nls), U=p.U, nlinear=nls.log.nlinear,
+     niters=nls.log.niters, etas=copy(forcing_history(nls)))
 end
 
 """
@@ -206,6 +207,25 @@ function s1_battery(name, make; growth=1.3)
           bad = s1_solve_nl(make(:cg; rtol=1e-8, maxiter=1, nullspace=Nm), p; backend)
           @test !bad.flag
           @test bad.reason === :linear_failed
+        end
+      end
+    end
+
+    @testset "inexact Newton (Eisenstat–Walker forcing term)" begin
+      p = s1_mech_problem()
+      Nm = near_nullspace(p.U)
+      for backend in S1_BACKENDS
+        @testset "$backend" begin
+          ref = s1_solve_nl(make(:cg; rtol=1e-10, nullspace=Nm), p; backend)
+          ew = s1_solve_nl(make(:cg; rtol=1e-10, nullspace=Nm), p; backend, forcing=EisenstatWalker())
+          @test ref.flag && ew.flag
+          @test ew.niters ≤ ref.niters + 2                 # the loose early solves may cost a Newton iteration
+          @test ew.nlinear < ref.nlinear                   # and save Krylov iterations
+          @test norm(ew.x - ref.x) ≤ 1e-5 * norm(ref.x)    # both within the Newton tolerance
+          @test ew.etas[1] == 1e-2                         # η0 at the first iteration of the last solve
+          @test all(η -> 1e-10 ≤ η ≤ 0.1, ew.etas)
+          @test all(==(0.0), ref.etas)
+          @info "$name, forcing term: Krylov iterations $(ref.nlinear) → $(ew.nlinear), Newton $(ref.niters) → $(ew.niters)"
         end
       end
     end

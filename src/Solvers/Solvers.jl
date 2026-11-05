@@ -57,6 +57,8 @@ export ConsistentTangent
 export HybridTangent
 export mode_history
 export linear_history
+export forcing_history
+export EisenstatWalker
 export print_summary
 export reason_text
 export linear_info

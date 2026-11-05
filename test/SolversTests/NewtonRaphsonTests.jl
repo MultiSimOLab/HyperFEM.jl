@@ -162,3 +162,31 @@ Gridap.Algebra.solve!(x::AbstractVector, ns::CountingNS, b::AbstractVector) = so
   x2, _ = solve!(m2; stepping=(nsteps=2, maxbisec=0))
   @test x2 == x
 end
+
+@testset "EisenstatWalker forcing term" begin
+  ft = HyperFEM.Solvers.forcing_term
+  ew = EisenstatWalker()
+  @test ft(ew, 0, 0.0, 1.0, 1.0, 1e-12) == 1e-2                       # η0
+  @test ft(ew, 1, 1e-2, 0.1, 1.0, 1e-12) ≈ 0.9 * 0.1^2                # γ (‖R_k‖/‖R_{k-1}‖)^α
+  @test ft(ew, 1, 1e-2, 0.5, 1.0, 1e-12) == 0.1                       # bounded by ηmax (0.9·0.25 = 0.225)
+  @test ft(ew, 1, 1e-2, 1e-9, 1.0, 1e-20) == 1e-10                    # floor ηmin (0.9·1e-18)
+  @test ft(ew, 3, 1e-4, 1e-7, 1e-4, 1e-8) ≈ 0.05                      # no oversolving: 0.5 τ/‖R‖ = 0.05 > 0.9·1e-6
+  ew2 = EisenstatWalker(ηmax=0.9)
+  @test ft(ew2, 2, 0.5, 1e-3, 1.0, 1e-12) ≈ 0.9 * 0.5^2               # safeguard γ η_{k-1}^α = 0.225 > 0.1
+  @test ft(ew2, 2, 0.3, 1e-3, 1.0, 1e-12) ≈ 0.9 * 1e-6                # no safeguard: γ·0.09 = 0.081 < 0.1
+  @test_throws ArgumentError EisenstatWalker(η0=0.5, ηmax=0.1)
+  @test_throws ArgumentError EisenstatWalker(γ=1.5)
+  @test_throws ArgumentError EisenstatWalker(α=1.0)
+  # with a direct solver the forcing term is recorded and ignored: the LU trajectory is unchanged
+  p = newton_test_problem()
+  hs = Vector{Float64}[]
+  for forcing in (nothing, EisenstatWalker())
+    nls = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-10, rtol=1e-8, forcing)
+    xh = FEFunction(p.U, zero_free_values(p.U))
+    m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=nls, xh=xh)
+    solve!(m; stepping=(nsteps=4, maxbisec=2))
+    push!(hs, copy(residual_history(nls)))
+    forcing === nothing ? (@test all(==(0.0), forcing_history(nls))) : (@test forcing_history(nls)[1] == 1e-2)
+  end
+  @test hs[1] == hs[2]
+end

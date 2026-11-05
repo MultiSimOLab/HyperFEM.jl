@@ -264,6 +264,8 @@ end
 @publish Solvers HybridTangent
 @publish Solvers mode_history
 @publish Solvers linear_history
+@publish Solvers forcing_history
+@publish Solvers EisenstatWalker
 @publish Solvers print_summary
 @publish Solvers reason_text
 @publish Solvers linear_info
