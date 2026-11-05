@@ -1,6 +1,5 @@
 module Solvers
 
-using IterativeSolvers
 using Gridap
 using Gridap.Algebra
 import Gridap.Algebra: numerical_setup, numerical_setup!
@@ -19,7 +18,6 @@ export NewtonTolerances
 export NewtonLog
 export NewtonCache
 export Newton_RaphsonSolver
-export Newton_RaphsonCache
 export solve!
 export converged
 export residual_history
@@ -31,6 +29,8 @@ export get_tolerances
 export linear_converged
 export linear_iterations
 export preconditioner_builds
+export set_tolerance!
+export tolerance
 export PETScSolver
 export AMGSolver
 export near_nullspace
@@ -42,7 +42,6 @@ export FullStepLS
 export BacktrackingLS
 export InjectivityLS
 export LineSearch
-export Roman_LS
 export Injectivity_Preserving_LS
 export update_cellstate!
 export injectivity_step
@@ -56,6 +55,8 @@ export ConsistentTangent
 export HybridTangent
 export mode_history
 export linear_history
+export forcing_history
+export EisenstatWalker
 export print_summary
 export reason_text
 export linear_info
@@ -67,7 +68,6 @@ export AbstractLineSearch
 import HyperFEM.WeakForms: energy
 using HyperFEM.PhysicalModels: TangentSwitch, set_projected!, is_projected
 
-include("LinearSolvers.jl")
 include("KrylovSolvers.jl")
 include("Injectivity.jl")
 include("ModelOperator.jl")
@@ -76,6 +76,5 @@ include("NonlinearSolvers.jl")
 
 # Deprecated names (one release)
 Base.@deprecate_binding Newton_RaphsonSolver NewtonRaphson
-Base.@deprecate_binding Newton_RaphsonCache NewtonCache
 
 end

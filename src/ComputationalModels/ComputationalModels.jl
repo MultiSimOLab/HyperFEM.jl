@@ -26,7 +26,6 @@ using GridapGmsh: GmshDiscreteModel
 
 # Deprecation exports
 using HyperFEM.DiscreteModeling
-Base.@deprecate_binding CartesianTags DiscreteModeling.CartesianTags
 Base.@deprecate_binding EvolutionFunctions DiscreteModeling.EvolutionFunctions
 
 include("BoundaryConditions.jl")
@@ -118,18 +117,9 @@ include("PostProcessors.jl")
 export PostProcessor
 export vtk_save
 export get_pvd
-export Cauchy
-export Piola
-export Jacobian
-export Entropy
-export D0
 export reset!
-export interpolate_L2_tensor
-export interpolate_L2_vector
-export interpolate_L2_scalar
 export interpolate_L2_field
 export L2_projection
-export L2_Projection
 export component_LInf
 
 end

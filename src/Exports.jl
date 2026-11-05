@@ -199,22 +199,12 @@ end
 @publish ComputationalModels  PostProcessor
 @publish ComputationalModels  vtk_save
 @publish ComputationalModels  get_pvd
-@publish ComputationalModels  PostMetrics
 @publish ComputationalModels  StaggeredModel
-@publish ComputationalModels  Cauchy
-@publish ComputationalModels  Piola
-@publish ComputationalModels  Jacobian
-@publish ComputationalModels  Entropy
-@publish ComputationalModels  D0
 @publish ComputationalModels  reset!
-@publish ComputationalModels  interpolate_L2_tensor
-@publish ComputationalModels  interpolate_L2_vector
-@publish ComputationalModels  interpolate_L2_scalar
 @publish ComputationalModels  evaluate!
 @publish ComputationalModels  TrialFESpace! # Exporting internal function of Gridap
 @publish ComputationalModels interpolate_L2_field
 @publish ComputationalModels L2_projection
-@publish ComputationalModels L2_Projection
 @publish ComputationalModels component_LInf
 
 @publish DiscreteModeling CartesianTags
@@ -223,13 +213,11 @@ end
 @publish DiscreteModeling aspect_ratio
 @publish DiscreteModeling element_size
 
-@publish Solvers IterativeSolver
 @publish Solvers NewtonRaphson
 @publish Solvers NewtonTolerances
 @publish Solvers NewtonLog
 @publish Solvers NewtonCache
 @publish Solvers Newton_RaphsonSolver
-@publish Solvers Newton_RaphsonCache
 @publish Solvers converged
 @publish Solvers residual_history
 @publish Solvers step_history
@@ -240,6 +228,8 @@ end
 @publish Solvers linear_converged
 @publish Solvers linear_iterations
 @publish Solvers preconditioner_builds
+@publish Solvers set_tolerance!
+@publish Solvers tolerance
 @publish Solvers PETScSolver
 @publish Solvers AMGSolver
 @publish Solvers near_nullspace
@@ -251,7 +241,6 @@ end
 @publish Solvers BacktrackingLS
 @publish Solvers InjectivityLS
 @publish Solvers Injectivity_Preserving_LS
-@publish Solvers Roman_LS
 @publish Solvers update_cellstate!
 @publish Solvers injectivity_step
 @publish Solvers ModelOperator
@@ -263,6 +252,8 @@ end
 @publish Solvers HybridTangent
 @publish Solvers mode_history
 @publish Solvers linear_history
+@publish Solvers forcing_history
+@publish Solvers EisenstatWalker
 @publish Solvers print_summary
 @publish Solvers reason_text
 @publish Solvers linear_info

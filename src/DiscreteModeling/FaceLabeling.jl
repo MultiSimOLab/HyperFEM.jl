@@ -18,11 +18,3 @@ function add_tag_from_vertex_filter!(
 end
 
 
-function add_tag_from_vertex_filter!(
-            labels::Gridap.Geometry.FaceLabeling,
-            geometry::Gridap.Geometry.DiscreteModel,
-            tag::String,
-            filter::Function)
-  @warn "This method is deprecated. Call the function with: (labels, tag, geometry, filter)"
-  add_tag_from_vertex_filter!(labels, tag, geometry, filter)
-end

@@ -2,8 +2,6 @@ abstract type AbstractPostProcessor end
 get_pvd(::AbstractPostProcessor) = @abstractmethod
 vtk_save(::AbstractPostProcessor) = @abstractmethod
 
-include("PostMetrics.jl")
-
 
 mutable struct PostProcessor{A,B,C} <:AbstractPostProcessor
     comp_model::A
@@ -71,140 +69,6 @@ function (obj::PostProcessor{<:TransientModel,<:Any,<:Any})(t)
     obj.cache[1](obj, obj.cache[2]...)
 end
 
-function Jacobian(uh,km)
-  @warn "The function Jacobian is deprecated and it will be removed after release 0.0.7." maxlog=1
-  F, _, J = get_Kinematics(km)
-  J ∘ F ∘ ∇(uh)
-end
-
-function Piola(physmodel::ThermoElectroMechano, kine::NTuple{3,KinematicModel}, uh, φh, θh, Ω, dΩ, Λ=1.0)
-  @warn "The function Piola is deprecated and it will be removed after release 0.0.7." maxlog=1
-  DΨ = physmodel()
-  F, _, _ = get_Kinematics(kine[1])
-  E = get_Kinematics(kine[2])
-  ∂Ψu = DΨ[2]
-  σh = ∂Ψu ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)
-  interpolate_L2_tensor(σh, Ω, dΩ)
-end
-
-
-function Cauchy(args...)
-  @warn "The function Cauchy is deprecated and it will be removed after release 0.0.7." maxlog=1
-  Piola(args...)
-end
-
-
-function Piola(model::Elasto, km::KinematicModel, uh, unh, state_vars, Ω, dΩ, t=0)
-  @warn "The function Piola is deprecated and it will be removed after release 0.0.7." maxlog=1
-  σh = Piola(model,km,uh)
-  interpolate_L2_tensor(σh, Ω, dΩ)
-end
-
-
-function Piola(model::ViscoElastic, km::KinematicModel, uh, unh, state_vars, Ω, dΩ, t=0)
-  @warn "The function Piola is deprecated and it will be removed after release 0.0.7." maxlog=1
-  σh = Piola(model, km, uh, unh, state_vars)
-  interpolate_L2_tensor(σh, Ω, dΩ)
-end
-
-
-function Piola(model::Elasto, km::KinematicModel, uh, vars...)
-  @warn "The function Piola is deprecated and it will be removed after release 0.0.7." maxlog=1
-  _, ∂Ψu, _ = model()
-  F, _, _ = get_Kinematics(km)
-  ∂Ψu ∘ (F∘∇(uh))
-end
-
-
-function Piola(model::ViscoElastic,  km::KinematicModel, uh, unh, states)
-  @warn "The function Piola is deprecated and it will be removed after release 0.0.7." maxlog=1
-  _, ∂Ψu, _ = model()
-  F, _, _ = get_Kinematics(km)
-  ∂Ψu ∘ (F∘∇(uh), F∘∇(unh), states...)
-end
-
-
-function Entropy(physmodel::ThermoElectroMechano,  kine::NTuple{3,KinematicModel}, uh, φh, θh, Ω, dΩ, Λ=1.0)
-  @warn "The function Entropy is deprecated and it will be removed after release 0.0.7." maxlog=1
-  DΨ = physmodel()
-  F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
-  E     = get_Kinematics(kine[2]; Λ=Λ)
-  η = -DΨ[4]
-  refL2 = ReferenceFE(lagrangian, Float64, 0)
-  ref = ReferenceFE(lagrangian, Float64, 1)
-  VL2 = FESpace(Ω, refL2, conformity=:L2)
-  V = FESpace(Ω, ref, conformity=:H1)
-  ηh = interpolate_everywhere(L2_projection((η ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)), VL2, dΩ), V)
-  return ηh
-end
-
-
-function D0(physmodel::ThermoElectroMechano,  kine::NTuple{3,KinematicModel}, uh, φh, θh, Ω, dΩ, Λ=1.0)
-  @warn "The function D0 is deprecated and it will be removed after release 0.0.7." maxlog=1
-  DΨ = physmodel()
-  F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
-  E     = get_Kinematics(kine[2]; Λ=Λ)
-  ∂ΨE = DΨ[3]
-  refL2 = ReferenceFE(lagrangian, Float64, 0)
-  ref = ReferenceFE(lagrangian, Float64, 1)
-  VL2 = FESpace(Ω, refL2, conformity=:L2)
-  V = FESpace(Ω, ref, conformity=:H1)
-  n1 = VectorValue(-1.0, 0.0, 0.0)
-  n2 = VectorValue(0.0, -1.0, 0.0)
-  n3 = VectorValue(0.0, 0.0, -1.0)
-  D0_1h = interpolate_everywhere(L2_projection(n1 ⋅(∂ΨE ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)), VL2, dΩ), V)
-  D0_2h = interpolate_everywhere(L2_projection(n2 ⋅(∂ΨE ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)), VL2, dΩ), V)
-  D0_3h = interpolate_everywhere(L2_projection(n3 ⋅(∂ΨE ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)), VL2, dΩ), V)
-  return (D0_1h,D0_2h,D0_3h)
-end
-
-
-function interpolate_L2_tensor(A, Ω, dΩ, Γ=Ω)
-  @warn "The function interpolate_L2_tensor is deprecated and it will be removed after release 0.0.7. Use interpolate_L2_field." maxlog=1
-  refL2 = ReferenceFE(lagrangian, Float64, 0)
-  reffe = ReferenceFE(lagrangian, Float64, 1)
-  VL2 = FESpace(Ω, refL2, conformity=:L2)
-  VH1 = FESpace(Γ, reffe, conformity=:H1)
-  n1 = VectorValue(1.0, 0.0, 0.0)
-  n2 = VectorValue(0.0, 1.0, 0.0)
-  n3 = VectorValue(0.0, 0.0, 1.0)
-  A11 = interpolate_everywhere(L2_projection(n1 ⋅ A ⋅ n1, VL2, dΩ), VH1)
-  A12 = interpolate_everywhere(L2_projection(n1 ⋅ A ⋅ n2, VL2, dΩ), VH1)
-  A13 = interpolate_everywhere(L2_projection(n1 ⋅ A ⋅ n3, VL2, dΩ), VH1)
-  A22 = interpolate_everywhere(L2_projection(n2 ⋅ A ⋅ n2, VL2, dΩ), VH1)
-  A23 = interpolate_everywhere(L2_projection(n2 ⋅ A ⋅ n3, VL2, dΩ), VH1)
-  A33 = interpolate_everywhere(L2_projection(n3 ⋅ A ⋅ n3, VL2, dΩ), VH1)
-  trA = interpolate_everywhere(L2_projection(tr ∘ A,     VL2, dΩ), VH1)
-  (A11, A12, A13, A22, A23, A33, trA)
-end
-
-
-function interpolate_L2_vector(b, Ω, dΩ, Γ=Ω)
-  @warn "The function interpolate_L2_vector is deprecated and it will be removed after release 0.0.7. Use interpolate_L2_field." maxlog=1
-  refL2 = ReferenceFE(lagrangian, Float64, 0)
-  reffe = ReferenceFE(lagrangian, Float64, 1)
-  VL2 = FESpace(Ω, refL2, conformity=:L2)
-  VH1 = FESpace(Γ, reffe, conformity=:H1)
-  n1 = VectorValue(1.0, 0.0, 0.0)
-  n2 = VectorValue(0.0, 1.0, 0.0)
-  n3 = VectorValue(0.0, 0.0, 1.0)
-  b1 = interpolate_everywhere(L2_projection(n1 ⋅ b, VL2, dΩ), VH1)
-  b2 = interpolate_everywhere(L2_projection(n2 ⋅ b, VL2, dΩ), VH1)
-  b3 = interpolate_everywhere(L2_projection(n3 ⋅ b, VL2, dΩ), VH1)
-  (b1, b2, b3)
-end
-
-
-function interpolate_L2_scalar(x, Ω, dΩ, Γ=Ω)
-  @warn "The function interpolate_L2_scalar is deprecated and it will be removed after release 0.0.7. Use interpolate_L2_field." maxlog=1
-  refL2 = ReferenceFE(lagrangian, Float64, 0)
-  reffe = ReferenceFE(lagrangian, Float64, 1)
-  VL2 = FESpace(Ω, refL2, conformity=:L2)
-  VH1 = FESpace(Γ, reffe, conformity=:H1)
-  interpolate_everywhere(L2_projection(x, VL2, dΩ), VH1)
-end
-
-
 function _get_cell_field_type(f::CellField, dΩ::Measure)
   pts = get_cell_points(dΩ)
   f_x = f(pts)
@@ -239,16 +103,6 @@ function interpolate_L2_field(x, dΩ::Measure, Ω₂::Triangulation=_get_triangu
   interpolate_everywhere(L2_projection(x, VL2, dΩ), VH1)
 end
 
-function interpolate_L2_field(x, Ω, dΩ::Measure, T::Type=_get_cell_field_type(x, dΩ))
-  @warn "interpolate_L2_field: This signature is kept for direct compatibility with `interpolate_L2_scalar/vector/tensor` and it will be removed after release 0.0.7. The domain `Ω` can be removed from the list of arguments." maxlog=1
-  refL2 = ReferenceFE(lagrangian, T, 0)
-  reffe = ReferenceFE(lagrangian, T, 1)
-  VL2 = FESpace(Ω, refL2, conformity=:L2)
-  VH1 = FESpace(Ω, reffe, conformity=:H1)
-  interpolate_everywhere(L2_projection(x, VL2, dΩ), VH1)
-end
-
-
 """
     L2_projection(u, V, dΩ)
 
@@ -261,17 +115,6 @@ function L2_projection(u, V, dΩ::Measure)
   op      = AffineFEOperator(a, l, V, V)
   solve(op)
 end
-
-function L2_projection(u, dΩ::Measure, V)
-  @warn "The signature L2_projection(u, dΩ, V) is deprecated and it will be removed after release 0.0.7. Use L2_projection(u, V, dΩ)." maxlog=1
-  L2_projection(u, V, dΩ)
-end
-
-function L2_Projection(u, dΩ::Measure, V)
-  @warn "The function L2_Projection is deprecated and it will be removed after release 0.0.7. Use L2_projection(u, V, dΩ) (lowercase, idiomatic Julia)." maxlog=1
-  L2_projection(u, V, dΩ)
-end
-
 
 """
     component_LInf(u, direction, [Ω])::Float64

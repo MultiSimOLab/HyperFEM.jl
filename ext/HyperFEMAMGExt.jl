@@ -9,7 +9,7 @@ module HyperFEMAMGExt
 
 using HyperFEM
 using HyperFEM.Solvers: AMGSolver, split_nullspace
-import HyperFEM.Solvers: amg_symbolic_setup, linear_converged, linear_iterations, linear_info, preconditioner_builds
+import HyperFEM.Solvers: amg_symbolic_setup, linear_converged, linear_iterations, linear_info, preconditioner_builds, set_tolerance!, tolerance, _check_rtol
 using Gridap.Algebra
 import Gridap.Algebra: numerical_setup, numerical_setup!, solve!
 using AlgebraicMultigrid: smoothed_aggregation, aspreconditioner
@@ -143,6 +143,7 @@ mutable struct AMGSolverNS{TA<:AbstractMatrix,TB<:SparseMatrixCSC} <: NumericalS
   iters::Int
   rnorm::Float64
   converged::Bool
+  rtol::Float64                              # relative tolerance of the next solves (`set_tolerance!`)
 end
 
 function numerical_setup(ss::AMGSolverSS, A::AbstractMatrix)
@@ -153,7 +154,7 @@ function numerical_setup(ss::AMGSolverSS, A::AbstractMatrix)
     error("HyperFEM: AMGSolver: the field ranges end at $(last(s.fields[end])) but the matrix has $(size(A, 1)) rows")
   B = _operator(A, s.negate)
   P = _preconditioner(s, B)
-  AMGSolverNS{typeof(A),typeof(B)}(s, A, B, P, 1, 1, 0, 0.0, true)
+  AMGSolverNS{typeof(A),typeof(B)}(s, A, B, P, 1, 1, 0, 0.0, true, s.rtol)
 end
 
 function numerical_setup!(ns::AMGSolverNS, A::AbstractMatrix)
@@ -178,10 +179,10 @@ function solve!(x::AbstractVector, ns::AMGSolverNS, b::AbstractVector)
   fill!(x, zero(eltype(x)))
   negate!(b, s.negate)
   if s.krylov === :cg
-    _, h = cg!(x, ns.B, b; Pl=ns.P, reltol=s.rtol, abstol=s.atol, maxiter=s.maxiter, initially_zero=true, log=true)
+    _, h = cg!(x, ns.B, b; Pl=ns.P, reltol=ns.rtol, abstol=s.atol, maxiter=s.maxiter, initially_zero=true, log=true)
   else
     # right preconditioning: the residual the method monitors is the true one, ‖b - A x‖ ≤ rtol ‖b‖, as the PETSc solver
-    _, h = gmres!(x, ns.B, b; Pr=ns.P, reltol=s.rtol, abstol=s.atol, maxiter=s.maxiter, restart=min(s.restart, length(b)), initially_zero=true, log=true)
+    _, h = gmres!(x, ns.B, b; Pr=ns.P, reltol=ns.rtol, abstol=s.atol, maxiter=s.maxiter, restart=min(s.restart, length(b)), initially_zero=true, log=true)
   end
   negate!(b, s.negate)
   ns.iters = h.iters
@@ -195,5 +196,7 @@ linear_converged(ns::AMGSolverNS) = ns.converged
 linear_iterations(ns::AMGSolverNS) = ns.iters
 preconditioner_builds(ns::AMGSolverNS) = ns.nbuild
 linear_info(ns::AMGSolverNS) = " $(ns.iters)"
+set_tolerance!(ns::AMGSolverNS, rtol) = (ns.rtol = rtol === nothing ? ns.solver.rtol : _check_rtol(rtol); ns)
+tolerance(ns::AMGSolverNS) = ns.rtol
 
 end # module

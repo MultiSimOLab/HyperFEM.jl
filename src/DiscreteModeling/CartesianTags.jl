@@ -26,9 +26,6 @@ export edge00Z⁺, edge10Z⁺, edge01Z⁺, edge11Z⁺
 
 export face0YZ⁺, face1YZ⁺, faceX0Z⁺, faceX1Z⁺, faceXY0⁺, faceXY1⁺
 
-# Deprecated tags
-export faceX0, faceX1, faceY0, faceY1, faceZ0, faceZ1
-
 # --- Face tags ---
 
 "Tags indicating the face at plane X0."
@@ -170,14 +167,5 @@ const faceXY0⁺ = [faceXY0; edgeX00⁺; edgeX10⁺; edge0Y0⁺; edge1Y0⁺]
 
 "Tags indicating points, edges and faces at plane Z1."
 const faceXY1⁺ = [faceXY1; edgeX01⁺; edgeX11⁺; edge0Y1⁺; edge1Y1⁺]
-
-# --- Deprecations ---
-
-Base.@deprecate_binding faceX0 face0YZ
-Base.@deprecate_binding faceX1 face1YZ
-Base.@deprecate_binding faceY0 faceX0Z
-Base.@deprecate_binding faceY1 faceX1Z
-Base.@deprecate_binding faceZ0 faceXY0
-Base.@deprecate_binding faceZ1 faceXY1
 
 end

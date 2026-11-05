@@ -128,8 +128,10 @@ tangent, and the direct solver MUMPS:
 using GridapPETSc
 
 # Multi-field problems (u, φ): GMRES with a block (fieldsplit) preconditioner, one AMG per field with
-# rigid-body modes on the displacement block. The production solver for electro- and magneto-mechanics.
-nls = NewtonRaphson(PETScSolver(U); maxiter=20, atol=0.0, rtol=1.e-8)
+# rigid-body modes on the displacement block, rebuilt every 3 Newton iterations (reuse), and an inexact
+# Newton (forcing): every linear solve only as tight as the Newton needs. The production configuration for
+# electro- and magneto-mechanics.
+nls = NewtonRaphson(PETScSolver(U; reuse=3); maxiter=20, rtol=1.e-8, forcing=EisenstatWalker())
 
 # Mechanics (single vector field, P1/Q1): CG + GAMG with the rigid-body modes of the space.
 nls = NewtonRaphson(PETScSolver(:cg, :gamg; nullspace=near_nullspace(U)); rtol=1.e-8)
@@ -139,8 +141,12 @@ nls = NewtonRaphson(PETScSolver(:cg, :gamg; nullspace=near_nullspace(U)); rtol=1
 nls = NewtonRaphson(PETScSolver(:preonly, :mumps); rtol=1.e-8)
 ```
 
-Krylov tolerances (`rtol`, default 1e-10, `atol = 0`) are relative to the right-hand side; `reuse = n` keeps
-the preconditioner for `n` Newton iterations. The pure-Julia counterpart `AMGSolver(U)` (with
+Krylov tolerances (`rtol`, `atol = 0`) are relative to the right-hand side; `reuse = n` keeps the
+preconditioner for `n` Newton iterations; `forcing = EisenstatWalker()` lets the Newton choose the tolerance of
+every linear solve (loose far from the solution, tight near it). Neither is the default, because both change
+the Newton trajectory (a few more Newton iterations, far fewer Krylov iterations and preconditioner builds):
+on electro- and magneto-mechanical benchmarks of 100k–240k dofs the configuration above solved ×1.9–2.2
+faster than `PETScSolver(U)` with exact linear solves. The pure-Julia counterpart `AMGSolver(U)` (with
 `using AlgebraicMultigrid`) runs the same block preconditioners without PETSc and is what the test suite
 uses. Assembly can be delegated to compiled, threaded kernels with `backend=:compiled` in the drivers
 (`using HyperFEMKernels`); with an iterative solver this is what makes the assembly negligible.

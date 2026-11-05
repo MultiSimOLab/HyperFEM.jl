@@ -37,6 +37,7 @@ Gridap.Algebra.symbolic_setup(::DiagonalSolver, A::AbstractMatrix) = DiagonalSS(
 Gridap.Algebra.numerical_setup(::DiagonalSS, A::Diagonal) = DiagonalNS(A)
 Gridap.Algebra.numerical_setup!(ns::DiagonalNS, A::Diagonal) = (ns.A = A; ns)
 Gridap.Algebra.solve!(x::AbstractVector, ns::DiagonalNS, b::AbstractVector) = (x .= b ./ ns.A.diag; x)
+HyperFEM.Solvers.set_tolerance!(ns::DiagonalNS, rtol) = ns   # direct: the forcing term is ignored, silently
 
 n = 1000
 d = 1.0 .+ rand(n)
@@ -51,7 +52,7 @@ function solve_twice(nls, op)
 end
 
 @testset "Newton loop without allocations" begin
-  for ls in (LineSearch(), Roman_LS(; maxiter=10))
+  for ls in (FullStepLS(), BacktrackingLS(; maxiter=10))
     nls = NewtonRaphson(DiagonalSolver(); maxiter=30, atol=1e-13, rtol=1e-14, verbose=0)
     nls = NewtonRaphson(nls.ls, nls.tols, nls.log, ls)
     bytes = solve_twice(nls, op)
@@ -61,6 +62,10 @@ end
     solve!(x, nls, op, nothing)
     @test norm(d .* x .+ x .^ 3 .- f) < 1e-12
   end
+  # with the forcing term (computed and recorded; the direct solver ignores it): still no allocations
+  nls = NewtonRaphson(DiagonalSolver(); maxiter=30, atol=1e-13, rtol=1e-14, verbose=0, forcing=EisenstatWalker())
+  @test solve_twice(nls, op) == 0
+  @test converged(nls) && forcing_history(nls)[1] == 1e-2
   # curvature criterion active: still no allocations
   nls = NewtonRaphson(DiagonalSolver(); maxiter=30, atol=0.0, rtol=0.0, ctol=1e-20, verbose=0)
   @test solve_twice(nls, op) == 0
@@ -76,7 +81,7 @@ end
   residual!(b, op, x)
   rmul!(b, -1)
   dx .= b ./ (d .+ 3 .* x .^ 2)
-  for ls in (LineSearch(), Roman_LS(; maxiter=10))
+  for ls in (FullStepLS(), BacktrackingLS(; maxiter=10))
     x0 = copy(x)
     search!(ls, w, op, x, dx, b)
     copyto!(x, x0); residual!(b, op, x); rmul!(b, -1)

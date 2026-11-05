@@ -40,6 +40,10 @@ using Test
     include("FieldSplitTests.jl")
   end
 
+  @time begin
+    include("MemoryTests.jl")
+  end
+
   # PETSc variants: local only (GridapPETSc is not in the CI test environment, see PETScSolverTests.jl)
   if get(ENV, "HYPERFEM_TEST_PETSC", "0") == "1"
     @time begin

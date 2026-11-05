@@ -18,8 +18,6 @@ uh = interpolate(u, FESpace(model, ReferenceFE(lagrangian, VectorValue{3,Float64
   fh1 = L2_projection(f, V1, dΩ)
   @test sum(∫(fh0)dΩ) ≈ sum(∫(f)dΩ)    # The mean value is preserved
   @test sum(∫((fh1 - f) * (fh1 - f))dΩ) < 1e-20    # A linear field is exactly represented
-  fh0_old = @test_logs (:warn,) L2_projection(f, dΩ, V0)
-  @test get_free_dof_values(fh0_old) ≈ get_free_dof_values(fh0)
 end
 
 

@@ -18,7 +18,7 @@ module HyperFEMPETScExt
 
 using HyperFEM
 using HyperFEM.Solvers: PETScSolver, _linear_name, split_nullspace
-import HyperFEM.Solvers: petsc_symbolic_setup, linear_converged, linear_iterations, linear_info, preconditioner_builds
+import HyperFEM.Solvers: petsc_symbolic_setup, linear_converged, linear_iterations, linear_info, preconditioner_builds, set_tolerance!, tolerance, _check_rtol
 using Gridap.Algebra
 import Gridap.Algebra: numerical_setup, numerical_setup!, solve!
 using GridapPETSc
@@ -46,6 +46,8 @@ PetscOptionsSetValue(name::String, value::String) =
   ccall(_sym(:PetscOptionsSetValue), Cint, (Ptr{Cvoid}, Cstring, Cstring), C_NULL, name, value)
 KSPGetConvergedReason(ksp::KSP, reason::Ref{Cint}) =
   ccall(_sym(:KSPGetConvergedReason), Cint, (KSP, Ptr{Cint}), ksp, reason)
+KSPGetTolerances(ksp::KSP, rtol, atol, dtol, maxits) =
+  ccall(_sym(:KSPGetTolerances), Cint, (KSP, Ptr{PetscReal}, Ptr{PetscReal}, Ptr{PetscReal}, Ptr{PetscInt}), ksp, rtol, atol, dtol, maxits)
 KSPSetReusePreconditioner(ksp::KSP, flag::PetscBool) =
   ccall(_sym(:KSPSetReusePreconditioner), Cint, (KSP, PetscBool), ksp, flag)
 PCFieldSplitSetIS(pc::PC, name::String, is::IS) =
@@ -170,6 +172,11 @@ mutable struct PETScSolverNS{M} <: NumericalSetup
   rnorm::Float64
   reason::Cint
   initialized::Bool
+  rtol0::Float64                               # relative tolerance after the setup (options included), restored by set_tolerance!(ns, nothing)
+  rtol::Float64                                # relative tolerance of the next solves
+  atol::PetscReal                              # the other KSP tolerances after the setup (fixed: only rtol changes)
+  dtol::PetscReal
+  maxits::PetscInt
 end
 
 const _NSOLVERS = Ref(0)
@@ -320,7 +327,7 @@ function numerical_setup(ss::PETScSolverSS, A::AbstractMatrix)
   mirror, B = _petsc_matrix(A, s.negate)
   _set_blocksize!(B, s.blocksize)
   ns = PETScSolverNS{typeof(mirror)}(s, prefix, mirror, A, B, Ref{KSP}(), Ref{MatNullSpace}(), PETScVector[], false,
-                                      PETScIndexSet[], Ref{MatNullSpace}[], PETScVector[], 1, 1, 0, 0.0, Cint(0), false)
+                                      PETScIndexSet[], Ref{MatNullSpace}[], PETScVector[], 1, 1, 0, 0.0, Cint(0), false, s.rtol, s.rtol, PetscReal(s.atol), PetscReal(1e10), PetscInt(s.maxiter))
   s.nullspace === nothing || _set_nullspace!(ns, s.nullspace)
   @check_error_code PETSC.KSPCreate(B.comm, ns.ksp)
   @check_error_code PETSC.KSPSetOptionsPrefix(ns.ksp[], prefix)
@@ -331,6 +338,8 @@ function numerical_setup(ss::PETScSolverSS, A::AbstractMatrix)
   @check_error_code PETSC.KSPSetFromOptions(ns.ksp[])   # after the tolerances, so that -ksp_rtol etc. in `options` win; the options
                                                         # stay in the database until destroy: the multigrid levels read theirs at KSPSetUp
   @check_error_code PETSC.KSPSetUp(ns.ksp[])
+  ns.rtol0, ns.atol, ns.dtol, ns.maxits = _tolerances(ns)   # as PETSc ended up with them (options included)
+  ns.rtol = ns.rtol0
   _init!(ns)
 end
 
@@ -411,6 +420,27 @@ linear_converged(ns::PETScSolverNS) = ns.reason > 0
 linear_iterations(ns::PETScSolverNS) = ns.iters
 preconditioner_builds(ns::PETScSolverNS) = ns.nbuild
 linear_info(ns::PETScSolverNS) = ns.solver.ksp === :preonly ? "" : " $(ns.iters)"
+
+function _tolerances(ns::PETScSolverNS)
+  r = Ref{PetscReal}(); a = Ref{PetscReal}(); d = Ref{PetscReal}(); m = Ref{PetscInt}()
+  @check_error_code KSPGetTolerances(ns.ksp[], r, a, d, m)
+  Float64(r[]), a[], d[], m[]
+end
+
+# Only the relative tolerance changes (absolute, divergence and maximum iterations as set up, cached in the setup:
+# no query per call). Direct solvers (`:preonly`) apply the preconditioner once whatever the tolerance: a no-op for
+# them. The KSP tolerances are owned by this method after the setup: `numerical_setup!` must not reset them
+# (it only changes the operators), or the cached `ns.rtol` goes stale.
+function set_tolerance!(ns::PETScSolverNS, rtol)
+  ns.solver.ksp === :preonly && return ns
+  r = rtol === nothing ? ns.rtol0 : _check_rtol(rtol)
+  r == ns.rtol && return ns
+  @check_error_code PETSC.KSPSetTolerances(ns.ksp[], PetscReal(r), ns.atol, ns.dtol, ns.maxits)
+  ns.rtol = r
+  ns
+end
+
+tolerance(ns::PETScSolverNS) = ns.solver.ksp === :preonly ? nothing : ns.rtol
 
 "PETSc's name of the last convergence reason (e.g. `KSP_CONVERGED_RTOL`, `KSP_DIVERGED_ITS`)."
 function converged_reason(ns::PETScSolverNS)
