@@ -16,4 +16,4 @@ TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 
 [compat]
 AlgebraicMultigrid = "1.1, 2"
-HyperFEMKernels = "0.1"
+HyperFEMKernels = "0.2"
