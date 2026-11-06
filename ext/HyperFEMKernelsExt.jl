@@ -7,7 +7,7 @@ module HyperFEMKernelsExt
 
 using HyperFEM
 using HyperFEM.Backends: CompiledBackend
-using HyperFEMKernels
+import HyperFEMKernels
 using HyperFEMKernels: KernelOperator, update, KernelState, KernelUpdater, MatrixFreeJacobian, MatrixFreeSolver, sparsity_pattern
 using HyperFEMKernels: KernelFunctional
 using Gridap.FESpaces: FEFunction
