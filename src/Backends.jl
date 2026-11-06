@@ -16,11 +16,26 @@ abstract type AbstractBackend end
 struct LazyBackend <: AbstractBackend end
 
 """
+    CompiledBackend(; jacobian = :assembled)
+
 The weak forms compiled into fused, threaded kernels by HyperFEMKernels (`KernelOperator`);
 `backend = :compiled`. Its methods are provided by the extension HyperFEMKernelsExt
 (`using HyperFEMKernels`); without it every use fails with a clear error.
+
+`jacobian = :matrixfree` makes the nonlinear drivers hand the Newton a matrix-free tangent
+(`HyperFEMKernels.MatrixFreeJacobian`: the tangent is applied without being assembled) that only
+a solver of the operator accepts (`HyperFEMKernels.MatrixFreeSolver`); the linear drivers and the
+Dirichlet projection keep assembling. The sparsity pattern is then built only if a preconditioner
+assembles (`LaggedAssembled`).
 """
-struct CompiledBackend <: AbstractBackend end
+struct CompiledBackend <: AbstractBackend
+  jacobian::Symbol
+  function CompiledBackend(; jacobian::Symbol=:assembled)
+    jacobian in (:assembled, :matrixfree) ||
+      error("HyperFEM: CompiledBackend: jacobian must be :assembled or :matrixfree (got :$jacobian)")
+    new(jacobian)
+  end
+end
 
 """
     as_backend(b) -> AbstractBackend

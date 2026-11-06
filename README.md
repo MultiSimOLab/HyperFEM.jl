@@ -151,6 +151,29 @@ faster than `PETScSolver(U)` with exact linear solves. The pure-Julia counterpar
 uses. Assembly can be delegated to compiled, threaded kernels with `backend=:compiled` in the drivers
 (`using HyperFEMKernels`); with an iterative solver this is what makes the assembly negligible.
 
+With `backend = CompiledBackend(jacobian = :matrixfree)` the nonlinear drivers never assemble the tangent
+for the Krylov solver: HyperFEMKernels applies it matrix-free and `MatrixFreeSolver` (GMRES, FGMRES or CG
+from Krylov.jl) solves the Newton systems on that operator. The preconditioner is a slot;
+`LaggedAssembled(solver; every = k)` assembles and factorises the tangent only every `k` Newton iterations
+and preconditions with it in between, so the Newton keeps the exact tangent (same trajectory as a direct
+solver) with a fraction of the factorisations:
+
+```julia
+using HyperFEMKernels, GridapPETSc
+using HyperFEMKernels: MatrixFreeSolver, LaggedAssembled
+
+ls  = MatrixFreeSolver(; krylov = :gmres, rtol = 1e-10,
+                       preconditioner = LaggedAssembled(PETScSolver(:preonly, :mumps); every = 3))
+nls = NewtonRaphson(ls; maxiter = 20, rtol = 1e-8)
+m   = StaticNonlinearModel(res, jac, U, V, D; nls, backend = CompiledBackend(jacobian = :matrixfree))
+```
+
+On a thin electro-mechanical Q2 hexahedral benchmark, where algebraic multigrid does not converge and MUMPS
+is the reference, this configuration took the same 20 Newton iterations as MUMPS and solved ×2.3 (57k dofs)
+and ×5.0 (218k dofs) faster (our measurement: Mac, 6 Julia threads, PETSc serial). On simplices the
+matrix-free product is slower than the assembled one; there the assembled configurations above remain the
+choice.
+
 ## HyperFEM Gallery
 
 ![img](https://github.com/MultiSimOLab/HyperFEM.jl/raw/main/docs/img/sims.png)

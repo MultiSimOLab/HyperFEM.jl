@@ -7,13 +7,16 @@ module HyperFEMKernelsExt
 
 using HyperFEM
 using HyperFEM.Backends: CompiledBackend
-using HyperFEMKernels: KernelOperator, update, KernelState, KernelUpdater
+import HyperFEMKernels
+using HyperFEMKernels: KernelOperator, update, KernelState, KernelUpdater, MatrixFreeJacobian, MatrixFreeSolver, sparsity_pattern
+using HyperFEMKernels: KernelFunctional
 using Gridap.FESpaces: FEFunction
-using Gridap.Algebra: residual!, jacobian!, zero_initial_guess
+using Gridap: ∫, ∇
+using Gridap.Algebra: residual!, jacobian!, zero_initial_guess, SymbolicSetup, NumericalSetup
 using Gridap.Algebra: allocate_residual, allocate_jacobian
 
-function HyperFEM.ComputationalModels.build_operator(::CompiledBackend, res, jac, U, V, assem, previous)
-    previous isa KernelOperator ? update(previous, res, jac) : KernelOperator(res, jac, U, V)
+function HyperFEM.ComputationalModels.build_operator(b::CompiledBackend, res, jac, U, V, assem, previous)
+    previous isa KernelOperator ? update(previous, res, jac) : KernelOperator(res, jac, U, V; jacobian=b.jacobian)
 end
 
 # Dirichlet projection (`solve!(...; ProjectDirichlet=true)`): the linearised problem
@@ -23,10 +26,10 @@ end
 # operator of the previous step is reused (`update`): same spaces, pattern and colouring. The system
 # is assembled into the tangent and the residual of the Newton cache, whose pattern (that of the
 # model's operator on U, V) is the one of this operator (∆U shares the free dofs of U).
-function HyperFEM.ComputationalModels.dirichlet_projection!(::CompiledBackend, A, b, res, jac, uh, ∆U, V, assem, previous)
+function HyperFEM.ComputationalModels.dirichlet_projection!(bk::CompiledBackend, A, b, res, jac, uh, ∆U, V, assem, previous)
     r(du, v) = jac(uh, du, v) + res(uh, v)
     j(du, ddu, v) = jac(uh, ddu, v)
-    op = previous isa KernelOperator ? update(previous, r, j) : KernelOperator(r, j, ∆U, V)
+    op = previous isa KernelOperator ? update(previous, r, j) : KernelOperator(r, j, ∆U, V; jacobian=bk.jacobian)
     _check_pattern(A, op, previous)
     x0 = zero_initial_guess(op)
     residual!(b, op, x0)
@@ -65,10 +68,12 @@ end
 # projection): `update` keeps it unless fallback terms (assembled by Gridap) changed the pattern, which the
 # setup of the model could not follow.
 function _check_pattern(K, op::KernelOperator, previous)
-    previous isa KernelOperator && op.A0 === previous.A0 && return
-    (size(K) == size(op.A0) && K.colptr == op.A0.colptr && K.rowval == op.A0.rowval) ||
+    previous isa KernelOperator && op.pattern === previous.pattern && return
+    A0 = sparsity_pattern(op)
+    (size(K) == size(A0) && K.colptr == A0.colptr && K.rowval == A0.rowval) ||
         error("HyperFEM: the sparsity pattern of the kernel operator does not match the matrix it assembles into")
 end
+_check_pattern(::MatrixFreeJacobian, ::KernelOperator, previous) = nothing   # the operator is prepared, not assembled
 
 function HyperFEM.ComputationalModels.linear_system(::CompiledBackend, bf, lf, U, V, assem)
     op = KernelOperator(_linear_res(bf, lf), _linear_jac(bf), U, V)
@@ -91,6 +96,61 @@ function HyperFEM.ComputationalModels.load_vector!(::CompiledBackend, b, lf, U, 
     residual!(b, op, zero_initial_guess(op))
     b .*= -1.0
     op
+end
+
+# Matrix-free tangent (`CompiledBackend(jacobian = :matrixfree)`, solver stage S3): the Newton's hooks for the
+# setup of HyperFEMKernels' `MatrixFreeSolver`, and the state-aware setup of the solver inside its `LaggedAssembled`
+# slot (HyperFEM's `PETScSolver` takes the rigid-body modes from the state).
+const MFNS = HyperFEMKernels.MatrixFreeSolverNS
+HyperFEM.linear_converged(ns::MFNS) = HyperFEMKernels.linear_converged(ns)
+HyperFEM.linear_iterations(ns::MFNS) = HyperFEMKernels.linear_iterations(ns)
+HyperFEM.set_tolerance!(ns::MFNS, rtol) = HyperFEMKernels.set_tolerance!(ns, rtol)
+HyperFEM.tolerance(ns::MFNS) = HyperFEMKernels.tolerance(ns)
+HyperFEM.preconditioner_builds(ns::MFNS) = HyperFEMKernels.preconditioner_builds(ns)
+HyperFEM.linear_info(ns::MFNS) = " $(HyperFEMKernels.linear_iterations(ns))"
+HyperFEM.Solvers._linear_name(s::MatrixFreeSolver) = "MF-" * uppercase(string(s.krylov))
+HyperFEMKernels.numerical_setup_state(ss::SymbolicSetup, A, x) = HyperFEM.numerical_setup_state(ss, A, x)
+HyperFEMKernels.numerical_setup_state!(ns::NumericalSetup, A, x) = HyperFEM.numerical_setup_state!(ns, A, x)
+
+# Energy and injectivity step of the drivers' line searches with the kernels (`KernelFunctional`, solver stage S3):
+# the functionals live in the step cache (`store`), the energy is re-captured with `update` at every load factor
+# (new tables are not built), and the injectivity step reads the increment from an FE function over a buffer of the
+# cache, so the pointwise function is compiled once (per β, jmin of the line search).
+mutable struct KernelFunctionals
+    energy::Any          # KernelFunctional (reduce = :sum) or nothing
+    injectivity::Any     # KernelFunctional (reduce = :min) or nothing
+    dx::Vector{Float64}  # increment buffer read by `dxh`
+    dxh::Any             # FEFunction on V over `dx`
+    β::Float64
+    jmin::Float64
+end
+_functionals(store::Base.RefValue{Any}) = store[] === nothing ? (store[] = KernelFunctionals(nothing, nothing, Float64[], nothing, NaN, NaN)) : store[]::KernelFunctionals
+_functionals(::Nothing) = KernelFunctionals(nothing, nothing, Float64[], nothing, NaN, NaN)
+
+function HyperFEM.ComputationalModels.energy_function(::CompiledBackend, e, U, store)
+    st = _functionals(store)
+    fun = st.energy === nothing ? KernelFunctional(e, U) : update(st.energy, e)
+    st.energy = fun
+    x -> fun(x)
+end
+
+function HyperFEM.ComputationalModels.injectivity_function(::CompiledBackend, inj, U, V, store)
+    st = _functionals(store)
+    dΩ, field = inj
+    _field = HyperFEM.ComputationalModels._field
+    (x, dx, β, jmin) -> begin
+        if st.injectivity === nothing || st.β != β || st.jmin != jmin || length(st.dx) != length(dx)
+            st.dx = zeros(length(dx))
+            st.dxh = FEFunction(V, st.dx)
+            duh = st.dxh
+            f(∇u, ∇du) = HyperFEM.Solvers.injectivity_step(∇u, ∇du, β, jmin)
+            form(u) = ∫(f ∘ (∇(_field(u, field))', ∇(_field(duh, field))'))dΩ
+            st.injectivity = KernelFunctional(form, U; reduce=:min)
+            st.β, st.jmin = β, jmin
+        end
+        copyto!(st.dx, dx)
+        min(1.0, st.injectivity(x))
+    end
 end
 
 # State variables: `CellState(model, dΩ; backend = :compiled)` stores them as dense `KernelState`s, whose

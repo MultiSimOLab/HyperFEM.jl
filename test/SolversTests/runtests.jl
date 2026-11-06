@@ -44,6 +44,16 @@ using Test
     include("MemoryTests.jl")
   end
 
+  # matrix-free tangent (S3): needs HyperFEMKernels, as the compiled backend of the Krylov batteries
+  if :compiled in Symbol.(strip.(split(get(ENV, "HYPERFEM_TEST_BACKENDS", "lazy,compiled"), ",")))
+    @time begin
+      include("MatrixFreeTests.jl")
+    end
+    @time begin
+      include("CompiledFunctionalsTests.jl")
+    end
+  end
+
   # PETSc variants: local only (GridapPETSc is not in the CI test environment, see PETScSolverTests.jl)
   if get(ENV, "HYPERFEM_TEST_PETSC", "0") == "1"
     @time begin
