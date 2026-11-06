@@ -213,7 +213,8 @@ passes reach `max_substeps` without convergence, or in which an inner solve fail
 lagged states and the Dirichlet values return to the last accepted step and the increment is bisected
 (`maxbisec` consecutive bisections at most); after a step accepted in at most `easy` passes the increment grows
 by `grow`, never beyond the initial one. `relaxation` is `:none`, a factor, `:aitken`/`Aitken(; ω0, ωmin, ωmax)`
-or a tuple with one of them per field; the factor of a field whose model has an `injectivity` measure and an
+(`ωmax > 1` allows over-relaxation, which a monotonically converging iteration needs to gain anything) or a tuple
+with one of them per field; the factor of a field whose model has an `injectivity` measure and an
 `InjectivityLS` is cut so that the relaxed state does not invert elements. The post-processors of the inner
 models run inside every pass; output per accepted step belongs in `on_step`.
 
