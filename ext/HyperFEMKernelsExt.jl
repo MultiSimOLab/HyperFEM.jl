@@ -9,7 +9,9 @@ using HyperFEM
 using HyperFEM.Backends: CompiledBackend
 using HyperFEMKernels
 using HyperFEMKernels: KernelOperator, update, KernelState, KernelUpdater, MatrixFreeJacobian, MatrixFreeSolver, sparsity_pattern
+using HyperFEMKernels: KernelFunctional
 using Gridap.FESpaces: FEFunction
+using Gridap: ∫, ∇
 using Gridap.Algebra: residual!, jacobian!, zero_initial_guess, SymbolicSetup, NumericalSetup
 using Gridap.Algebra: allocate_residual, allocate_jacobian
 
@@ -109,6 +111,47 @@ HyperFEM.linear_info(ns::MFNS) = " $(HyperFEMKernels.linear_iterations(ns))"
 HyperFEM.Solvers._linear_name(s::MatrixFreeSolver) = "MF-" * uppercase(string(s.krylov))
 HyperFEMKernels.numerical_setup_state(ss::SymbolicSetup, A, x) = HyperFEM.numerical_setup_state(ss, A, x)
 HyperFEMKernels.numerical_setup_state!(ns::NumericalSetup, A, x) = HyperFEM.numerical_setup_state!(ns, A, x)
+
+# Energy and injectivity step of the drivers' line searches with the kernels (`KernelFunctional`, solver stage S3):
+# the functionals live in the step cache (`store`), the energy is re-captured with `update` at every load factor
+# (new tables are not built), and the injectivity step reads the increment from an FE function over a buffer of the
+# cache, so the pointwise function is compiled once (per β, jmin of the line search).
+mutable struct KernelFunctionals
+    energy::Any          # KernelFunctional (reduce = :sum) or nothing
+    injectivity::Any     # KernelFunctional (reduce = :min) or nothing
+    dx::Vector{Float64}  # increment buffer read by `dxh`
+    dxh::Any             # FEFunction on V over `dx`
+    β::Float64
+    jmin::Float64
+end
+_functionals(store::Base.RefValue{Any}) = store[] === nothing ? (store[] = KernelFunctionals(nothing, nothing, Float64[], nothing, NaN, NaN)) : store[]::KernelFunctionals
+_functionals(::Nothing) = KernelFunctionals(nothing, nothing, Float64[], nothing, NaN, NaN)
+
+function HyperFEM.ComputationalModels.energy_function(::CompiledBackend, e, U, store)
+    st = _functionals(store)
+    fun = st.energy === nothing ? KernelFunctional(e, U) : update(st.energy, e)
+    st.energy = fun
+    x -> fun(x)
+end
+
+function HyperFEM.ComputationalModels.injectivity_function(::CompiledBackend, inj, U, V, store)
+    st = _functionals(store)
+    dΩ, field = inj
+    _field = HyperFEM.ComputationalModels._field
+    (x, dx, β, jmin) -> begin
+        if st.injectivity === nothing || st.β != β || st.jmin != jmin || length(st.dx) != length(dx)
+            st.dx = zeros(length(dx))
+            st.dxh = FEFunction(V, st.dx)
+            duh = st.dxh
+            f(∇u, ∇du) = HyperFEM.Solvers.injectivity_step(∇u, ∇du, β, jmin)
+            form(u) = ∫(f ∘ (∇(_field(u, field))', ∇(_field(duh, field))'))dΩ
+            st.injectivity = KernelFunctional(form, U; reduce=:min)
+            st.β, st.jmin = β, jmin
+        end
+        copyto!(st.dx, dx)
+        min(1.0, st.injectivity(x))
+    end
+end
 
 # State variables: `CellState(model, dΩ; backend = :compiled)` stores them as dense `KernelState`s, whose
 # updates run with the engine automatically; `update_state!(model, ...; backend = :compiled)` runs the

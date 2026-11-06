@@ -49,6 +49,9 @@ using Test
     @time begin
       include("MatrixFreeTests.jl")
     end
+    @time begin
+      include("CompiledFunctionalsTests.jl")
+    end
   end
 
   # PETSc variants: local only (GridapPETSc is not in the CI test environment, see PETScSolverTests.jl)

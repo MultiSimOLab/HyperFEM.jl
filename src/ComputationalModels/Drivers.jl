@@ -157,11 +157,12 @@ mutable struct NonlinearStepCache{N<:NonlinearSolver,C,X<:AbstractVector,A,B<:Ab
     const backend::B
     op::O
     projection::Any
+    const functionals::Base.RefValue{Any}   # the backend's energy / injectivity functionals (`nothing` for the lazy backend)
 end
 
-NonlinearStepCache(nls, nls_cache, x, x⁻, assem, backend, op) =
+NonlinearStepCache(nls, nls_cache, x, x⁻, assem, backend, op, functionals=Ref{Any}(nothing)) =
     NonlinearStepCache{typeof(nls),typeof(nls_cache),typeof(x),typeof(assem),typeof(backend),typeof(op)}(
-        nls, nls_cache, x, x⁻, assem, backend, op, nothing)
+        nls, nls_cache, x, x⁻, assem, backend, op, nothing, functionals)
 
 """
     LinearSystemCache(ns, K, b, x, assem, backend, op)
@@ -319,8 +320,9 @@ struct StaticNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
         bk = as_backend(backend)
         assem = assembler(bk, assem_U, U, V)
         op = build_operator(bk, _res, _jac, U, V, assem, nothing)
-        nls_cache = instantiate_caches(x, nls, model_operator(hooks, spaces, neumann, op, 1.0, 1.0))
-        caches = NonlinearStepCache(nls, nls_cache, x, x⁻, assem, bk, op)
+        functionals = Ref{Any}(nothing)
+        nls_cache = instantiate_caches(x, nls, model_operator(hooks, spaces, neumann, op, 1.0, 1.0; backend=bk, store=functionals))
+        caches = NonlinearStepCache(nls, nls_cache, x, x⁻, assem, bk, op, functionals)
 
         A, B, C = typeof(res), typeof(jac), typeof(spaces)
         D, E, F, G, H = typeof(dirbc), typeof(neumann), typeof(applicators), typeof(caches), typeof(hooks)
@@ -348,20 +350,37 @@ function Solvers.injectivity_step(m::StaticNonlinearModel, xh, dxh, β, jmin)
 end
 
 # The operator handed to the Newton: the operator of the backend with the hooks of the model at the
-# stage Λ and the load loadΛ of the step
-function model_operator(hooks, spaces, neumann, op, Λ, loadΛ)
+# stage Λ and the load loadΛ of the step. The energy and the injectivity step are evaluated by the
+# `backend` (`energy_function`, `injectivity_function`): Gridap's lazy evaluation by default, the
+# kernels of the compiled backend (extension), which keep their functionals in `store` between steps.
+function model_operator(hooks, spaces, neumann, op, Λ, loadΛ; backend::AbstractBackend=LazyBackend(), store=nothing)
     U, V = spaces[1], spaces[2]
     inj = hooks.injectivity
-    ms = inj === nothing ? nothing :
-        (x, dx, β, jmin) -> injectivity_step(inj[1], _field(FEFunction(U, x), inj[2]), _field(FEFunction(V, dx), inj[2]), β, jmin)
-    en = hooks.energy === nothing ? nothing : _energy_function(with_neumann_energy(hooks.energy(Λ), neumann, loadΛ), U)
+    ms = inj === nothing ? nothing : injectivity_function(backend, inj, U, V, store)
+    en = hooks.energy === nothing ? nothing : energy_function(backend, with_neumann_energy(hooks.energy(Λ), neumann, loadΛ), U, store)
     ModelOperator(op; max_step=ms, energy=en, tangent_switch=hooks.tangent_switch)
 end
-model_operator(m::StaticNonlinearModel, op, Λ=1.0, loadΛ=1.0) = model_operator(m.hooks, m.spaces, m.neumann, op, Λ, loadΛ)
+model_operator(m::StaticNonlinearModel, op, Λ=1.0, loadΛ=1.0) =
+    model_operator(m.hooks, m.spaces, m.neumann, op, Λ, loadΛ; backend=m.caches.backend, store=m.caches.functionals)
 
-# Energy of the model at the free values x (Gridap's lazy evaluation for every backend; the engine's
-# scalar functionals are a follow-up of HyperFEMKernels)
-_energy_function(e, U) = x -> sum(e(FEFunction(U, x)))
+"""
+    energy_function(backend, e, U, store) -> x -> Float64
+
+Energy of the model at the free values `x` for the functional `e(uh)` (a `DomainContribution`):
+Gridap's lazy `sum` for any backend without its own evaluation; the compiled backend evaluates it
+with the kernels (`KernelFunctional`, kept in `store` and updated with the load factor).
+"""
+energy_function(::AbstractBackend, e, U, store) = x -> sum(e(FEFunction(U, x)))
+
+"""
+    injectivity_function(backend, inj, U, V, store) -> (x, dx, β, jmin) -> α
+
+Injectivity step of the model (`inj = (dΩ, field)`) from the free values `x` along the increment
+`dx` (numbered as `V`): Gridap's lazy minimum over the quadrature points by default; the compiled
+backend takes the pointwise minimum with the kernels, the increment read from an FE function.
+"""
+injectivity_function(::AbstractBackend, inj, U, V, store) =
+    (x, dx, β, jmin) -> injectivity_step(inj[1], _field(FEFunction(U, x), inj[2]), _field(FEFunction(V, dx), inj[2]), β, jmin)
 
 # Getters
 get_state(m::StaticNonlinearModel) = FEFunction(get_trial_space(m), m.caches.x)
