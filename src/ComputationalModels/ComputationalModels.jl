@@ -66,6 +66,7 @@ export evaluate!
 include("Drivers.jl")
 include("TimeStepping.jl")
 include("LoadStepping.jl")
+include("StaggeredModel.jl")
 include("TimeSchemes.jl")
 include("TransientModel.jl")
 export TransientModel
@@ -99,6 +100,11 @@ export LoadStepping
 export LoadStep
 export step!
 export StaggeredModel
+export StaggeredStepping
+export StaggeredStep
+export StaggeredLog
+export Aitken
+export get_log
 export StaticNonlinearModel
 export StaticLinearModel
 export NonlinearStepCache

@@ -17,6 +17,10 @@ using Test
   end
 
   @time begin
+    include("StaggeredModelTests.jl")
+  end
+
+  @time begin
     include("BackendsTests.jl")
   end
 
