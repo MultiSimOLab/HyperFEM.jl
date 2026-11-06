@@ -235,7 +235,7 @@ end
   idx = Any[]
   @test_deprecated solve!(s.sm; stepping=(nsteps=4, nsubsteps=1, maxbisec=1), kargsolve=s.args, verbose=false,
                           presolver=(τ, Δτ) -> push!(idx, (τ, Δτ)))
-  @test idx == [(0, 0.25), (1, 0.25), (2, 0.25), (3, 0.25)]
+  Base.JLOptions().depwarn == 2 || @test idx == [(0, 0.25), (1, 0.25), (2, 0.25), (3, 0.25)]   # (with --depwarn=error the call throws)
   # errors of the keywords
   @test_throws ErrorException solve!(s.sm; stepping=StaggeredStepping(; relaxation=(:none, :none, :none)), kargsolve=s.args, verbose=false)
   @test_throws ErrorException solve!(s.sm; stepping=(nsteps=1, nsubsteps=1, maxbisec=1), kargsolve=(s.args[1],), verbose=false)
