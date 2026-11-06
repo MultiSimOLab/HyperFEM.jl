@@ -35,7 +35,7 @@ Aitken Δ² relaxation of a field of a [`StaggeredModel`](@ref): the first pass 
 the pass `k ≥ 2` uses `ω_k = -ω_{k-1} (r_{k-1} ⋅ (r_k - r_{k-1})) / ‖r_k - r_{k-1}‖²`, clamped to
 `[ωmin, ωmax]` (when the formula is undefined, `r_k = r_{k-1}`, the previous ω is kept); `ωmax > 1`
 allows over-relaxation, which is what a monotonically converging staggered iteration asks for. See
-[`Relaxation`](@ref).
+`Relaxation`.
 """
 struct Aitken <: Relaxation
     ω0::Float64
@@ -155,9 +155,9 @@ another (a *pass*), at most `max_substeps` times.
   converged when its increment is zero). `norm = :residual`: `err_i = ‖R_i(k)‖ / ‖R_i(1)‖`, the residual
   of the field at the start of its solve in the pass (its state of the previous pass with the new state of
   the other fields), relative to the one of the first pass of the step (needs two passes at least; see
-  [`coupling_residual_norm`](@ref)).
+  `coupling_residual_norm`).
 - `relaxation`: `:none`, `:aitken`, a factor ω, an [`Aitken`](@ref), or a tuple with one of them per
-  field (see [`Relaxation`](@ref)).
+  field (see `Relaxation`).
 """
 struct StaggeredStepping{R}
     nsteps::Int
@@ -394,9 +394,9 @@ function solve!(m::StaggeredModel;
     legacy_index = stepping isa NamedTuple        # presolver(n, Δτ) with the index of the step, as in earlier versions
     s = staggered_stepping(stepping)
     relax = _relaxations(s.relaxation, N)
-    legacy_index && presolver !== nothing && Base.depwarn("solve!(::StaggeredModel): with a NamedTuple `stepping` the " *
-        "`presolver` receives the 0-based index of the step; pass `stepping = StaggeredStepping(…)` to receive the " *
-        "stage, `presolver(τ⁻, Δτ)` with τ⁻ ∈ [0, 1]", :solve!)
+    legacy_index && presolver !== nothing && Base.depwarn("solve!(::StaggeredModel): a `presolver` with a NamedTuple `stepping` " *
+        "receives the 0-based index of the step, which is deprecated; pass `stepping = StaggeredStepping(…)` to " *
+        "receive the stage, `presolver(τ⁻, Δτ)` with τ⁻ ∈ [0, 1]", :solve!)
     v = Int(verbose)
     log = reset!(m.log)
     c = m.caches
@@ -438,7 +438,7 @@ One attempt of the staggered loop: the step from the stage `st.τ` with the incr
 τ = 1), its passes until convergence or `max_substeps` and, in the fixed loop, the acceptance of the
 step, or with a coupling tolerance, its acceptance or its rejection (state, lagged state and Dirichlet
 values back to the last accepted step, increment bisected). Returns whether every inner solve converged
-and (with a tolerance) the coupling converged. `relaxations` is the tuple of [`Relaxation`](@ref)s of
+and (with a tolerance) the coupling converged. `relaxations` is the tuple of `Relaxation`s of
 the fields. See [`solve!`](@ref) for the keywords.
 """
 function step!(m::StaggeredModel, st::StaggeredStep, s::StaggeredStepping, relax::Tuple;

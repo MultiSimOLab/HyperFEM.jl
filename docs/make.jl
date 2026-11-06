@@ -32,6 +32,8 @@ makedocs(
   format = Documenter.HTML(
     prettyurls = get(ENV, "CI", "false") == "true",
     canonical = "https://MultiSimOLab.github.io/HyperFEM.jl",
+    size_threshold = 400 * 2^10,        # the API reference is one page with every docstring (~210 KiB)
+    size_threshold_warn = 250 * 2^10,
   ),
   checkdocs = :none,
   warnonly = false,
