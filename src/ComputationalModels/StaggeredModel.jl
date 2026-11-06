@@ -13,8 +13,8 @@ After the solve of the field in pass `k` the driver sets `x_k = x_{k-1} + ω r_k
 state of the last accepted step). `NoRelaxation` is the plain staggered iteration (ω = 1, the state is
 not touched); `FixedRelaxation(ω)` a constant factor (written as a `Real` in [`StaggeredStepping`](@ref));
 [`Aitken`](@ref) the dynamic one. Only the free values are relaxed. When the model of the field has an
-`injectivity` measure and its Newton uses `InjectivityLS`, ω is cut to the injectivity step of that line
-search along `r_k`, so that the relaxed state does not invert elements.
+`injectivity` measure and its Newton uses `InjectivityLS`, ω is cut by the injectivity step of that line
+search along `ω r_k`, so that the relaxed state does not invert elements.
 """
 abstract type Relaxation end
 
@@ -33,7 +33,8 @@ end
 
 Aitken Δ² relaxation of a field of a [`StaggeredModel`](@ref): the first pass of every step uses `ω0`;
 the pass `k ≥ 2` uses `ω_k = -ω_{k-1} (r_{k-1} ⋅ (r_k - r_{k-1})) / ‖r_k - r_{k-1}‖²`, clamped to
-`[ωmin, ωmax]` (when the formula is undefined, `r_k = r_{k-1}`, the previous ω is kept). See
+`[ωmin, ωmax]` (when the formula is undefined, `r_k = r_{k-1}`, the previous ω is kept); `ωmax > 1`
+allows over-relaxation, which is what a monotonically converging staggered iteration asks for. See
 [`Relaxation`](@ref).
 """
 struct Aitken <: Relaxation
@@ -77,30 +78,33 @@ function relaxation_factor(a::Aitken, k::Int, ω::Float64, r, r⁻)
 end
 
 """
-    relaxation_cut(m::ComputationalModel, x⁻, r) -> α
+    relaxation_cut(m::ComputationalModel, x⁻, Δx) -> α
 
-Largest admissible relaxation factor along the increment `r` from the free values `x⁻` of the field of
-`m`: the injectivity step of the `InjectivityLS` of a [`StaticNonlinearModel`](@ref) with an
-`injectivity` measure (`r` read as a function of the test space, with zero Dirichlet values); `1.0`
-for any other model or line search.
+Fraction `α ∈ (0, 1]` of the relaxed increment `Δx = ω r` that can be taken from the free values `x⁻` of
+the field of `m`: the injectivity step of the `InjectivityLS` of a [`StaticNonlinearModel`](@ref) with an
+`injectivity` measure (`Δx` read as a function of the test space, with zero Dirichlet values); `1.0` for
+any other model or line search. The relaxation uses `α ω`.
 """
-relaxation_cut(::ComputationalModel, x⁻, r) = 1.0
-function relaxation_cut(m::StaticNonlinearModel, x⁻, r)
+relaxation_cut(::ComputationalModel, x⁻, Δx) = 1.0
+function relaxation_cut(m::StaticNonlinearModel, x⁻, Δx)
     ls = _linesearch(m.caches.nls)
     (ls isa InjectivityLS && m.hooks.injectivity !== nothing) || return 1.0
     U, V = m.spaces[1], m.spaces[2]
-    return injectivity_step(m, FEFunction(U, x⁻), FEFunction(V, r), ls.β, ls.jmin)
+    return injectivity_step(m, FEFunction(U, x⁻), FEFunction(V, Δx), ls.β, ls.jmin)
 end
 _linesearch(nls::NewtonRaphson) = nls.linesearch
 _linesearch(::NonlinearSolver) = nothing
 
 # Relaxed state of a field after its solve in pass `k`: `r = x⁺ - x⁻` is the increment of the pass;
 # the relaxed value is written in `x⁺` (not for `NoRelaxation`, which leaves the solved state untouched)
-# and `r⁻` keeps the increment for the Aitken formula of the next pass. Returns the factor used.
+# and `r⁻` keeps the increment for the Aitken formula of the next pass (it is the work vector of the
+# injectivity cut in between). Returns the factor used.
 function relax!(rl::Relaxation, m::ComputationalModel, k::Int, ω::Float64, x⁺, x⁻, r, r⁻)
     @. r = x⁺ - x⁻
     rl isa NoRelaxation && return 1.0
-    ωk = min(relaxation_factor(rl, k, ω, r, r⁻), relaxation_cut(m, x⁻, r))
+    ωk = relaxation_factor(rl, k, ω, r, r⁻)
+    @. r⁻ = ωk * r
+    ωk *= relaxation_cut(m, x⁻, r⁻)
     @. x⁺ = x⁻ + ωk * r
     copyto!(r⁻, r)
     return ωk

@@ -155,12 +155,16 @@ end
   @test num_substeps(la) < num_substeps(l0)
   @test all(ω -> ω[1] == 1.0 && 0.01 ≤ ω[2] ≤ 1.0, la.ω)
   @test all(ω -> ω == [1.0, 1.0], l0.ω)
+  l2 = run((:none, Aitken(; ωmax=2.0)))                                     # over-relaxation allowed: same solution, no more passes
+  @test num_substeps(l2) ≤ num_substeps(l0) && all(ω -> 0.01 ≤ ω[2] ≤ 2.0, l2.ω)
   lf = run((:none, 0.8))                                                    # a fixed factor: same solution
   @test all(ω -> ω[2] == 0.8, lf.ω)
   # with the injectivity measure and the injectivity line search the factor is cut to the injectivity step
   # (never active in this problem: the relaxed states are far from inverting elements), same solution
   li = run((:none, Aitken()); injectivity=true)
   @test num_substeps(li) == num_substeps(la)
+  li2 = run((:none, Aitken(; ωmax=2.0)); injectivity=true)
+  @test num_substeps(li2) == num_substeps(l2)
 end
 
 @testset "StaggeredModel: adaptive increment, rejection and rollback" begin
