@@ -2,7 +2,7 @@ using Test
 using Gridap, Gridap.FESpaces, Gridap.MultiField
 using HyperFEM
 using HyperFEM.ComputationalModels: StaggeredStepping, StaggeredLog, Aitken, IQNILS, get_log, num_steps, num_substeps, mean_substeps,
-  NoRelaxation, FixedRelaxation, as_relaxation, relaxation_state, relax!
+  NoRelaxation, FixedRelaxation, as_relaxation, relaxation_state, relax!, accept_step!
 using LinearAlgebra
 
 # Electro-mechanics of a block (the coarse EM box of the solver tests, `s1_em_problem`): the staggered
@@ -99,8 +99,8 @@ end
   A = Q * Diagonal([0.9, -2.8, 0.3]) * Q'
   b = [1.0, -2.0, 0.5]
   xstar = (I - A) \ b
-  function iterate(rl; passes=30)
-    x = zeros(3); st = relaxation_state(rl, x); ω = 1.0
+  function iterate(rl, b=b; passes=30, st=relaxation_state(rl, zeros(3)))
+    x = zeros(3); ω = 1.0
     r, r⁻ = similar(x), similar(x)
     errs = Float64[]
     for k in 1:passes
@@ -120,7 +120,17 @@ end
   @test ef[end] > 1e-6
   eq, xq = iterate(IQNILS())
   @test length(eq) <= 6 && eq[end] < 1e-12 && xq ≈ xstar                   # exact in a few passes (rank-3 Jacobian)
+  # reuse: the columns of an accepted step make the next one (another right-hand side) exact at its second pass
+  rl = IQNILS(; reuse=2); st = relaxation_state(rl, zeros(3))
+  iterate(rl; st); accept_step!(rl, st)
+  @test length(st.oldV) == 1 && length(st.oldV[1]) >= 3
+  b2 = [0.3, 0.7, -1.1]
+  e2, x2 = iterate(rl, b2; st)
+  @test length(e2) <= 3 && x2 ≈ (I - A) \ b2
+  e3, _ = iterate(IQNILS(; reuse=0), b2)                                    # without reuse it starts from scratch
+  @test length(e3) > length(e2)
   @test_throws ErrorException IQNILS(; ω0=0.0)
+  @test_throws ErrorException IQNILS(; reuse=-1)
   @test as_relaxation(:iqnils) isa IQNILS
 end
 

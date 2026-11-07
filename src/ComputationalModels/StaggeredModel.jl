@@ -50,40 +50,65 @@ struct Aitken <: Relaxation
 end
 
 """
-    IQNILS(; ω0=1.0, εfilter=1e-10, maxcols=typemax(Int))
+    IQNILS(; reuse=1, ω0=1.0, εfilter=1e-10, maxcols=typemax(Int))
 
 Interface quasi-Newton with inverse Jacobian from a least-squares model (IQN-ILS, Degroote, Bathe and
 Vierendeels 2009) for a field of a [`StaggeredModel`](@ref). The passes of a step are a fixed-point
-iteration `x̃_k = G(x_k)` with residual `r_k = x̃_k − x_k`; from the differences of the previous passes of the
-step, `V = [r_k − r_{k−1}, …]` and `W = [x̃_k − x̃_{k−1}, …]`, the next input is the quasi-Newton update
-`x_{k+1} = x̃_k + W α` with `α = argmin ‖V α + r_k‖` (a low-rank model of the Jacobian of the coupling built
-from the passes). The first pass of a step, with no history, is relaxed by `ω0`. Unlike a scalar relaxation
-([`Aitken`](@ref)), it converges when the map has modes of both signs, e.g. a slow mode λ ≈ 0.9 together
-with a mode λ < −1 (a coupling stiffer than the field's own stiffness), where no single factor ω works.
-`εfilter` drops the near-dependent columns of `V` (pivoted QR, relative to the first pivot); `maxcols` is
-the maximum number of past passes used. The log reports ω = 1 for this relaxation. See `Relaxation`.
+iteration `x̃_k = G(x_k)` with residual `r_k = x̃_k − x_k`; from the differences between passes,
+`V = [r_k − r_{k−1}, …]` and `W = [x̃_k − x̃_{k−1}, …]`, the next input is the quasi-Newton update
+`x_{k+1} = x̃_k + W α` with `α = argmin ‖V α + r_k‖` (a low-rank secant model of the Jacobian of the
+coupling). The columns of the last `reuse` accepted steps are kept and used together with those of the
+current step, so that the first pass of a step is already corrected with the model of the previous ones
+(the modes that make the coupling hard persist from step to step; without reuse the first passes of a step
+follow the plain, possibly diverging, iteration until the model has enough columns; columns of steps too far
+back describe a stale Jacobian and make the first updates overshoot, hence the default of one step). A first pass with no
+columns at all is relaxed by `ω0`. Unlike a scalar relaxation ([`Aitken`](@ref)), it converges when the map
+has modes of both signs, e.g. a slow mode λ ≈ 0.9 together with a mode λ < −1 (a coupling stiffer than the
+field's own stiffness), where no single factor ω works. `εfilter` drops the near-dependent columns of `V`
+(pivoted QR, relative to the first pivot; essential with reuse); `maxcols` is the maximum number of columns
+used. The log reports ω = 1 for this relaxation. See `Relaxation`.
 """
 struct IQNILS <: Relaxation
+    reuse::Int
     ω0::Float64
     εfilter::Float64
     maxcols::Int
-    function IQNILS(; ω0::Real=1.0, εfilter::Real=1e-10, maxcols::Int=typemax(Int))
+    function IQNILS(; reuse::Int=1, ω0::Real=1.0, εfilter::Real=1e-10, maxcols::Int=typemax(Int))
+        reuse >= 0 || error("HyperFEM: IQNILS needs reuse ≥ 0 (got $reuse)")
         0 < ω0 <= 1 || error("HyperFEM: IQNILS needs 0 < ω0 ≤ 1 (got $ω0)")
         εfilter >= 0 || error("HyperFEM: IQNILS needs εfilter ≥ 0 (got $εfilter)")
         maxcols >= 1 || error("HyperFEM: IQNILS needs maxcols ≥ 1 (got $maxcols)")
-        new(Float64(ω0), Float64(εfilter), maxcols)
+        new(reuse, Float64(ω0), Float64(εfilter), maxcols)
     end
 end
 
-# History of the passes of the current step for IQN-ILS: the residuals r_k and the solver outputs x̃_k
+# History for IQN-ILS: the residuals r_k and the solver outputs x̃_k of the passes of the current step, and the
+# difference columns (V, W) of the last accepted steps, most recent step first
 struct IQNState{X}
     r::Vector{X}
     x̃::Vector{X}
+    oldV::Vector{Vector{X}}
+    oldW::Vector{Vector{X}}
 end
 
 "Work data of a relaxation for the free values `x` of a field (`nothing` for the scalar relaxations)."
 relaxation_state(::Relaxation, x) = nothing
-relaxation_state(::IQNILS, x) = IQNState(typeof(x)[], typeof(x)[])
+relaxation_state(::IQNILS, x) = IQNState(typeof(x)[], typeof(x)[], Vector{typeof(x)}[], Vector{typeof(x)}[])
+
+# Columns of the current step (differences of consecutive passes, most recent first)
+_step_columns(v::Vector) = [v[j+1] - v[j] for j in length(v)-1:-1:1]
+
+"The step was accepted: its columns join the pool of the last `reuse` steps."
+accept_step!(::Relaxation, ::Nothing) = nothing
+function accept_step!(rl::IQNILS, st::IQNState)
+    rl.reuse == 0 && return nothing
+    length(st.r) >= 2 || return nothing
+    pushfirst!(st.oldV, _step_columns(st.r)); pushfirst!(st.oldW, _step_columns(st.x̃))
+    while length(st.oldV) > rl.reuse
+        pop!(st.oldV); pop!(st.oldW)
+    end
+    nothing
+end
 
 as_relaxation(r::Relaxation) = r
 as_relaxation(ω::Real) = FixedRelaxation(ω)
@@ -157,13 +182,15 @@ function relax!(rl::IQNILS, st::IQNState, m::ComputationalModel, k::Int, ω::Flo
         empty!(st.r); empty!(st.x̃)
     end
     push!(st.r, copy(r)); push!(st.x̃, copy(x⁺))
-    n = length(st.r)
-    if n == 1
+    cols = (_step_columns(st.r), _step_columns(st.x̃))
+    for (V, W) in zip(st.oldV, st.oldW)
+        append!(cols[1], V); append!(cols[2], W)
+    end
+    ncols = min(length(cols[1]), rl.maxcols)
+    if ncols == 0
         @. r⁻ = rl.ω0 * r
     else
-        ncols = min(n - 1, rl.maxcols)
-        V = reduce(hcat, (st.r[n-j+1] - st.r[n-j] for j in 1:ncols))     # most recent difference first
-        W = reduce(hcat, (st.x̃[n-j+1] - st.x̃[n-j] for j in 1:ncols))
+        V = reduce(hcat, cols[1][1:ncols]); W = reduce(hcat, cols[2][1:ncols])
         α = _lsq_filtered(V, -r, rl.εfilter)
         @. r⁻ = r                                                           # x̃_k − x_k …
         mul!(r⁻, W, α, 1.0, 1.0)                                            # … + W α  = x_{k+1} − x_k
@@ -571,6 +598,7 @@ function step!(m::StaggeredModel, st::StaggeredStep, s::StaggeredStepping, relax
         st.τ = fixed ? st.nsteps * Δτ : τ⁺raw
         st.Δτ = Δτnext
         foreach(copyto!, c.xₙ, c.x⁺)
+        foreach(accept_step!, relax, states)
         _call(on_step, st.τ, st.Δτ, nsub)
     else
         staggered_row(verbose, st.nsteps + 1, τ⁺raw, Δτ, nsub, w.err, w.ω, false, false, t)
