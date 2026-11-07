@@ -200,6 +200,10 @@ end
 @publish ComputationalModels  vtk_save
 @publish ComputationalModels  get_pvd
 @publish ComputationalModels  StaggeredModel
+@publish ComputationalModels  StaggeredStepping
+@publish ComputationalModels  StaggeredLog
+@publish ComputationalModels  Aitken
+@publish ComputationalModels  get_log
 @publish ComputationalModels  reset!
 @publish ComputationalModels  evaluate!
 @publish ComputationalModels  TrialFESpace! # Exporting internal function of Gridap

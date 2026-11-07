@@ -325,8 +325,8 @@ end
   args = (Dict(:stepping => (nsteps=2, maxbisec=1), :ProjectDirichlet => true),
           Dict(:stepping => (nsteps=2, maxbisec=1), :ProjectDirichlet => true))
   mid = Float64[]                                                 # u1 at the start of the third of 4 steps (Λ = 1/2)
-  solve!(sm; stepping=(nsteps=4, nsubsteps=1, maxbisec=1), kargsolve=args, verbose=false,
-         presolver=(τ, ∆τ) -> τ == 2 && append!(mid, get_free_dof_values(u1⁺)))
+  solve!(sm; stepping=StaggeredStepping(nsteps=4), kargsolve=args, verbose=false,
+         presolver=(τ, ∆τ) -> τ == 0.5 && append!(mid, get_free_dof_values(u1⁺)))
   x = Point(0.3, 0.7)
   @test u1⁺(x) ≈ 0.7                                              # u = Λ·y at Λ = 1
   @test FEFunction(U1, mid)(x) ≈ 0.35                             # u = Λ·y at Λ = 1/2: the flux followed the global load
