@@ -1,8 +1,8 @@
 using Test
 using Gridap, Gridap.FESpaces, Gridap.MultiField
 using HyperFEM
-using HyperFEM.ComputationalModels: StaggeredStepping, StaggeredLog, Aitken, get_log, num_steps, num_substeps, mean_substeps,
-  NoRelaxation, FixedRelaxation, as_relaxation
+using HyperFEM.ComputationalModels: StaggeredStepping, StaggeredLog, Aitken, IQNILS, get_log, num_steps, num_substeps, mean_substeps,
+  NoRelaxation, FixedRelaxation, as_relaxation, relaxation_state, relax!
 using LinearAlgebra
 
 # Electro-mechanics of a block (the coarse EM box of the solver tests, `s1_em_problem`): the staggered
@@ -91,6 +91,39 @@ errors(s, ref) = (relerr(get_free_dof_values(s.uh⁺), ref.u), relerr(get_free_d
   @test f(NoRelaxation(), 5, 0.3, [1.0], [2.0]) == 1.0
 end
 
+@testset "IQN-ILS on a linear fixed point with modes of both signs" begin
+  # x̃ = G(x) = A x + b with eigenvalues 0.9 (slow), −2.8 (a coupling stiffer than the field: the plain
+  # iteration diverges) and 0.3; no scalar relaxation converges for both extreme modes, IQN-ILS does
+  struct DummyModel <: HyperFEM.ComputationalModels.ComputationalModel end
+  Q, _ = qr(randn(3, 3)); Q = Matrix(Q)
+  A = Q * Diagonal([0.9, -2.8, 0.3]) * Q'
+  b = [1.0, -2.0, 0.5]
+  xstar = (I - A) \ b
+  function iterate(rl; passes=30)
+    x = zeros(3); st = relaxation_state(rl, x); ω = 1.0
+    r, r⁻ = similar(x), similar(x)
+    errs = Float64[]
+    for k in 1:passes
+      x⁺ = A * x + b                           # the "solve" of the field
+      ω = relax!(rl, st, DummyModel(), k, ω, x⁺, x, r, r⁻)
+      push!(errs, norm(r))                     # r = x̃_k − x_k, the coupling error of the pass
+      x = x⁺
+      errs[end] < 1e-12 && break
+    end
+    errs, x
+  end
+  e0, _ = iterate(NoRelaxation())
+  @test e0[end] > e0[1]                                                     # diverges
+  ea, _ = iterate(Aitken(; ωmax=2.0))
+  @test ea[end] > 1e-6                                                      # no scalar factor serves both modes
+  ef, _ = iterate(FixedRelaxation(0.5))
+  @test ef[end] > 1e-6
+  eq, xq = iterate(IQNILS())
+  @test length(eq) <= 6 && eq[end] < 1e-12 && xq ≈ xstar                   # exact in a few passes (rank-3 Jacobian)
+  @test_throws ErrorException IQNILS(; ω0=0.0)
+  @test as_relaxation(:iqnils) isa IQNILS
+end
+
 @testset "StaggeredModel: coupling tolerance reaches the monolithic solution" begin
   p = em_block()
   ref = em_monolithic(p)
@@ -151,12 +184,15 @@ end
   end
   l0 = run(:none)
   la = run((:none, Aitken()))                                               # the displacement relaxed
-  @info "staggered EM block: passes to 1e-8 without / with Aitken: $(num_substeps(l0)) / $(num_substeps(la))"
+  @info "staggered EM block: passes to 1e-8 without / with Aitken: $(num_substeps(l0)) / $(num_substeps(la))" 
   @test num_substeps(la) < num_substeps(l0)
   @test all(ω -> ω[1] == 1.0 && 0.01 ≤ ω[2] ≤ 1.0, la.ω)
   @test all(ω -> ω == [1.0, 1.0], l0.ω)
   l2 = run((:none, Aitken(; ωmax=2.0)))                                     # over-relaxation allowed: same solution, no more passes
   @test num_substeps(l2) ≤ num_substeps(l0) && all(ω -> 0.01 ≤ ω[2] ≤ 2.0, l2.ω)
+  lq = run((:none, IQNILS()))                                               # quasi-Newton: same solution, no more passes than Aitken
+  @info "staggered EM block: passes to 1e-8 with IQN-ILS: $(num_substeps(lq))"
+  @test num_substeps(lq) <= num_substeps(la) && all(ω -> ω == [1.0, 1.0], lq.ω)
   lf = run((:none, 0.8))                                                    # a fixed factor: same solution
   @test all(ω -> ω[2] == 0.8, lf.ω)
   # with the injectivity measure and the injectivity line search the factor is cut to the injectivity step
@@ -165,6 +201,8 @@ end
   @test num_substeps(li) == num_substeps(la)
   li2 = run((:none, Aitken(; ωmax=2.0)); injectivity=true)
   @test num_substeps(li2) == num_substeps(l2)
+  liq = run((:none, IQNILS()); injectivity=true)
+  @test num_substeps(liq) == num_substeps(lq)
 end
 
 @testset "StaggeredModel: adaptive increment, rejection and rollback" begin
