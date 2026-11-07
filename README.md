@@ -196,9 +196,9 @@ args = ((stepping=(nsteps=1, maxbisec=2),), (stepping=(nsteps=1, maxbisec=2),)) 
 x, flag = solve!(sm; stepping=StaggeredStepping(nsteps=100), kargsolve=args)
 
 # coupling converged in every step: few steps, passes until the relative increment of every field is ≤ 1e-6
-# (Aitken relaxation of the displacement; a failed step is bisected, an easy one lets the increment grow)
+# (quasi-Newton update of the displacement; a failed step is bisected, an easy one lets the increment grow)
 x, flag = solve!(sm; stepping=StaggeredStepping(nsteps=10, max_substeps=30, coupling_tol=1e-6,
-                                                relaxation=(:none, Aitken()), grow=2.0, easy=4), kargsolve=args,
+                                                relaxation=(:none, IQNILS()), grow=2.0, easy=4), kargsolve=args,
                  presolver=(τ⁻, Δτ) -> ramp!(τ⁻ + Δτ),   # a load ramped by the loop reads the stage of the step
                  on_step=(τ, Δτ, nsub) -> @info "τ = $τ in $nsub passes")
 log = get_log(sm)          # τ, Δτ, passes, coupling errors, relaxation factors and times per step
@@ -213,8 +213,10 @@ passes reach `max_substeps` without convergence, or in which an inner solve fail
 lagged states and the Dirichlet values return to the last accepted step and the increment is bisected
 (`maxbisec` consecutive bisections at most); after a step accepted in at most `easy` passes the increment grows
 by `grow`, never beyond the initial one. `relaxation` is `:none`, a factor, `:aitken`/`Aitken(; ω0, ωmin, ωmax)`
-(`ωmax > 1` allows over-relaxation, which a monotonically converging iteration needs to gain anything) or a tuple
-with one of them per field; the factor of a field whose model has an `injectivity` measure and an
+(`ωmax > 1` allows over-relaxation, which a monotonically converging iteration needs to gain anything),
+`:iqnils`/`IQNILS()` (a quasi-Newton update of the coupling built from the passes of the step: the choice when
+the coupling is stiffer than a field's own stiffness, where the passes oscillate and no scalar factor converges),
+or a tuple with one of them per field; the factor of a field whose model has an `injectivity` measure and an
 `InjectivityLS` is cut so that the relaxed state does not invert elements. The post-processors of the inner
 models run inside every pass; output per accepted step belongs in `on_step`.
 

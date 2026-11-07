@@ -203,6 +203,7 @@ end
 @publish ComputationalModels  StaggeredStepping
 @publish ComputationalModels  StaggeredLog
 @publish ComputationalModels  Aitken
+@publish ComputationalModels  IQNILS
 @publish ComputationalModels  get_log
 @publish ComputationalModels  reset!
 @publish ComputationalModels  evaluate!

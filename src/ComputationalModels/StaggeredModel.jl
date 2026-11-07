@@ -12,7 +12,8 @@ After the solve of the field in pass `k` the driver sets `x_k = x_{k-1} + ω r_k
 `r_k = x̃_k - x_{k-1}` (`x̃_k` the solved value, `x_{k-1}` the value of the previous pass; `x_0` the
 state of the last accepted step). `NoRelaxation` is the plain staggered iteration (ω = 1, the state is
 not touched); `FixedRelaxation(ω)` a constant factor (written as a `Real` in [`StaggeredStepping`](@ref));
-[`Aitken`](@ref) the dynamic one. Only the free values are relaxed. When the model of the field has an
+[`Aitken`](@ref) the dynamic one; [`IQNILS`](@ref) a quasi-Newton update built from the passes of the step
+(not a scalar factor). Only the free values are relaxed. When the model of the field has an
 `injectivity` measure and its Newton uses `InjectivityLS`, ω is cut by the injectivity step of that line
 search along `ω r_k`, so that the relaxed state does not invert elements.
 """
@@ -48,14 +49,76 @@ struct Aitken <: Relaxation
     end
 end
 
+"""
+    IQNILS(; reuse=1, ω0=1.0, εfilter=1e-10, maxcols=typemax(Int))
+
+Interface quasi-Newton with inverse Jacobian from a least-squares model (IQN-ILS, Degroote, Bathe and
+Vierendeels 2009) for a field of a [`StaggeredModel`](@ref). The passes of a step are a fixed-point
+iteration `x̃_k = G(x_k)` with residual `r_k = x̃_k − x_k`; from the differences between passes,
+`V = [r_k − r_{k−1}, …]` and `W = [x̃_k − x̃_{k−1}, …]`, the next input is the quasi-Newton update
+`x_{k+1} = x̃_k + W α` with `α = argmin ‖V α + r_k‖` (a low-rank secant model of the Jacobian of the
+coupling). The columns of the last `reuse` accepted steps are kept and used together with those of the
+current step, so that the first pass of a step is already corrected with the model of the previous ones
+(the modes that make the coupling hard persist from step to step; without reuse the first passes of a step
+follow the plain, possibly diverging, iteration until the model has enough columns; columns of steps too far
+back describe a stale Jacobian and make the first updates overshoot, hence the default of one step). A first pass with no
+columns at all is relaxed by `ω0`. Unlike a scalar relaxation ([`Aitken`](@ref)), it converges when the map
+has modes of both signs, e.g. a slow mode λ ≈ 0.9 together with a mode λ < −1 (a coupling stiffer than the
+field's own stiffness), where no single factor ω works. `εfilter` drops the near-dependent columns of `V`
+(pivoted QR, relative to the first pivot; essential with reuse); `maxcols` is the maximum number of columns
+used. The log reports ω = 1 for this relaxation. See `Relaxation`.
+"""
+struct IQNILS <: Relaxation
+    reuse::Int
+    ω0::Float64
+    εfilter::Float64
+    maxcols::Int
+    function IQNILS(; reuse::Int=1, ω0::Real=1.0, εfilter::Real=1e-10, maxcols::Int=typemax(Int))
+        reuse >= 0 || error("HyperFEM: IQNILS needs reuse ≥ 0 (got $reuse)")
+        0 < ω0 <= 1 || error("HyperFEM: IQNILS needs 0 < ω0 ≤ 1 (got $ω0)")
+        εfilter >= 0 || error("HyperFEM: IQNILS needs εfilter ≥ 0 (got $εfilter)")
+        maxcols >= 1 || error("HyperFEM: IQNILS needs maxcols ≥ 1 (got $maxcols)")
+        new(reuse, Float64(ω0), Float64(εfilter), maxcols)
+    end
+end
+
+# History for IQN-ILS: the residuals r_k and the solver outputs x̃_k of the passes of the current step, and the
+# difference columns (V, W) of the last accepted steps, most recent step first
+struct IQNState{X}
+    r::Vector{X}
+    x̃::Vector{X}
+    oldV::Vector{Vector{X}}
+    oldW::Vector{Vector{X}}
+end
+
+"Work data of a relaxation for the free values `x` of a field (`nothing` for the scalar relaxations)."
+relaxation_state(::Relaxation, x) = nothing
+relaxation_state(::IQNILS, x) = IQNState(typeof(x)[], typeof(x)[], Vector{typeof(x)}[], Vector{typeof(x)}[])
+
+# Columns of the current step (differences of consecutive passes, most recent first)
+_step_columns(v::Vector) = [v[j+1] - v[j] for j in length(v)-1:-1:1]
+
+"The step was accepted: its columns join the pool of the last `reuse` steps."
+accept_step!(::Relaxation, ::Nothing) = nothing
+function accept_step!(rl::IQNILS, st::IQNState)
+    rl.reuse == 0 && return nothing
+    length(st.r) >= 2 || return nothing
+    pushfirst!(st.oldV, _step_columns(st.r)); pushfirst!(st.oldW, _step_columns(st.x̃))
+    while length(st.oldV) > rl.reuse
+        pop!(st.oldV); pop!(st.oldW)
+    end
+    nothing
+end
+
 as_relaxation(r::Relaxation) = r
 as_relaxation(ω::Real) = FixedRelaxation(ω)
 function as_relaxation(s::Symbol)
     s === :none && return NoRelaxation()
     s === :aitken && return Aitken()
-    error("HyperFEM: unknown relaxation :$s; use :none, :aitken, a factor ω or an `Aitken(…)`")
+    s === :iqnils && return IQNILS()
+    error("HyperFEM: unknown relaxation :$s; use :none, :aitken, :iqnils, a factor ω, an `Aitken(…)` or an `IQNILS(…)`")
 end
-as_relaxation(r) = error("HyperFEM: `relaxation` must be :none, :aitken, a factor ω, an `Aitken(…)` or a tuple with one of them per field; got $(typeof(r))")
+as_relaxation(r) = error("HyperFEM: `relaxation` must be :none, :aitken, :iqnils, a factor ω, an `Aitken(…)`, an `IQNILS(…)` or a tuple with one of them per field; got $(typeof(r))")
 
 # One relaxation per field (a single value applies to every field)
 _relaxations(r::Tuple, N) = (length(r) == N || error("HyperFEM: `relaxation` has $(length(r)) entries for $N fields"); map(as_relaxation, r))
@@ -99,7 +162,7 @@ _linesearch(::NonlinearSolver) = nothing
 # the relaxed value is written in `x⁺` (not for `NoRelaxation`, which leaves the solved state untouched)
 # and `r⁻` keeps the increment for the Aitken formula of the next pass (it is the work vector of the
 # injectivity cut in between). Returns the factor used.
-function relax!(rl::Relaxation, m::ComputationalModel, k::Int, ω::Float64, x⁺, x⁻, r, r⁻)
+function relax!(rl::Relaxation, ::Nothing, m::ComputationalModel, k::Int, ω::Float64, x⁺, x⁻, r, r⁻)
     @. r = x⁺ - x⁻
     rl isa NoRelaxation && return 1.0
     ωk = relaxation_factor(rl, k, ω, r, r⁻)
@@ -108,6 +171,44 @@ function relax!(rl::Relaxation, m::ComputationalModel, k::Int, ω::Float64, x⁺
     @. x⁺ = x⁻ + ωk * r
     copyto!(r⁻, r)
     return ωk
+end
+
+# IQN-ILS: `x⁻` is the input x_k of the pass, `x⁺` the output x̃_k; the update x_{k+1} = x̃_k + W α is written
+# in `x⁺` (cut by the injectivity step along x_{k+1} − x_k when the model has one). `r` keeps r_k = x̃_k − x_k
+# (the coupling error of the pass); `r⁻` is the work vector of the increment.
+function relax!(rl::IQNILS, st::IQNState, m::ComputationalModel, k::Int, ω::Float64, x⁺, x⁻, r, r⁻)
+    @. r = x⁺ - x⁻
+    if k == 1
+        empty!(st.r); empty!(st.x̃)
+    end
+    push!(st.r, copy(r)); push!(st.x̃, copy(x⁺))
+    cols = (_step_columns(st.r), _step_columns(st.x̃))
+    for (V, W) in zip(st.oldV, st.oldW)
+        append!(cols[1], V); append!(cols[2], W)
+    end
+    ncols = min(length(cols[1]), rl.maxcols)
+    if ncols == 0
+        @. r⁻ = rl.ω0 * r
+    else
+        V = reduce(hcat, cols[1][1:ncols]); W = reduce(hcat, cols[2][1:ncols])
+        α = _lsq_filtered(V, -r, rl.εfilter)
+        @. r⁻ = r                                                           # x̃_k − x_k …
+        mul!(r⁻, W, α, 1.0, 1.0)                                            # … + W α  = x_{k+1} − x_k
+    end
+    αinj = relaxation_cut(m, x⁻, r⁻)
+    @. x⁺ = x⁻ + αinj * r⁻
+    return 1.0
+end
+
+# Least squares min ‖V α − b‖ by pivoted QR, dropping the columns whose pivot is below ε times the first one
+function _lsq_filtered(V::AbstractMatrix, b::AbstractVector, ε::Real)
+    F = qr(V, ColumnNorm())
+    d = abs.(diag(F.R))
+    rank = count(>=(ε * d[1]), d)
+    qb = (F.Q' * b)[1:rank]
+    α = zeros(size(V, 2))
+    α[F.p[1:rank]] = UpperTriangular(F.R[1:rank, 1:rank]) \ qb
+    return α
 end
 
 #------------------------------ Coupling residual ------------------------------
@@ -156,8 +257,8 @@ another (a *pass*), at most `max_substeps` times.
   of the field at the start of its solve in the pass (its state of the previous pass with the new state of
   the other fields), relative to the one of the first pass of the step (needs two passes at least; see
   `coupling_residual_norm`).
-- `relaxation`: `:none`, `:aitken`, a factor ω, an [`Aitken`](@ref), or a tuple with one of them per
-  field (see `Relaxation`).
+- `relaxation`: `:none`, `:aitken`, `:iqnils`, a factor ω, an [`Aitken`](@ref), an [`IQNILS`](@ref), or a
+  tuple with one of them per field (see `Relaxation`).
 """
 struct StaggeredStepping{R}
     nsteps::Int
@@ -394,6 +495,7 @@ function solve!(m::StaggeredModel;
     legacy_index = stepping isa NamedTuple        # presolver(n, Δτ) with the index of the step, as in earlier versions
     s = staggered_stepping(stepping)
     relax = _relaxations(s.relaxation, N)
+    states = map(relaxation_state, relax, m.caches.x⁺)
     legacy_index && presolver !== nothing && Base.depwarn("solve!(::StaggeredModel): a `presolver` with a NamedTuple `stepping` " *
         "receives the 0-based index of the step, which is deprecated; pass `stepping = StaggeredStepping(…)` to " *
         "receive the stage, `presolver(τ⁻, Δτ)` with τ⁻ ∈ [0, 1]", :solve!)
@@ -409,7 +511,7 @@ function solve!(m::StaggeredModel;
     t_run = time()
     staggered_header(v, s)
     while !finished(st, s)
-        ok = step!(m, st, s, relax; legacy_index, presolver, evolτ, kargsolve, on_substep, on_step, verbose=v)
+        ok = step!(m, st, s, relax, states; legacy_index, presolver, evolτ, kargsolve, on_substep, on_step, verbose=v)
         if fixed_loop(s)
             ok || (flagconv = 0)
         elseif st.nbisect > s.maxbisec
@@ -441,7 +543,7 @@ values back to the last accepted step, increment bisected). Returns whether ever
 and (with a tolerance) the coupling converged. `relaxations` is the tuple of `Relaxation`s of
 the fields. See [`solve!`](@ref) for the keywords.
 """
-function step!(m::StaggeredModel, st::StaggeredStep, s::StaggeredStepping, relax::Tuple;
+function step!(m::StaggeredModel, st::StaggeredStep, s::StaggeredStepping, relax::Tuple, states::Tuple=map(relaxation_state, relax, m.caches.x⁺);
     legacy_index::Bool=false, presolver=nothing, evolτ=identity, kargsolve, on_substep=nothing, on_step=nothing, verbose::Int=0)
 
     c = m.caches
@@ -474,7 +576,7 @@ function step!(m::StaggeredModel, st::StaggeredStep, s::StaggeredStepping, relax
     converged = false
     while nsub < s.max_substeps
         nsub += 1
-        flags = pass!(m, nsub, stevol, τ⁺, relax, kargsolve, s.norm)
+        flags = pass!(m, nsub, stevol, τ⁺, relax, states, kargsolve, s.norm)
         inner_ok &= all(==(1), flags)
         _call(on_substep, nsub, ntuple(i -> w.err[i], Val(length(m.compmodels))))
         fixed && continue                                  # the fixed loop runs every pass, whatever happened
@@ -496,6 +598,7 @@ function step!(m::StaggeredModel, st::StaggeredStep, s::StaggeredStepping, relax
         st.τ = fixed ? st.nsteps * Δτ : τ⁺raw
         st.Δτ = Δτnext
         foreach(copyto!, c.xₙ, c.x⁺)
+        foreach(accept_step!, relax, states)
         _call(on_step, st.τ, st.Δτ, nsub)
     else
         staggered_row(verbose, st.nsteps + 1, τ⁺raw, Δτ, nsub, w.err, w.ω, false, false, t)
@@ -517,16 +620,16 @@ end
 # the ramp of the step (the relaxation of its field and its coupling error right after it, so that the next
 # models read the relaxed state), then the lagged states (Dirichlet values and free values) set to the new
 # ones. Returns the flags of the inner solves.
-function pass!(m::StaggeredModel, k::Int, stevol, τ⁺, relax::Tuple, kargsolve, errnorm::Symbol)
+function pass!(m::StaggeredModel, k::Int, stevol, τ⁺, relax::Tuple, states::Tuple, kargsolve, errnorm::Symbol)
     c = m.caches
     w = c.work
     foreach(x -> TrialFESpace!(get_trial_space(x), _applicator(x), τ⁺; stage=1.0), m.compmodels)
     idx = ntuple(identity, Val(length(m.compmodels)))
-    flags = map(idx, m.compmodels, kargsolve, relax, c.x⁺, c.x⁻, c.r, c.r⁻) do i, mi, kw, rl, x⁺, x⁻, r, r⁻
+    flags = map(idx, m.compmodels, kargsolve, relax, states, c.x⁺, c.x⁻, c.r, c.r⁻) do i, mi, kw, rl, st, x⁺, x⁻, r, r⁻
         t0 = time()
         flag = solve!(mi; load=stevol, kw...)[2]
         w.t[i] += time() - t0
-        w.ω[i] = relax!(rl, mi, k, w.ω[i], x⁺, x⁻, r, r⁻)
+        w.ω[i] = relax!(rl, st, mi, k, w.ω[i], x⁺, x⁻, r, r⁻)
         if errnorm === :residual
             R = coupling_residual_norm(mi)
             k == 1 && (w.ref[i] = R)

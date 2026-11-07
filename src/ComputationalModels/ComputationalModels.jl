@@ -104,6 +104,7 @@ export StaggeredStepping
 export StaggeredStep
 export StaggeredLog
 export Aitken
+export IQNILS
 export get_log
 export StaticNonlinearModel
 export StaticLinearModel
