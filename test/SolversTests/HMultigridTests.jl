@@ -127,6 +127,17 @@ end
     @test preconditioner_builds(ns) == 2                             # setup 4 rebuilds
     numerical_setup!(ns, copy(t.A))
     @test preconditioner_builds(ns) == 3                             # a new matrix object always rebuilds
+    # with reuse the coarse levels lag but the fine smoother follows the current tangent (its interval is re-estimated):
+    # CG on 3A with the coarse operators of A converges, where a stale fine interval would make Chebyshev diverge
+    A2 = copy(t.A)
+    ns2 = numerical_setup(symbolic_setup(t.ls, A2), A2)
+    λ1 = level_spectra(ns2)[end]
+    A2.nzval .*= 3.0
+    numerical_setup!(ns2, A2)                                        # setup 2 of 3: no rebuild of the coarse levels
+    @test preconditioner_builds(ns2) == 1
+    @test level_spectra(ns2)[end][2] ≈ λ1[2] rtol = 1e-8             # D⁻¹A is scale-invariant: re-estimated on 3A, same value
+    solve!(x, ns2, t.b)
+    @test linear_converged(ns2) && norm(x - A2 \ t.b) ≤ 1e-6 * norm(x)
     @test tolerance(ns) == 1e-8
     set_tolerance!(ns, 1e-2); solve!(x, ns, t.b)
     loose = linear_iterations(ns)

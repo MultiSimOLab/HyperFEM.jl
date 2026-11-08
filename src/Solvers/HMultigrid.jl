@@ -69,6 +69,40 @@ end
 _linear_name(s::HMultigridSolver) = _KSP_NAMES[s.krylov] * "+hMG($(length(s.spaces)))"
 
 # ------------------------------------------------------------------------------------------------
+# Threaded products with a symmetric sparse matrix
+
+"""
+`y = A x` for a **symmetric** `A` in CSC storage, threaded over columns: `A x = Aᵀ x`, and the transposed product of a CSC
+matrix is a dot product per column, independent across threads (Julia's `mul!` with a CSC matrix scatters by columns and
+runs serially). The tangents this solver accepts are symmetric (CG) — for `:gmres` the serial `mul!` is used.
+"""
+function _symmul!(y::AbstractVector, A::SparseMatrixCSC, x::AbstractVector)
+  colptr, rowval, nzval = A.colptr, A.rowval, A.nzval
+  Threads.@threads :static for j in 1:size(A, 2)
+    s = 0.0
+    @inbounds for k in colptr[j]:colptr[j+1]-1
+      s += nzval[k] * x[rowval[k]]
+    end
+    @inbounds y[j] = s
+  end
+  y
+end
+
+"Product `y = A x` of a level operator: threaded for symmetric tangents, Julia's `mul!` otherwise."
+_mul!(y, A::SparseMatrixCSC, x, symmetric::Bool) = symmetric ? _symmul!(y, A, x) : mul!(y, A, x)
+
+"The fine tangent as the operator the Krylov method applies (threaded product when symmetric)."
+struct LevelOperator{TA<:SparseMatrixCSC}
+  A::TA
+  symmetric::Bool
+end
+Base.size(op::LevelOperator) = size(op.A)
+Base.size(op::LevelOperator, i::Int) = size(op.A, i)
+Base.eltype(::LevelOperator) = Float64
+LinearAlgebra.mul!(y::AbstractVector, op::LevelOperator, x::AbstractVector) = _mul!(y, op.A, x, op.symmetric)
+Base.:*(op::LevelOperator, x::AbstractVector) = _mul!(similar(x, size(op.A, 1)), op.A, x, op.symmetric)
+
+# ------------------------------------------------------------------------------------------------
 # Nodal blocks of a level: the free dofs of every node, from the cell dof ids and the Lagrangian layout
 
 "Groups of free dofs that share a node (one group per node, components present as free dofs), coarsest-level numbering."
@@ -125,24 +159,37 @@ nodal_blocks(U::TrialFESpace) = nodal_blocks(U.space)
 struct BlockJacobiPrec
   blocks::Vector{Vector{Int}}
   inv::Vector{Matrix{Float64}}
+  block_of::Vector{Int}                      # dof → block
+  pos_in::Vector{Int}                        # dof → position inside its block
   ok::Base.RefValue{Bool}
 end
 
-BlockJacobiPrec(blocks) = BlockJacobiPrec(blocks, [zeros(length(b), length(b)) for b in blocks], Ref(true))
+function BlockJacobiPrec(blocks)
+  n = sum(length, blocks; init=0)
+  block_of = zeros(Int, n); pos_in = zeros(Int, n)
+  for (k, b) in enumerate(blocks), (i, d) in enumerate(b)
+    block_of[d] = k; pos_in[d] = i
+  end
+  BlockJacobiPrec(blocks, [zeros(length(b), length(b)) for b in blocks], block_of, pos_in, Ref(true))
+end
 
 function _update_blocks!(D::BlockJacobiPrec, A::SparseMatrixCSC)
-  ok = true
-  for (k, b) in enumerate(D.blocks)
-    M = D.inv[k]
-    for (j, cj) in enumerate(b), (i, ri) in enumerate(b)
-      M[i, j] = A[ri, cj]
+  colptr, rowval, nzval = A.colptr, A.rowval, A.nzval
+  block_of, pos_in = D.block_of, D.pos_in
+  for M in D.inv
+    fill!(M, 0.0)
+  end
+  @inbounds for j in 1:size(A, 2)                         # one sweep over the nonzeros: the entries inside a block
+    kj = block_of[j]; pj = pos_in[j]
+    for k in colptr[j]:colptr[j+1]-1
+      i = rowval[k]
+      block_of[i] == kj && (D.inv[kj][pos_in[i], pj] = nzval[k])
     end
-    if all(isfinite, M) && (length(b) == 1 ? M[1, 1] != 0 : abs(det(M)) > 0)
-      try
-        D.inv[k] = inv(M)
-      catch
-        ok = false
-      end
+  end
+  ok = true
+  for M in D.inv
+    if all(isfinite, M) && (size(M, 1) == 1 ? M[1, 1] != 0 : abs(det(M)) > 0)
+      M .= inv(M)
     else
       ok = false
     end
@@ -181,12 +228,13 @@ mutable struct ChebyshevLevel
   z::Vector{Float64}                         # work: preconditioned residual
   d::Vector{Float64}                         # work: direction
   start::Vector{Float64}                     # fixed Arnoldi start vector
+  symmetric::Bool                            # threaded products (CG: symmetric tangents)
 end
 
-function ChebyshevLevel(A::SparseMatrixCSC, blocks, degree)
+function ChebyshevLevel(A::SparseMatrixCSC, blocks, degree, symmetric::Bool)
   n = size(A, 1)
   start = [sin(0.37 * i + 0.11) for i in 1:n]             # fixed, no random state: reproducible estimates
-  ChebyshevLevel(A, BlockJacobiPrec(blocks), degree, 0.0, 0.0, 0.0, 0.0, false, zeros(n), zeros(n), zeros(n), start)
+  ChebyshevLevel(A, BlockJacobiPrec(blocks), degree, 0.0, 0.0, 0.0, 0.0, false, zeros(n), zeros(n), zeros(n), start, symmetric)
 end
 
 "Ritz values (min, max) of D⁻¹A after `k` Arnoldi steps from the fixed start vector."
@@ -200,7 +248,7 @@ function _ritz_bounds(S::ChebyshevLevel, k::Int)
   w = zeros(n)
   m = k
   for j in 1:k
-    mul!(S.r, S.A, view(V, :, j))
+    _mul!(S.r, S.A, view(V, :, j), S.symmetric)
     ldiv!(w, S.D, S.r)
     for i in 1:j
       H[i, j] = dot(view(V, :, i), w)
@@ -247,13 +295,13 @@ function smooth!(x::AbstractVector, S::ChebyshevLevel, b::AbstractVector; zero_g
     fill!(x, 0.0)
     copyto!(r, b)
   else
-    mul!(r, A, x); r .= b .- r
+    _mul!(r, A, x, S.symmetric); r .= b .- r
   end
   ldiv!(z, D, r)
   d .= z ./ θ
   x .+= d
   for k in 2:S.degree
-    mul!(r, A, x); r .= b .- r
+    _mul!(r, A, x, S.symmetric); r .= b .- r
     ldiv!(z, D, r)
     ρk = 1 / (2σ1 - ρ)
     d .= (ρk * ρ) .* d .+ (2ρk / δ) .* z
@@ -261,7 +309,7 @@ function smooth!(x::AbstractVector, S::ChebyshevLevel, b::AbstractVector; zero_g
     ρ = ρk
   end
   if residual !== nothing
-    mul!(residual, A, x); residual .= b .- residual
+    _mul!(residual, A, x, S.symmetric); residual .= b .- residual
   end
   x
 end
@@ -281,6 +329,7 @@ mutable struct HMultigridNS{S<:HMultigridSolver,TA<:AbstractMatrix,C} <: Algebra
   res::Vector{Vector{Float64}}               # residual after pre-smoothing (size of level l)
   w::Vector{Float64}                         # in-place application copy
   ok::Bool
+  coarse_ok::Bool                            # the lagged coarse levels (Galerkin operators, smoothers, coarse setup) are usable
   nsetup::Int
   nbuild::Int
   iters::Int
@@ -297,14 +346,20 @@ Algebra.symbolic_setup(s::HMultigridSolver, ::AbstractMatrix) = HMultigridSS(s)
 _sparse_fine(A::SparseMatrixCSC{Float64,Int}) = A
 _sparse_fine(A::AbstractMatrix) = SparseMatrixCSC{Float64,Int}(sparse(A))
 
-"Galerkin products down the hierarchy from the fine matrix; writes the level operators."
+"""
+Galerkin products down the hierarchy from the fine matrix; writes the coarse level operators. The fine level always
+aliases the Newton's current matrix (its smoother is refreshed at every setup, see `numerical_setup!`); with `reuse > 1`
+only the coarse operators and their smoothers lag — the design of S4-A's `coarse_every` (a fully lagged preconditioner,
+fine smoother included, made CG stall at 41 iterations instead of 17 on the 800k cube; a fine smoother with a stale
+interval on the current matrix made it fail).
+"""
 function _galerkin!(ns::HMultigridNS, A::SparseMatrixCSC)
   s = ns.solver
   L = length(s.spaces)
   ns.levels[L-1].A = A
   for l in L-1:-1:1
     Al = l == L - 1 ? A : ns.levels[l].A
-    Ac = transpose(s.Ps[l]) * Al * s.Ps[l]
+    Ac = transpose(s.Ps[l]) * (Al * s.Ps[l])
     if l == 1
       ns.Acoarse = Ac
     else
@@ -314,12 +369,17 @@ function _galerkin!(ns::HMultigridNS, A::SparseMatrixCSC)
   ns
 end
 
-function _build!(ns::HMultigridNS)
+"Refreshes the smoothers (`all` levels, or the fine one only) and the coarse setup."
+function _build!(ns::HMultigridNS; all_levels::Bool=true)
   s = ns.solver
   ok = true
-  for S in ns.levels
-    _update_level!(S, s.range, s.inflate, s.eig_iters)
+  for (i, S) in enumerate(ns.levels)
+    (all_levels || i == length(ns.levels)) && _update_level!(S, s.range, s.inflate, s.eig_iters)
     ok &= S.ok
+  end
+  if !all_levels
+    ns.ok = ok && ns.coarse_ok
+    return ns
   end
   if ok && all(isfinite, nonzeros(ns.Acoarse))
     if ns.coarse_ns === nothing
@@ -330,6 +390,7 @@ function _build!(ns::HMultigridNS)
   else
     ok = false
   end
+  ns.coarse_ok = ok
   ns.ok = ok
   ns.nbuild += 1
   ns
@@ -341,12 +402,12 @@ function numerical_setup(ss::HMultigridSS, A::AbstractMatrix)
   size(A, 1) == num_free_dofs(s.spaces[end]) ||
     error("HyperFEM: HMultigridSolver: the matrix has $(size(A, 1)) rows but the finest space has $(num_free_dofs(s.spaces[end])) free dofs")
   Af = _sparse_fine(A)
-  levels = [ChebyshevLevel(l == L ? Af : spzeros(num_free_dofs(s.spaces[l]), num_free_dofs(s.spaces[l])), nodal_blocks(s.spaces[l]), s.degree) for l in 2:L]
+  levels = [ChebyshevLevel(spzeros(num_free_dofs(s.spaces[l]), num_free_dofs(s.spaces[l])), nodal_blocks(s.spaces[l]), s.degree, s.krylov === :cg) for l in 2:L]
   sizes = [num_free_dofs(sp) for sp in s.spaces]
   ns = HMultigridNS{typeof(s),typeof(A),Any}(s, A, levels, spzeros(sizes[1], sizes[1]), nothing,
                                              [zeros(sizes[l-1]) for l in 2:L], [zeros(sizes[l-1]) for l in 2:L],
                                              [zeros(sizes[l]) for l in 2:L], [zeros(sizes[l]) for l in 2:L], zeros(sizes[L]),
-                                             false, 1, 0, 0, 0.0, true, s.rtol)
+                                             false, false, 1, 0, 0, 0.0, true, s.rtol)
   _galerkin!(ns, Af)
   _build!(ns)
   ns
@@ -357,9 +418,13 @@ function numerical_setup!(ns::HMultigridNS, A::AbstractMatrix)
   ns.nsetup += 1
   rebuild = A !== ns.A || (ns.nsetup - 1) % s.reuse == 0   # a new matrix object always rebuilds
   ns.A = A
+  Af = _sparse_fine(A)
   if rebuild
-    _galerkin!(ns, _sparse_fine(A))
+    _galerkin!(ns, Af)
     _build!(ns)
+  else                                        # lagged coarse levels; the fine smoother follows the current tangent
+    ns.levels[end].A = Af
+    _build!(ns; all_levels=false)
   end
   ns
 end
@@ -397,7 +462,7 @@ function Algebra.solve!(x::AbstractVector, ns::HMultigridNS, b::AbstractVector)
     return x
   end
   P = HMultigridPrec(ns)
-  A = ns.levels[end].A
+  A = LevelOperator(ns.levels[end].A, s.krylov === :cg)   # the current tangent (the fine level aliases it)
   if s.krylov === :cg
     _, h = IterativeSolvers.cg!(x, A, b; Pl=P, reltol=ns.rtol, abstol=s.atol, maxiter=s.maxiter, initially_zero=true, log=true)
   else
