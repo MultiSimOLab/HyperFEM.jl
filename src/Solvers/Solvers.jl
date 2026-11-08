@@ -5,6 +5,9 @@ using Gridap.Algebra
 import Gridap.Algebra: numerical_setup, numerical_setup!
 using Gridap.CellData
 using Gridap.FESpaces: SingleFieldFESpace, get_fe_dof_basis, get_free_dof_values, interpolate, num_free_dofs
+using Gridap.FESpaces: get_cell_dof_ids, TrialFESpace
+using SparseArrays
+import IterativeSolvers
 using Gridap.MultiField: MultiFieldFESpace, num_fields
 using Gridap.MultiField: MultiFieldStyle, ConsecutiveMultiFieldStyle
 using Gridap.Geometry: num_point_dims, get_triangulation
@@ -33,6 +36,7 @@ export set_tolerance!
 export tolerance
 export PETScSolver
 export AMGSolver
+export HMultigridSolver
 export near_nullspace
 export field_ranges
 export split_nullspace
@@ -69,6 +73,7 @@ import HyperFEM.WeakForms: energy
 using HyperFEM.PhysicalModels: TangentSwitch, set_projected!, is_projected
 
 include("KrylovSolvers.jl")
+include("HMultigrid.jl")
 include("Injectivity.jl")
 include("ModelOperator.jl")
 include("LineSearches.jl")

@@ -51,6 +51,9 @@ using Test
   @time begin
     include("MeshHierarchyTests.jl")
   end
+  @time begin
+    include("HMultigridTests.jl")
+  end
 
   # matrix-free tangent (S3): needs HyperFEMKernels, as the compiled backend of the Krylov batteries
   if :compiled in Symbol.(strip.(split(get(ENV, "HYPERFEM_TEST_BACKENDS", "lazy,compiled"), ",")))

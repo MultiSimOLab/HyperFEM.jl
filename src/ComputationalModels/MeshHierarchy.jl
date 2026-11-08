@@ -182,3 +182,21 @@ function prolongations(h::MeshHierarchy, space::Function)
   spaces = [space(m) for m in h.models]
   [prolongation(spaces[l], spaces[l+1], level_glue(h, l)) for l in 1:num_levels(h)-1]
 end
+
+# ---------------------------------------------------------------------------------------------------------------------
+# The h-multigrid solver from a hierarchy
+
+"""
+    HMultigridSolver(h::MeshHierarchy, space::Function; kwargs...)
+
+The [`HMultigridSolver`](@ref) of the hierarchy `h` for the test spaces `space(model)` built on every level (the same
+`BoundaryConditions`, inherited tags): the prolongations are built here ([`prolongations`](@ref)).
+
+    space(m) = TestFESpace(Triangulation(m), ReferenceFE(lagrangian, VectorValue{3,Float64}, 1), D; conformity = :H1)
+    ls = HMultigridSolver(h, space; krylov = :cg, coarse = PETScSolver(:preonly, :gamg; nullspace = near_nullspace(TrialFESpace(space(level_model(h, 1))))))
+"""
+function Solvers.HMultigridSolver(h::MeshHierarchy, space::Function; kwargs...)
+  spaces = [space(m) for m in h.models]
+  Ps = [prolongation(spaces[l], spaces[l+1], level_glue(h, l)) for l in 1:num_levels(h)-1]
+  Solvers.HMultigridSolver(spaces, Ps; kwargs...)
+end

@@ -245,6 +245,7 @@ end
 @publish Solvers tolerance
 @publish Solvers PETScSolver
 @publish Solvers AMGSolver
+@publish Solvers HMultigridSolver
 @publish Solvers near_nullspace
 @publish Solvers field_ranges
 @publish Solvers split_nullspace
