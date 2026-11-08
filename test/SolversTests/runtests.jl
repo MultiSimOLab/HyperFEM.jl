@@ -44,6 +44,11 @@ using Test
     include("MemoryTests.jl")
   end
 
+  # mesh hierarchy by uniform refinement of Gmsh meshes (S4-B step 0): Gridap + GridapGmsh only
+  @time begin
+    include("RefinementTests.jl")
+  end
+
   # matrix-free tangent (S3): needs HyperFEMKernels, as the compiled backend of the Krylov batteries
   if :compiled in Symbol.(strip.(split(get(ENV, "HYPERFEM_TEST_BACKENDS", "lazy,compiled"), ",")))
     @time begin
