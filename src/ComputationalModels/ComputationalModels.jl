@@ -58,6 +58,7 @@ export TrialFESpace
 export TrialFESpace!
 export TestFESpace
 export TestFESpace!
+export level_spaces
 
 include("GridapExtras.jl")
 export GmshDiscreteModel

@@ -85,3 +85,38 @@ function instantiate_caches(x, nls::NewtonRaphsonSolver, op::NonlinearOperator)
 end
 
 instantiate_caches(x, nls::NewtonRaphson, op::NonlinearOperator) = NewtonCache(x, nls, op)
+
+
+"""
+    level_spaces(U, V, bc, coarse_orders = (1,)) -> Vector
+
+Spaces of a p-multigrid hierarchy for HyperFEMKernels' `PMultigrid`, finest first: `(U, V)` (the working spaces of
+the driver) followed by the Lagrangian spaces of `coarse_orders` (decreasing; `(1,)` for Q2 → Q1, `(2, 1)` for
+Q3 → Q2 → Q1) on the same triangulation and with the same boundary conditions `bc`, so every level has the same
+closed Dirichlet boundary. The coarse trial spaces are `TrialFESpace`s whose Dirichlet values `PMultigrid` overwrites
+with the ones injected from the working state. Single-field spaces only (p-multigrid on the (u, φ) saddle point needs
+block smoothers, not yet available).
+
+    nls = NewtonRaphson(MatrixFreeSolver(; preconditioner = PMultigrid(level_spaces(U, V, D);
+                                          coarse = PETScSolver(:preonly, :gamg; nullspace = N1))))
+"""
+function level_spaces(U::SingleFieldFESpace, V::SingleFieldFESpace, bc::BoundaryConditions, coarse_orders=(1,))
+  trian = get_triangulation(V)
+  T = _shape_valtype(V)
+  spaces = Any[(U, V)]
+  for p in coarse_orders
+    p ≥ 1 || error("HyperFEM: level_spaces: orders must be ≥ 1 (got $p)")
+    Vl = TestFESpace(trian, ReferenceFE(lagrangian, T, p), bc; conformity=:H1)
+    push!(spaces, (TrialFESpace(Vl, bc, 0.0), Vl))
+  end
+  spaces
+end
+level_spaces(::MultiFieldFESpace, ::MultiFieldFESpace, bc, coarse_orders=(1,)) =
+  error("HyperFEM: level_spaces: p-multigrid levels of multi-field spaces are not available yet (block smoothers)")
+
+"Value type of the shape functions of a single-field space."
+function _shape_valtype(s::SingleFieldFESpace)
+  fields = Gridap.Arrays.testitem(Gridap.CellData.get_data(get_fe_basis(s)))
+  x = Gridap.Arrays.testitem(Gridap.CellData.get_data(get_cell_points(get_triangulation(s))))
+  eltype(evaluate(fields, x))
+end
