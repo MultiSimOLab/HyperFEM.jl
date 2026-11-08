@@ -208,6 +208,7 @@ end
 @publish ComputationalModels  reset!
 @publish ComputationalModels  evaluate!
 @publish ComputationalModels  TrialFESpace! # Exporting internal function of Gridap
+@publish ComputationalModels level_spaces
 @publish ComputationalModels interpolate_L2_field
 @publish ComputationalModels L2_projection
 @publish ComputationalModels component_LInf
