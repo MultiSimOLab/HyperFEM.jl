@@ -59,6 +59,14 @@ export TrialFESpace!
 export TestFESpace
 export TestFESpace!
 export level_spaces
+include("MeshHierarchy.jl")
+export MeshHierarchy
+export num_levels
+export level_model
+export fine_model
+export level_glue
+export prolongation
+export prolongations
 
 include("GridapExtras.jl")
 export GmshDiscreteModel

@@ -209,6 +209,13 @@ end
 @publish ComputationalModels  evaluate!
 @publish ComputationalModels  TrialFESpace! # Exporting internal function of Gridap
 @publish ComputationalModels level_spaces
+@publish ComputationalModels MeshHierarchy
+@publish ComputationalModels num_levels
+@publish ComputationalModels level_model
+@publish ComputationalModels fine_model
+@publish ComputationalModels level_glue
+@publish ComputationalModels prolongation
+@publish ComputationalModels prolongations
 @publish ComputationalModels interpolate_L2_field
 @publish ComputationalModels L2_projection
 @publish ComputationalModels component_LInf
