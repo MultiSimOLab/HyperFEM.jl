@@ -2,6 +2,7 @@ using Gridap
 using ForwardDiff
 using StaticArrays
 using Test
+using LinearAlgebra
 using HyperFEM.PhysicalModels
 using HyperFEM.TensorAlgebra
 using HyperFEM.IO
@@ -113,6 +114,38 @@ end
   @test isapprox(∂Ψuu_sy(F), ∂Ψuu_al(F), rtol=1e-12)
   # a tangent with every eigenvalue above δ is returned unchanged
   @test HessianRegularization(model; δ=-1e3)()[3](F) == C
+end
+
+@testset "HessianRegularization of an electro-mechanical model (total mechanical tangent, in E)" begin
+  model = ElectroMechModel(IdealDielectric(ε=1.0), NeoHookean3D(λ=10.0, μ=1.0))
+  Ψ, ∂F, ∂E, ∂FF, ∂EF, ∂EE = model()
+  F = TensorValue(1.1, 0.05, 0.0, 0.0, 0.9, 0.02, 0.01, 0.0, 1.05)
+  E = VectorValue(0.0, 3.0, 0.0)                      # a strong field: the Maxwell part makes ∂²Ψ/∂F∂F indefinite
+  C = ∂FF(F, E)
+  @test minimum(eigvals(Symmetric(Matrix(get_array(C))))) < 0
+  @test minimum(eigvals(Symmetric(Matrix(get_array(model.mechano()[3](F)))))) > 0   # the elastic part alone is not
+  δ = 1e-6
+  switch = TangentSwitch()
+  reg = HessianRegularization(model; δ, switch)
+  @test reg isa ElectroMechano
+  Ψr, ∂Fr, ∂Er, ∂FFr, ∂EFr, ∂EEr = reg()
+  @test ∂FFr(F, E) == C                               # consistent while the switch is off
+  set_projected!(switch, true)
+  Cr = ∂FFr(F, E)
+  @test Cr == regularize_hessian(C, δ)
+  @test minimum(eigvals(Symmetric(Matrix(get_array(Cr))))) ≥ δ * (1 - 1e-8)
+  # the rest is unchanged
+  @test Ψr(F, E) == Ψ(F, E) && ∂Fr(F, E) == ∂F(F, E) && ∂Er(F, E) == ∂E(F, E)
+  @test ∂EFr(F, E) == ∂EF(F, E) && ∂EEr(F, E) == ∂EE(F, E)
+  # without a switch the projection always applies
+  @test HessianRegularization(model; δ)()[4](F, E) == Cr
+  set_projected!(switch, false)
+  @test ∂FFr(F, E) == C
+  # a weak field: the total tangent is positive definite, the projection is the clamp itself (a no-op up to round-off
+  # where every eigenvalue is above δ)
+  E0 = VectorValue(0.0, 0.1, 0.0)
+  @test minimum(eigvals(Symmetric(Matrix(get_array(∂FF(F, E0)))))) > 0
+  @test HessianRegularization(model; δ)()[4](F, E0) == regularize_hessian(∂FF(F, E0), δ)
 end
 
 @testset "composition of HGO_1Fiber" begin
