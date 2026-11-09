@@ -353,12 +353,30 @@ end
 # ------------------------------------------------------------------------------------------------
 # The V-cycle as a preconditioner, and the numerical setup
 
+"""
+Per-thread work arrays of the numeric Galerkin refill: a dense accumulator over the fine dofs and one over the coarse dofs
+with the lists of touched indices, and the position of each coarse row inside the current column of the product.
+"""
+struct GalerkinWork
+  t::Vector{Vector{Float64}}                 # A P[:, j], dense over the fine dofs
+  tf::Vector{Vector{Int}}                    # touched fine dofs
+  acc::Vector{Vector{Float64}}               # Pᵀ (A P[:, j]), dense over the coarse dofs
+  tc::Vector{Vector{Int}}                    # touched coarse dofs
+  pos::Vector{Vector{Int}}                   # position of a coarse row in the column of the product (0: not in the pattern)
+end
+function GalerkinWork(nf::Int, nc::Int)
+  nt = Threads.maxthreadid()                  # threadid() ranges over every thread pool
+  GalerkinWork([zeros(nf) for _ in 1:nt], [Int[] for _ in 1:nt], [zeros(nc) for _ in 1:nt], [Int[] for _ in 1:nt],
+               [zeros(Int, nc) for _ in 1:nt])
+end
+
 mutable struct HMultigridNS{S<:HMultigridSolver,TA<:AbstractMatrix,C} <: Algebra.NumericalSetup
   const solver::S
   A::TA                                      # the fine matrix of the last setup (the Newton cache's)
   levels::Vector{ChebyshevLevel}             # levels 2 … L (smoothed), index l − 1
   Acoarse::SparseMatrixCSC{Float64,Int}
   coarse_ns::C
+  gwork::Union{Nothing,GalerkinWork}         # per-thread work of the numeric Galerkin refill (nothing before the first product)
   bc::Vector{Vector{Float64}}                # work per smoothed level: restricted right-hand side (size of level l − 1)
   xc::Vector{Vector{Float64}}                # and the coarser solution
   e::Vector{Vector{Float64}}                 # prolongated correction (size of level l)
@@ -384,23 +402,79 @@ _sparse_fine(A::SparseMatrixCSC{Float64,Int}) = A
 _sparse_fine(A::AbstractMatrix) = SparseMatrixCSC{Float64,Int}(sparse(A))
 
 """
-Galerkin products down the hierarchy from the fine matrix; writes the coarse level operators. The fine level always
-aliases the Newton's current matrix (its smoother is refreshed at every setup, see `numerical_setup!`); with `reuse > 1`
-only the coarse operators and their smoothers lag — the design of S4-A's `coarse_every` (a fully lagged preconditioner,
-fine smoother included, made CG stall at 41 iterations instead of 17 on the 800k cube; a fine smoother with a stale
-interval on the current matrix made it fail).
+`Ac .= Pᵀ A P` **in the pattern `Ac` already has** (computed once by the sparse product): column `j` of the product is
+`Pᵀ (A P[:, j])`, accumulated densely with touched-index lists, independent across columns and threaded over them. No
+allocation; a coarse entry outside the stored pattern is an error (the pattern of `A` is that of the mesh and `P` is fixed,
+so it cannot change between setups).
+"""
+function _galerkin_refill!(Ac::SparseMatrixCSC, Pt::SparseMatrixCSC, A::SparseMatrixCSC, P::SparseMatrixCSC, w::GalerkinWork)
+  Threads.@threads :static for j in 1:size(Ac, 2)
+    id = Threads.threadid()
+    t, tf, acc, tc, pos = w.t[id], w.tf[id], w.acc[id], w.tc[id], w.pos[id]
+    @inbounds begin
+      # t = A P[:, j]
+      for k in P.colptr[j]:P.colptr[j+1]-1
+        r, p = P.rowval[k], P.nzval[k]
+        for q in A.colptr[r]:A.colptr[r+1]-1
+          i = A.rowval[q]
+          t[i] == 0.0 && push!(tf, i)        # an index may be pushed twice (stored zero, exact cancellation): the second pass finds 0
+          t[i] += A.nzval[q] * p
+        end
+      end
+      # acc = Pᵀ t
+      for i in tf
+        ti = t[i]
+        t[i] = 0.0
+        ti == 0.0 && continue
+        for q in Pt.colptr[i]:Pt.colptr[i+1]-1
+          c = Pt.rowval[q]
+          acc[c] == 0.0 && push!(tc, c)
+          acc[c] += Pt.nzval[q] * ti
+        end
+      end
+      empty!(tf)
+      # scatter into the column of the pattern
+      for k in Ac.colptr[j]:Ac.colptr[j+1]-1
+        pos[Ac.rowval[k]] = k
+        Ac.nzval[k] = 0.0
+      end
+      for c in tc
+        k = pos[c]
+        k == 0 && acc[c] != 0.0 && error("HyperFEM: HMultigridSolver: the Galerkin product left the stored pattern (row $c, column $j)")
+        k != 0 && (Ac.nzval[k] += acc[c])     # += : an exact cancellation re-pushes the index, the second pass adds 0
+        acc[c] = 0.0
+      end
+      empty!(tc)
+      for k in Ac.colptr[j]:Ac.colptr[j+1]-1
+        pos[Ac.rowval[k]] = 0
+      end
+    end
+  end
+  Ac
+end
+
+"""
+Galerkin products down the hierarchy from the fine matrix; writes the coarse level operators. The first time the sparse
+product fixes the pattern of every coarse operator; later setups refill the values in that pattern without allocating
+(`_galerkin_refill!`). The fine level always aliases the Newton's current matrix (its smoother is refreshed at every
+setup, see `numerical_setup!`); with `reuse > 1` only the coarse operators and their smoothers lag — the design of S4-A's
+`coarse_every` (a fully lagged preconditioner, fine smoother included, made CG stall at 41 iterations instead of 17 on the
+800k cube; a fine smoother with a stale interval on the current matrix made it fail).
 """
 function _galerkin!(ns::HMultigridNS, A::SparseMatrixCSC)
   s = ns.solver
   L = length(s.spaces)
   ns.levels[L-1].A = A
+  first = ns.gwork === nothing
+  first && (ns.gwork = GalerkinWork(size(A, 1), size(s.Ps[L-1], 2)))
   for l in L-1:-1:1
     Al = l == L - 1 ? A : ns.levels[l].A
-    Ac = s.Pts[l] * (Al * s.Ps[l])
-    if l == 1
-      ns.Acoarse = Ac
+    if first
+      Ac = s.Pts[l] * (Al * s.Ps[l])
+      l == 1 ? (ns.Acoarse = Ac) : (ns.levels[l-1].A = Ac)
     else
-      ns.levels[l-1].A = Ac
+      Ac = l == 1 ? ns.Acoarse : ns.levels[l-1].A
+      _galerkin_refill!(Ac, s.Pts[l], Al, s.Ps[l], ns.gwork)
     end
   end
   ns
@@ -447,7 +521,7 @@ function numerical_setup(ss::HMultigridSS, A::AbstractMatrix)
   Af = _sparse_fine(A)
   levels = [ChebyshevLevel(spzeros(num_free_dofs(s.spaces[l]), num_free_dofs(s.spaces[l])), nodal_blocks(s.spaces[l]), s.degree, s.krylov === :cg) for l in 2:L]
   sizes = [num_free_dofs(sp) for sp in s.spaces]
-  ns = HMultigridNS{typeof(s),typeof(A),Any}(s, A, levels, spzeros(sizes[1], sizes[1]), nothing,
+  ns = HMultigridNS{typeof(s),typeof(A),Any}(s, A, levels, spzeros(sizes[1], sizes[1]), nothing, nothing,
                                              [zeros(sizes[l-1]) for l in 2:L], [zeros(sizes[l-1]) for l in 2:L],
                                              [zeros(sizes[l]) for l in 2:L], [zeros(sizes[l]) for l in 2:L], zeros(sizes[L]),
                                              false, false, :none, 1, 0, 0, 0.0, true, s.rtol)

@@ -127,6 +127,19 @@ end
     @test preconditioner_builds(ns) == 2                             # setup 4 rebuilds
     numerical_setup!(ns, copy(t.A))
     @test preconditioner_builds(ns) == 3                             # a new matrix object always rebuilds
+    # the Galerkin operators are refilled in the pattern fixed by the first product: the refill of a rescaled and perturbed
+    # tangent equals the sparse product itself
+    A3 = copy(t.A)
+    A3.nzval .*= 2.0 .+ 0.3 .* sin.(1:nnz(A3))                       # same pattern, every value changed (symmetry not needed)
+    numerical_setup!(ns, A3)
+    @test preconditioner_builds(ns) == 4
+    Ac = ns.levels[1].A
+    @test Ac ≈ transpose(t.ls.Ps[2]) * A3 * t.ls.Ps[2] rtol = 1e-13
+    @test ns.Acoarse ≈ transpose(t.ls.Ps[1]) * Ac * t.ls.Ps[1] rtol = 1e-13
+    numerical_setup!(ns, t.A)                                        # back on the SPD tangent: the symmetric refill (exact
+    Ac = ns.levels[1].A                                              # cancellations in the accumulators) equals the product too
+    @test Ac ≈ transpose(t.ls.Ps[2]) * t.A * t.ls.Ps[2] rtol = 1e-13
+    @test ns.Acoarse ≈ transpose(t.ls.Ps[1]) * Ac * t.ls.Ps[1] rtol = 1e-13
     # with reuse the coarse levels lag but the fine smoother follows the current tangent (its interval is re-estimated):
     # CG on 3A with the coarse operators of A converges, where a stale fine interval would make Chebyshev diverge
     A2 = copy(t.A)
