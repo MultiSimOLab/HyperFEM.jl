@@ -368,6 +368,17 @@ function forcing_term(ew::EisenstatWalker, k::Int, ηprev::Float64, r::Float64, 
 end
 
 """
+Forcing term of a projected iteration (DS5-4): `ηmax`, floored at `0.5 atol_projected / ‖R‖` (as the consistent mode is
+floored at `0.5 τ / ‖R‖`) and never tighter than the solver's own tolerance.
+"""
+function _projected_forcing(ew::EisenstatWalker, t::HybridTangent, r::Float64, rtol_in)
+  η = ew.ηmax
+  r > 0 && (η = max(η, 0.5 * t.atol_projected / r))
+  rtol_in === nothing || (η = max(η, rtol_in))
+  clamp(η, ew.ηmin, 1.0 - eps())
+end
+
+"""
     NewtonRaphson(ls; maxiter=100, atol=1e-12, rtol=1e-6, ctol=0.0, verbose=0, name="Newton-Raphson",
                   linesearch=FullStepLS(), tangent=ConsistentTangent(), forcing=nothing)
 
@@ -553,9 +564,11 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
         η = forcing_term(ew, log.num_iters, η, r, rprev, τ)
         rtol_in === nothing || (η = max(η, rtol_in))   # never tighter than the solver was configured for
         set_tolerance!(ns, η)
-      elseif η != 0
-        η = 0.0
-        set_tolerance!(ns, rtol_in)
+      else
+        # projected mode (S5, DS5-4): the step is not a Newton step, so the solve is only as accurate as the projected
+        # phase needs — the loosest forcing term, floored so that η ‖R‖ stays below the projected tolerance
+        η = _projected_forcing(ew, tangent, r, rtol_in)
+        set_tolerance!(ns, η)
       end
     end
     rmul!(b, -1)

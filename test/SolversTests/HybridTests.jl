@@ -131,8 +131,9 @@ end
   @test ls.calls > 2
   @test isapprox(x, xref; rtol=1e-8)
 
-  # with a forcing term: no η on the projected iterations (the solver keeps the tolerance it had), η0 again on the
-  # first consistent iteration after them (TolLU of NewtonRaphsonTests.jl records the tolerances it is given)
+  # with a forcing term: the projected iterations use the loosest forcing term ηmax (floored by the projected tolerance,
+  # DS5-4), η0 again on the first consistent iteration after them (TolLU of NewtonRaphsonTests.jl records the
+  # tolerances it is given)
   switch = TangentSwitch()
   p = hybrid_test_problem(; switch)
   nls = NewtonRaphson(TolLU(); maxiter=30, atol=1e-10, rtol=1e-12, linesearch=FailFirstLS(1, 0),
@@ -142,12 +143,26 @@ end
   @test flag == 1 && converged(nls)
   etas, modes = forcing_history(nls), mode_history(nls)
   @test etas[1] == 1e-2                                             # the failed iteration, consistent
-  @test all(==(0.0), etas[modes .=== :projected])
+  @test all(==(1e-2), etas[modes .=== :projected])                  # ηmax (= η0 by default); atol_projected = 1e-20 never floors it
   lastproj = findlast(==(:projected), modes)
   k = findfirst(>(0.0), etas[lastproj+1:end])
   @test k !== nothing && etas[lastproj+k] == 1e-2                   # restart from η0
   @test m.caches.nls_cache.ns.rtol == TOLLU_START
   @test isapprox(x, xref; rtol=1e-8)
+  # the projected floor: with atol_projected on the scale of the residual, η = 0.5 atol_projected / ‖R‖ > ηmax
+  switch = TangentSwitch()
+  p = hybrid_test_problem(; switch)
+  nls = NewtonRaphson(TolLU(); maxiter=30, atol=1e-10, rtol=1e-12, linesearch=FailFirstLS(1, 0),
+                      tangent=HybridTangent(hybback=1e-2, atol_projected=1e-3), forcing=EisenstatWalker(ηmax=1e-4, η0=1e-4))
+  m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=nls, tangent_switch=switch)
+  x, flag = solve!(m; stepping=(nsteps=1, maxbisec=0))
+  @test flag == 1
+  etas, modes, hist = forcing_history(nls), mode_history(nls), residual_history(nls)
+  proj = findall(==(:projected), modes)
+  @test !isempty(proj)
+  for i in proj                                                      # hist[1] is ‖R₀‖: hist[i] starts iteration i
+    @test etas[i] ≈ max(1e-4, 0.5 * 1e-3 / hist[i]) rtol = 1e-12
+  end
 
   # ConsistentTangent: a failed line search stops the solve
   p = hybrid_test_problem()
