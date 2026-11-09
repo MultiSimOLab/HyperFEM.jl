@@ -265,6 +265,12 @@ consistent tangent once `‖R‖ < hybback · ‖R‖_switch`, to finish with qu
 solve starts with the consistent tangent. In projected mode the convergence criterion is the absolute
 `‖R‖ < atol_projected`, a number on the scale of the reactions given by the user (the relative
 criterion is unreliable there). A failed line search in projected mode fails the solve.
+
+An iterative linear solver that reports an **indefinite tangent** ([`linear_indefinite`](@ref): the
+multigrid smoothers, PETSc's CG, the matrix-free CG) is the same signal as a failed line search: the
+solve switches to the projected tangent at the same state instead of failing, so the driver does not
+bisect a load step the projected tangent can take (S5). With [`ConsistentTangent`](@ref), or already
+in projected mode, such a solve fails (`:linear_failed`).
 """
 struct HybridTangent <: TangentStrategy
   hybback::Float64
@@ -561,8 +567,26 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
       # its η are in the histories and the run counters agree with them
       _record!(log, r, 0.0, mode, linear_iterations(ns), η)
       _print_linear_failure(log, linear_iterations(ns), η)
-      reason = :linear_failed
-      break
+      planb = linear_indefinite(ns) ? _on_failure(tangent, mode) : nothing
+      if planb === nothing || log.num_iters >= tols.maxiter
+        reason = :linear_failed
+        break
+      end
+      rmul!(b, -1)                                # b = R(x) again: the state is unchanged, the next solve negates it
+      # an indefinite tangent reported by the linear solver is the same signal as a failed line search (S5, DS5-3):
+      # the projected tangent at the same state, which is positive definite by construction
+      mode = planb
+      r_sw = r
+      log.nswitches += 1
+      _print_switch(log, mode, r)
+      set_tangent!(op, mode)
+      t1 = time()
+      jacobian!(A, op, x)
+      t2 = time()
+      numerical_setup_state!(ns, A, x)
+      log.t_assembly += t2 - t1
+      log.t_setup += time() - t2
+      continue
     end
 
     # curvature criterion, relative to the first iteration (only computed when enabled)

@@ -321,6 +321,7 @@ end
 
 linear_converged(ns::FieldSplitNS) = ns.converged
 linear_iterations(ns::FieldSplitNS) = ns.iters
+linear_indefinite(ns::FieldSplitNS) = !ns.ok && ns.failure > 0 && linear_indefinite(ns.block_ns[ns.failure])
 preconditioner_builds(ns::FieldSplitNS) = ns.nbuild
 linear_info(ns::FieldSplitNS) = ns.ok ? " $(ns.iters)" : " failed (block $(ns.failure))"
 set_tolerance!(ns::FieldSplitNS, rtol) = (ns.rtol = rtol === nothing ? ns.solver.rtol : _check_rtol(rtol); ns)

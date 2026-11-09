@@ -104,6 +104,7 @@ end
 const MFNS = HyperFEMKernels.MatrixFreeSolverNS
 HyperFEM.linear_converged(ns::MFNS) = HyperFEMKernels.linear_converged(ns)
 HyperFEM.linear_iterations(ns::MFNS) = HyperFEMKernels.linear_iterations(ns)
+HyperFEM.linear_indefinite(ns::MFNS) = HyperFEMKernels.linear_indefinite(ns)
 HyperFEM.set_tolerance!(ns::MFNS, rtol) = HyperFEMKernels.set_tolerance!(ns, rtol)
 HyperFEM.tolerance(ns::MFNS) = HyperFEMKernels.tolerance(ns)
 HyperFEM.preconditioner_builds(ns::MFNS) = HyperFEMKernels.preconditioner_builds(ns)

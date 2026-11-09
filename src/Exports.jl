@@ -240,6 +240,7 @@ end
 @publish Solvers get_tolerances
 @publish Solvers linear_converged
 @publish Solvers linear_iterations
+@publish Solvers linear_indefinite
 @publish Solvers preconditioner_builds
 @publish Solvers set_tolerance!
 @publish Solvers tolerance

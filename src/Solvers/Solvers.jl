@@ -31,6 +31,7 @@ export verbosity
 export get_tolerances
 export linear_converged
 export linear_iterations
+export linear_indefinite
 export preconditioner_builds
 export set_tolerance!
 export tolerance

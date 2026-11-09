@@ -140,10 +140,22 @@ end
     solve!(x, ns, t.b)
     @test !linear_converged(ns) && linear_iterations(ns) == 0
     @test occursin("block 1", HyperFEM.Solvers.linear_info(ns))
+    @test !linear_indefinite(ns)                                      # a NaN block is not the instability signal
     copyto!(A.nzval, t.A.nzval)
     numerical_setup!(ns, A)
     solve!(x, ns, t.b)
     @test linear_converged(ns)
+    # an indefinite u block (elasticity − s·mass) is reported through the field split (S5)
+    r = field_ranges(t.U)
+    Vu = t.U[1].space
+    dΩ = Measure(Triangulation(fine_model(t.h)), 2)
+    Mu = assemble_matrix((u, v) -> ∫(300.0 * (v ⋅ u))dΩ, TrialFESpace(Vu, x -> zero(VectorValue{3,Float64})), Vu)
+    Bi = copy(t.A)
+    Bi[r[1], r[1]] .-= Mu
+    numerical_setup!(ns, Bi)
+    solve!(x, ns, t.b)
+    @test !linear_converged(ns) && linear_indefinite(ns)
+    @test occursin("block 1", HyperFEM.Solvers.linear_info(ns))
   end
 
   @testset "Newton trajectory of LU on nonlinear electro-mechanics" begin

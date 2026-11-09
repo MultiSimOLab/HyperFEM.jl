@@ -774,6 +774,8 @@ end
 
 linear_converged(ns::HMultigridNS) = ns.converged
 linear_iterations(ns::HMultigridNS) = ns.iters
+"An indefinite tangent (a negative Ritz value, or non-SPD nodal blocks) is the instability signal of S5."
+linear_indefinite(ns::HMultigridNS) = !ns.ok && ns.failure in (:indefinite, :blocks)
 preconditioner_builds(ns::HMultigridNS) = ns.nbuild
 linear_info(ns::HMultigridNS) = ns.ok ? " $(ns.iters)" : " failed ($(ns.failure))"
 set_tolerance!(ns::HMultigridNS, rtol) = (ns.rtol = rtol === nothing ? ns.solver.rtol : _check_rtol(rtol); ns)
