@@ -619,8 +619,10 @@ function numerical_setup(ss::HMultigridSS, A::AbstractMatrix)
                                              [zeros(sizes[l-1]) for l in 2:L], [zeros(sizes[l-1]) for l in 2:L],
                                              [zeros(sizes[l]) for l in 2:L], [zeros(sizes[l]) for l in 2:L], zeros(sizes[L]),
                                              false, false, :none, 1, 0, 0, 0.0, true, s.rtol)
-  _galerkin!(ns, Af)
-  _build!(ns)
+  _with_serial_blas() do                       # the Lanczos estimate alternates BLAS dots with the threaded products
+    _galerkin!(ns, Af)
+    _build!(ns)
+  end
   ns
 end
 
@@ -632,12 +634,14 @@ function numerical_setup!(ns::HMultigridNS, A::AbstractMatrix)
   rebuild = A !== ns.A || (ns.nsetup - 1) % s.reuse == 0 || !ns.coarse_ok
   ns.A = A
   Af = _sparse_fine(A)
-  if rebuild
-    _galerkin!(ns, Af)
-    _build!(ns)
-  else                                        # lagged coarse levels; the fine smoother follows the current tangent
-    ns.levels[end].A = Af
-    _build!(ns; all_levels=false)
+  _with_serial_blas() do
+    if rebuild
+      _galerkin!(ns, Af)
+      _build!(ns)
+    else                                      # lagged coarse levels; the fine smoother follows the current tangent
+      ns.levels[end].A = Af
+      _build!(ns; all_levels=false)
+    end
   end
   ns
 end
@@ -661,6 +665,23 @@ function _vcycle!(x::AbstractVector, ns::HMultigridNS, l::Int, b::AbstractVector
   x
 end
 
+"""
+Runs `f` with one BLAS thread. The BLAS-1 calls of the Krylov method (`dot`, `axpy!` on the fine vectors) wake OpenBLAS's
+thread pool, whose threads keep spinning after each call and starve the `@threads` kernels of the V-cycle: measured on the
+EM plate (555k dofs, 6 Julia threads, 17 BLAS threads) one field-split application took 0.26 s inside GMRES against
+0.03 s outside; with one BLAS thread, 0.03 s inside too. Restores the previous setting.
+"""
+function _with_serial_blas(f)
+  nb = LinearAlgebra.BLAS.get_num_threads()
+  nb == 1 && return f()
+  LinearAlgebra.BLAS.set_num_threads(1)
+  try
+    f()
+  finally
+    LinearAlgebra.BLAS.set_num_threads(nb)
+  end
+end
+
 "The V-cycle as the preconditioner object IterativeSolvers applies."
 struct HMultigridPrec{NS<:HMultigridNS}
   ns::NS
@@ -677,11 +698,13 @@ function Algebra.solve!(x::AbstractVector, ns::HMultigridNS, b::AbstractVector)
   end
   P = HMultigridPrec(ns)
   A = LevelOperator(ns.levels[end].A, s.krylov === :cg)   # the current tangent (the fine level aliases it)
-  if s.krylov === :cg
-    _, h = IterativeSolvers.cg!(x, A, b; Pl=P, reltol=ns.rtol, abstol=s.atol, maxiter=s.maxiter, initially_zero=true, log=true)
-  else
-    _, h = IterativeSolvers.gmres!(x, A, b; Pr=P, reltol=ns.rtol, abstol=s.atol, maxiter=s.maxiter, restart=min(s.restart, length(b)),
-                                   initially_zero=true, log=true)
+  h = _with_serial_blas() do
+    if s.krylov === :cg
+      IterativeSolvers.cg!(x, A, b; Pl=P, reltol=ns.rtol, abstol=s.atol, maxiter=s.maxiter, initially_zero=true, log=true)[2]
+    else
+      IterativeSolvers.gmres!(x, A, b; Pr=P, reltol=ns.rtol, abstol=s.atol, maxiter=s.maxiter, restart=min(s.restart, length(b)),
+                              initially_zero=true, log=true)[2]
+    end
   end
   ns.iters = h.iters
   ns.converged = h.isconverged
