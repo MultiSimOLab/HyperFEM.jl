@@ -264,7 +264,10 @@ function _ritz_bounds(S::ChebyshevLevel, k::Int)
   n = size(S.A, 1)
   k = min(k, n)
   q = copy(S.start); qp = zeros(n); w = S.z; r = S.r; t = S.d
-  _dmul!(t, S.D, q); q ./= sqrt(dot(q, t))
+  _dmul!(t, S.D, q)
+  nq = dot(q, t)
+  nq > 0 || return (-1.0, 1.0)                           # the blocks are not positive definite: an indefinite tangent
+  q ./= sqrt(nq)
   α = zeros(k); β = zeros(k)
   m = k
   for j in 1:k
@@ -274,7 +277,9 @@ function _ritz_bounds(S::ChebyshevLevel, k::Int)
     w .-= α[j] .* q
     j > 1 && (w .-= β[j-1] .* qp)
     _dmul!(t, S.D, w)
-    b = sqrt(max(dot(w, t), 0.0))                         # ‖w‖_D
+    b2 = dot(w, t)
+    b2 ≥ -1e-12 * max(1.0, abs(α[j])) || return (-1.0, 1.0)    # a negative D-norm: the blocks are indefinite
+    b = sqrt(max(b2, 0.0))                                # ‖w‖_D
     if j == k || b ≤ 1e-14 * max(1.0, abs(α[j]))
       m = j; break
     end
