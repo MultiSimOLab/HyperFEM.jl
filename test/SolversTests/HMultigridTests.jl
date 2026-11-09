@@ -181,7 +181,8 @@ end
     Bi = t.A - Mm
     @test minimum(eigvals(Symmetric(Matrix(Bi)))) < 0
     numerical_setup!(ns, Bi)
-    @test any(((lo, hi),) -> lo < 0, level_spectra(ns))
+    @test any(((lo, hi),) -> lo < 0 || isnan(lo), level_spectra(ns))   # a negative Ritz value, or non-SPD nodal blocks
+    @test occursin(r"indefinite|blocks", HyperFEM.Solvers.linear_info(ns))
     solve!(x, ns, t.b)
     @test !linear_converged(ns) && linear_iterations(ns) == 0
   end

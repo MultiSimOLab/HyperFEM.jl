@@ -1,7 +1,8 @@
 # h-multigrid on a refined mesh hierarchy, as a Gridap `LinearSolver` for the assembled tangent (design/solvers-s4b-plan.md,
-# S4-B step 2, option J of DS4B-3). Pure Julia: Galerkin coarse operators PᵀAP with SparseArrays, Chebyshev smoothing
-# preconditioned by the inverted nodal blocks of each level, an injected solver on the coarsest level, IterativeSolvers'
-# CG/GMRES outside. The same object serves CI (direct coarse solver) and production (PETSc GAMG on the coarsest level).
+# S4-B step 2, option J of DS4B-3). Pure Julia: Galerkin coarse operators PᵀAP (the sparse product once, then refilled in
+# its pattern), Chebyshev smoothing preconditioned by the inverted nodal blocks of each level, an injected solver on the
+# coarsest level, IterativeSolvers' CG/GMRES outside. Threaded over columns (products, transfers) and over nodal blocks.
+# The same object serves CI (direct coarse solver) and production (PETSc GAMG on the coarsest level).
 
 """
     HMultigridSolver(spaces, Ps; krylov = :cg, rtol = 1e-6, atol = 0.0, maxiter = 500, restart = 30, reuse = 1,
@@ -12,7 +13,8 @@ Krylov method (`:cg` for symmetric positive definite tangents, `:gmres` otherwis
 geometric h-multigrid on a hierarchy of nested meshes: `spaces` are the test spaces of the levels, coarsest first (the
 finest is the Newton's), and `Ps[l]` the prolongation from level `l` to level `l + 1` ([`prolongation`](@ref), free dofs,
 homogeneous Dirichlet). The coarse operators are the Galerkin products `A_l = P_lᵀ A_{l+1} P_l` of the assembled
-tangent, recomputed at every numerical setup (every `reuse` setups: lagged, as `PETScSolver`'s `reuse`); the
+tangent, rebuilt every `reuse` setups (lagged, as `PETScSolver`'s `reuse`; the fine smoother always follows the
+current tangent); the
 smoother on every level but the coarsest is a Chebyshev iteration of `degree` preconditioned by the inverted nodal
 blocks of the level (the dofs of one node, 3 × 3 for 3D elasticity; scalar Jacobi for scalar fields), on the interval
 `[λ/range, λ]` with `λ = inflate · λmax`, `λmax` a Ritz estimate of the block-preconditioned level operator from
@@ -27,8 +29,9 @@ so the Newton cuts back instead of iterating on a diverging smoother. Saddle-poi
 solver as a whole: use it on the blocks of a field-split preconditioner.
 
 The Newton hooks: [`linear_converged`](@ref), [`linear_iterations`](@ref), [`preconditioner_builds`](@ref) (Galerkin
-and smoother rebuilds), [`set_tolerance!`](@ref)/[`tolerance`](@ref) (Eisenstat–Walker forcing term). Serial sparse
-products (threads only in the assembly); the PETSc PCMG route is the MPI one (DS4B-3).
+and smoother rebuilds), [`set_tolerance!`](@ref)/[`tolerance`](@ref) (Eisenstat–Walker forcing term). Shared-memory
+threads only (symmetric products and transfers over columns, blocks over nodes); the PETSc PCMG route is the MPI one
+(DS4B-3). With `:gmres` the products with the tangent are Julia's serial `mul!`.
 """
 struct HMultigridSolver{S<:Tuple,P<:Tuple,C<:Algebra.LinearSolver} <: Algebra.LinearSolver
   spaces::S                                  # test spaces per level, coarsest first
@@ -92,6 +95,33 @@ function _tmul!(y::AbstractVector, M::SparseMatrixCSC, x::AbstractVector)
 end
 "`y = Mᵀ x` for any CSC matrix `M`, threaded over its columns (the transfers: `Pᵀ r` with `P`, `P xc` with `Pᵀ` stored)."
 _symmul!(y, A::SparseMatrixCSC, x) = _tmul!(y, A, x)
+
+"`r = b − A x` for a symmetric `A`, the residual fused with the threaded product (no second pass over the vectors)."
+function _tres!(r::AbstractVector, A::SparseMatrixCSC, x::AbstractVector, b::AbstractVector)
+  colptr, rowval, nzval = A.colptr, A.rowval, A.nzval
+  Threads.@threads :static for j in 1:size(A, 2)
+    s = 0.0
+    @inbounds for k in colptr[j]:colptr[j+1]-1
+      s += nzval[k] * x[rowval[k]]
+    end
+    @inbounds r[j] = b[j] - s
+  end
+  r
+end
+"`r = b − A x` of a level operator: fused and threaded when symmetric, `mul!` and a serial pass otherwise."
+function _residual!(r, A::SparseMatrixCSC, x, b, symmetric::Bool)
+  symmetric && return _tres!(r, A, x, b)
+  mul!(r, A, x)
+  r .= b .- r
+end
+
+"`y .+= x`, threaded (the vectors of the fine level are tens of MB)."
+function _add!(y::AbstractVector, x::AbstractVector)
+  Threads.@threads :static for i in eachindex(y)
+    @inbounds y[i] += x[i]
+  end
+  y
+end
 
 "Product `y = A x` of a level operator: threaded for symmetric tangents, Julia's `mul!` otherwise."
 _mul!(y, A::SparseMatrixCSC, x, symmetric::Bool) = symmetric ? _symmul!(y, A, x) : mul!(y, A, x)
@@ -180,29 +210,78 @@ function BlockJacobiPrec(blocks)
                   block_of, pos_in, Ref(true))
 end
 
+"""
+Inverse of a small dense block written into `Mi`; `false` if the block is non-finite or singular relative to its size
+(`|det| ≤ eps · max|entry|ⁿ`). Closed forms for 1 × 1, 2 × 2 and 3 × 3 (the nodal blocks); `inv` beyond.
+"""
+function _invert_block!(Mi::Matrix{Float64}, M::Matrix{Float64})
+  n = size(M, 1)
+  scale = 0.0
+  @inbounds for v in M
+    isfinite(v) || return false
+    scale = max(scale, abs(v))
+  end
+  scale > 0 || return false
+  tol = eps(Float64) * scale^n
+  @inbounds if n == 1
+    a = M[1, 1]
+    abs(a) > tol || return false
+    Mi[1, 1] = 1 / a
+  elseif n == 2
+    a, b, c, d = M[1, 1], M[1, 2], M[2, 1], M[2, 2]
+    dt = a * d - b * c
+    abs(dt) > tol || return false
+    Mi[1, 1] = d / dt; Mi[1, 2] = -b / dt; Mi[2, 1] = -c / dt; Mi[2, 2] = a / dt
+  elseif n == 3
+    a, b, c = M[1, 1], M[1, 2], M[1, 3]
+    d, e, f = M[2, 1], M[2, 2], M[2, 3]
+    g, h, i = M[3, 1], M[3, 2], M[3, 3]
+    A11 = e * i - f * h; A12 = -(b * i - c * h); A13 = b * f - c * e
+    A21 = -(d * i - f * g); A22 = a * i - c * g; A23 = -(a * f - c * d)
+    A31 = d * h - e * g; A32 = -(a * h - b * g); A33 = a * e - b * d
+    dt = a * A11 + b * A21 + c * A31
+    abs(dt) > tol || return false
+    Mi[1, 1] = A11 / dt; Mi[1, 2] = A12 / dt; Mi[1, 3] = A13 / dt
+    Mi[2, 1] = A21 / dt; Mi[2, 2] = A22 / dt; Mi[2, 3] = A23 / dt
+    Mi[3, 1] = A31 / dt; Mi[3, 2] = A32 / dt; Mi[3, 3] = A33 / dt
+  else
+    abs(det(M)) > tol || return false
+    Mi .= inv(M)
+  end
+  true
+end
+
+"""
+Extracts the nodal blocks of `A` (one threaded sweep over the columns: a column writes its own column of its block) and
+inverts them; also checks that every entry of `A` is finite. Returns `:none`, `:nonfinite` or `:blocks`.
+"""
 function _update_blocks!(D::BlockJacobiPrec, A::SparseMatrixCSC)
   colptr, rowval, nzval = A.colptr, A.rowval, A.nzval
-  block_of, pos_in = D.block_of, D.pos_in
-  for M in D.blk
-    fill!(M, 0.0)
+  block_of, pos_in, blk = D.block_of, D.pos_in, D.blk
+  nt = Threads.maxthreadid()
+  finite = fill(true, nt)
+  Threads.@threads :static for k in eachindex(blk)
+    fill!(blk[k], 0.0)
   end
-  @inbounds for j in 1:size(A, 2)                         # one sweep over the nonzeros: the entries inside a block
-    kj = block_of[j]; pj = pos_in[j]
-    for k in colptr[j]:colptr[j+1]-1
-      i = rowval[k]
-      block_of[i] == kj && (D.blk[kj][pos_in[i], pj] = nzval[k])
+  Threads.@threads :static for j in 1:size(A, 2)
+    id = Threads.threadid()
+    @inbounds begin
+      kj = block_of[j]; pj = pos_in[j]; B = blk[kj]
+      for k in colptr[j]:colptr[j+1]-1
+        v = nzval[k]
+        isfinite(v) || (finite[id] = false)
+        i = rowval[k]
+        block_of[i] == kj && (B[pos_in[i], pj] = v)
+      end
     end
   end
-  ok = true
-  for (M, Mi) in zip(D.blk, D.inv)
-    if all(isfinite, M) && (size(M, 1) == 1 ? M[1, 1] != 0 : abs(det(M)) > 0)
-      Mi .= inv(M)
-    else
-      ok = false
-    end
+  all(finite) || (D.ok[] = false; return :nonfinite)
+  good = fill(true, nt)
+  Threads.@threads :static for k in eachindex(blk)
+    _invert_block!(D.inv[k], blk[k]) || (good[Threads.threadid()] = false)
   end
-  D.ok[] = ok
-  D
+  D.ok[] = all(good)
+  D.ok[] ? :none : :blocks
 end
 
 "`y = D x` with the nodal blocks themselves."
@@ -234,6 +313,27 @@ function LinearAlgebra.ldiv!(y::AbstractVector, D::BlockJacobiPrec, x::AbstractV
     end
   end
   y
+end
+
+"""
+One Chebyshev update fused over the blocks: `d = a d + c D⁻¹ r`, `x += d` (one threaded pass instead of `ldiv!` and two
+serial broadcasts over vectors of the fine level's size).
+"""
+function _cheb_update!(x::AbstractVector, d::AbstractVector, D::BlockJacobiPrec, r::AbstractVector, a::Float64, c::Float64)
+  Threads.@threads :static for k in eachindex(D.blocks)
+    b = D.blocks[k]
+    M = D.inv[k]
+    @inbounds for (i, ri) in enumerate(b)
+      s = 0.0
+      for (j, cj) in enumerate(b)
+        s += M[i, j] * r[cj]
+      end
+      di = a * d[ri] + c * s
+      d[ri] = di
+      x[ri] += di
+    end
+  end
+  x
 end
 
 # ------------------------------------------------------------------------------------------------
@@ -273,7 +373,7 @@ function _ritz_bounds(S::ChebyshevLevel, k::Int)
   q = copy(S.start); qp = zeros(n); w = S.z; r = S.r; t = S.d
   _dmul!(t, S.D, q)
   nq = dot(q, t)
-  nq > 0 || return (-1.0, 1.0)                           # the blocks are not positive definite: an indefinite tangent
+  nq > 0 || return (-Inf, -Inf)                          # the blocks are not positive definite (reported as :blocks)
   q ./= sqrt(nq)
   α = zeros(k); β = zeros(k)
   m = k
@@ -285,7 +385,7 @@ function _ritz_bounds(S::ChebyshevLevel, k::Int)
     j > 1 && (w .-= β[j-1] .* qp)
     _dmul!(t, S.D, w)
     b2 = dot(w, t)
-    b2 ≥ -1e-12 * max(1.0, abs(α[j])) || return (-1.0, 1.0)    # a negative D-norm: the blocks are indefinite
+    b2 ≥ -1e-12 * max(1.0, abs(α[j])) || return (-Inf, -Inf)   # a negative D-norm: the blocks are indefinite
     b = sqrt(max(b2, 0.0))                                # ‖w‖_D
     if j == k || b ≤ 1e-14 * max(1.0, abs(α[j]))
       m = j; break
@@ -300,16 +400,16 @@ end
 
 "Updates blocks and interval of a level; returns `:none` or the reason it is not usable."
 function _update_level!(S::ChebyshevLevel, range::Float64, inflate::Float64, eig_iters::Int)
-  if !all(isfinite, nonzeros(S.A))
+  why = _update_blocks!(S.D, S.A)                          # finiteness of A and the blocks, in the same sweep
+  if why !== :none
     S.ok = false; S.λmin = S.λmax = NaN
-    return :nonfinite
+    return why
   end
-  _update_blocks!(S.D, S.A)
-  if !S.D.ok[]
+  S.λmin, S.λmax = _ritz_bounds(S, eig_iters)
+  if S.λmin == -Inf                                         # the blocks are not positive definite in the Lanczos products
     S.ok = false; S.λmin = S.λmax = NaN
     return :blocks
   end
-  S.λmin, S.λmax = _ritz_bounds(S, eig_iters)
   S.ok = isfinite(S.λmax) && S.λmax > 0 && S.λmin > 0
   S.hi = inflate * S.λmax
   S.lo = S.hi / range
@@ -322,7 +422,7 @@ Chebyshev iteration (Saad, Iterative Methods, alg. 12.1) of `S.degree` steps on 
 `b − A x` is written there (one more product).
 """
 function smooth!(x::AbstractVector, S::ChebyshevLevel, b::AbstractVector; zero_guess::Bool=false, residual=nothing)
-  A, D, r, z, d = S.A, S.D, S.r, S.z, S.d
+  A, D, r, d = S.A, S.D, S.r, S.d
   θ = (S.hi + S.lo) / 2
   δ = (S.hi - S.lo) / 2
   σ1 = θ / δ
@@ -331,22 +431,16 @@ function smooth!(x::AbstractVector, S::ChebyshevLevel, b::AbstractVector; zero_g
     fill!(x, 0.0)
     copyto!(r, b)
   else
-    _mul!(r, A, x, S.symmetric); r .= b .- r
+    _residual!(r, A, x, b, S.symmetric)
   end
-  ldiv!(z, D, r)
-  d .= z ./ θ
-  x .+= d
+  _cheb_update!(x, d, D, r, 0.0, 1 / θ)                    # d = D⁻¹ r / θ, x += d
   for k in 2:S.degree
-    _mul!(r, A, x, S.symmetric); r .= b .- r
-    ldiv!(z, D, r)
+    _residual!(r, A, x, b, S.symmetric)
     ρk = 1 / (2σ1 - ρ)
-    d .= (ρk * ρ) .* d .+ (2ρk / δ) .* z
-    x .+= d
+    _cheb_update!(x, d, D, r, ρk * ρ, 2ρk / δ)             # d = ρk ρ d + (2 ρk / δ) D⁻¹ r, x += d
     ρ = ρk
   end
-  if residual !== nothing
-    _mul!(residual, A, x, S.symmetric); residual .= b .- residual
-  end
+  residual !== nothing && _residual!(residual, A, x, b, S.symmetric)
   x
 end
 
@@ -465,11 +559,11 @@ function _galerkin!(ns::HMultigridNS, A::SparseMatrixCSC)
   s = ns.solver
   L = length(s.spaces)
   ns.levels[L-1].A = A
-  first = ns.gwork === nothing
-  first && (ns.gwork = GalerkinWork(size(A, 1), size(s.Ps[L-1], 2)))
+  first_product = ns.gwork === nothing
+  first_product && (ns.gwork = GalerkinWork(size(A, 1), size(s.Ps[L-1], 2)))
   for l in L-1:-1:1
     Al = l == L - 1 ? A : ns.levels[l].A
-    if first
+    if first_product
       Ac = s.Pts[l] * (Al * s.Ps[l])
       l == 1 ? (ns.Acoarse = Ac) : (ns.levels[l-1].A = Ac)
     else
@@ -556,12 +650,13 @@ function _vcycle!(x::AbstractVector, ns::HMultigridNS, l::Int, b::AbstractVector
   smooth!(x, S, b; zero_guess=true, residual=res)
   _tmul!(bc, s.Ps[l-1], res)                              # restriction Pᵀ res, threaded over the coarse dofs
   if l == 2
+    fill!(xc, 0.0)                                        # a fixed preconditioner: no history in an iterative coarse solver
     solve!(xc, ns.coarse_ns, bc)
   else
     _vcycle!(xc, ns, l - 1, bc)
   end
   _tmul!(e, s.Pts[l-1], xc)                               # prolongation P xc = (Pᵀ)ᵀ xc, threaded over the fine dofs
-  x .+= e
+  _add!(x, e)
   smooth!(x, S, b)
   x
 end
