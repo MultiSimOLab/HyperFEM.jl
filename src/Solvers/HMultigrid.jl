@@ -16,7 +16,7 @@ tangent, recomputed at every numerical setup (every `reuse` setups: lagged, as `
 smoother on every level but the coarsest is a Chebyshev iteration of `degree` preconditioned by the inverted nodal
 blocks of the level (the dofs of one node, 3 × 3 for 3D elasticity; scalar Jacobi for scalar fields), on the interval
 `[λ/range, λ]` with `λ = inflate · λmax`, `λmax` a Ritz estimate of the block-preconditioned level operator from
-`eig_iters` Arnoldi steps with a fixed start vector (reproducible); the coarsest level is solved by `coarse`, any Gridap
+`eig_iters` Lanczos steps in the block inner product from a fixed start vector (reproducible; real Ritz values inside the spectrum); the coarsest level is solved by `coarse`, any Gridap
 `LinearSolver` applied once per cycle (a direct solver, or one GAMG V-cycle: `PETScSolver(:preonly, :gamg; nullspace =
 near_nullspace(U_coarse))` with the rigid modes of the coarse space). Pre- and post-smoothing use the same polynomial,
 so the cycle is symmetric and CG is valid on SPD tangents.
@@ -158,7 +158,8 @@ nodal_blocks(U::TrialFESpace) = nodal_blocks(U.space)
 "Inverted nodal blocks of `A` (block Jacobi); `ok` false if a block is singular or non-finite."
 struct BlockJacobiPrec
   blocks::Vector{Vector{Int}}
-  inv::Vector{Matrix{Float64}}
+  blk::Vector{Matrix{Float64}}               # the nodal blocks of A (the D-inner product of the Lanczos estimate)
+  inv::Vector{Matrix{Float64}}               # their inverses
   block_of::Vector{Int}                      # dof → block
   pos_in::Vector{Int}                        # dof → position inside its block
   ok::Base.RefValue{Bool}
@@ -170,32 +171,48 @@ function BlockJacobiPrec(blocks)
   for (k, b) in enumerate(blocks), (i, d) in enumerate(b)
     block_of[d] = k; pos_in[d] = i
   end
-  BlockJacobiPrec(blocks, [zeros(length(b), length(b)) for b in blocks], block_of, pos_in, Ref(true))
+  BlockJacobiPrec(blocks, [zeros(length(b), length(b)) for b in blocks], [zeros(length(b), length(b)) for b in blocks],
+                  block_of, pos_in, Ref(true))
 end
 
 function _update_blocks!(D::BlockJacobiPrec, A::SparseMatrixCSC)
   colptr, rowval, nzval = A.colptr, A.rowval, A.nzval
   block_of, pos_in = D.block_of, D.pos_in
-  for M in D.inv
+  for M in D.blk
     fill!(M, 0.0)
   end
   @inbounds for j in 1:size(A, 2)                         # one sweep over the nonzeros: the entries inside a block
     kj = block_of[j]; pj = pos_in[j]
     for k in colptr[j]:colptr[j+1]-1
       i = rowval[k]
-      block_of[i] == kj && (D.inv[kj][pos_in[i], pj] = nzval[k])
+      block_of[i] == kj && (D.blk[kj][pos_in[i], pj] = nzval[k])
     end
   end
   ok = true
-  for M in D.inv
+  for (M, Mi) in zip(D.blk, D.inv)
     if all(isfinite, M) && (size(M, 1) == 1 ? M[1, 1] != 0 : abs(det(M)) > 0)
-      M .= inv(M)
+      Mi .= inv(M)
     else
       ok = false
     end
   end
   D.ok[] = ok
   D
+end
+
+"`y = D x` with the nodal blocks themselves."
+function _dmul!(y::AbstractVector, D::BlockJacobiPrec, x::AbstractVector)
+  @inbounds for (k, b) in enumerate(D.blocks)
+    M = D.blk[k]
+    for (i, ri) in enumerate(b)
+      s = 0.0
+      for (j, cj) in enumerate(b)
+        s += M[i, j] * x[cj]
+      end
+      y[ri] = s
+    end
+  end
+  y
 end
 
 function LinearAlgebra.ldiv!(y::AbstractVector, D::BlockJacobiPrec, x::AbstractVector)
@@ -227,7 +244,7 @@ mutable struct ChebyshevLevel
   r::Vector{Float64}                         # work: residual
   z::Vector{Float64}                         # work: preconditioned residual
   d::Vector{Float64}                         # work: direction
-  start::Vector{Float64}                     # fixed Arnoldi start vector
+  start::Vector{Float64}                     # fixed Lanczos start vector
   symmetric::Bool                            # threaded products (CG: symmetric tangents)
 end
 
@@ -237,47 +254,54 @@ function ChebyshevLevel(A::SparseMatrixCSC, blocks, degree, symmetric::Bool)
   ChebyshevLevel(A, BlockJacobiPrec(blocks), degree, 0.0, 0.0, 0.0, 0.0, false, zeros(n), zeros(n), zeros(n), start, symmetric)
 end
 
-"Ritz values (min, max) of D⁻¹A after `k` Arnoldi steps from the fixed start vector."
+"""
+Ritz values (min, max) of `D⁻¹A` after `k` Lanczos steps from the fixed start vector, in the `D`-inner product, in which
+`D⁻¹A` is self-adjoint when `A` is symmetric: the Ritz values are real and lie inside the spectrum of the pencil `(A, D)`,
+so a negative one means an indefinite `A` (an Arnoldi estimate in the Euclidean inner product can return negative Ritz
+values for a positive definite pencil when `D⁻¹A` is far from normal — badly shaped cells).
+"""
 function _ritz_bounds(S::ChebyshevLevel, k::Int)
   n = size(S.A, 1)
   k = min(k, n)
-  V = zeros(n, k + 1)
-  H = zeros(k + 1, k)
-  v = view(V, :, 1)
-  copyto!(v, S.start); v ./= norm(v)
-  w = zeros(n)
+  q = copy(S.start); qp = zeros(n); w = S.z; r = S.r; t = S.d
+  _dmul!(t, S.D, q); q ./= sqrt(dot(q, t))
+  α = zeros(k); β = zeros(k)
   m = k
   for j in 1:k
-    _mul!(S.r, S.A, view(V, :, j), S.symmetric)
-    ldiv!(w, S.D, S.r)
-    for i in 1:j
-      H[i, j] = dot(view(V, :, i), w)
-      w .-= H[i, j] .* view(V, :, i)
-    end
-    H[j+1, j] = norm(w)
-    if H[j+1, j] ≤ 1e-14 * max(1.0, abs(H[j, j]))
+    _mul!(r, S.A, q, S.symmetric)                         # r = A q
+    ldiv!(w, S.D, r)                                      # w = D⁻¹ A q
+    α[j] = dot(q, r)                                      # ⟨w, q⟩_D = qᵀ A q
+    w .-= α[j] .* q
+    j > 1 && (w .-= β[j-1] .* qp)
+    _dmul!(t, S.D, w)
+    b = sqrt(max(dot(w, t), 0.0))                         # ‖w‖_D
+    if j == k || b ≤ 1e-14 * max(1.0, abs(α[j]))
       m = j; break
     end
-    view(V, :, j+1) .= w ./ H[j+1, j]
+    β[j] = b
+    copyto!(qp, q); q .= w ./ b
   end
-  Hm = H[1:m, 1:m]
-  all(isfinite, Hm) || return (NaN, NaN)
-  ev = eigvals(Hm)
-  re = real.(ev)
-  (minimum(re), maximum(re))
+  all(isfinite, view(α, 1:m)) && all(isfinite, view(β, 1:m-1)) || return (NaN, NaN)
+  ev = eigvals(SymTridiagonal(α[1:m], β[1:m-1]))
+  (minimum(ev), maximum(ev))
 end
 
+"Updates blocks and interval of a level; returns `:none` or the reason it is not usable."
 function _update_level!(S::ChebyshevLevel, range::Float64, inflate::Float64, eig_iters::Int)
-  _update_blocks!(S.D, S.A)
-  if !S.D.ok[] || !all(isfinite, nonzeros(S.A))
+  if !all(isfinite, nonzeros(S.A))
     S.ok = false; S.λmin = S.λmax = NaN
-    return S
+    return :nonfinite
+  end
+  _update_blocks!(S.D, S.A)
+  if !S.D.ok[]
+    S.ok = false; S.λmin = S.λmax = NaN
+    return :blocks
   end
   S.λmin, S.λmax = _ritz_bounds(S, eig_iters)
   S.ok = isfinite(S.λmax) && S.λmax > 0 && S.λmin > 0
   S.hi = inflate * S.λmax
   S.lo = S.hi / range
-  S
+  S.ok ? :none : :indefinite
 end
 
 """
@@ -330,6 +354,7 @@ mutable struct HMultigridNS{S<:HMultigridSolver,TA<:AbstractMatrix,C} <: Algebra
   w::Vector{Float64}                         # in-place application copy
   ok::Bool
   coarse_ok::Bool                            # the lagged coarse levels (Galerkin operators, smoothers, coarse setup) are usable
+  failure::Symbol                            # :none, or why the last setup is not usable: :nonfinite, :blocks, :indefinite, :coarse
   nsetup::Int
   nbuild::Int
   iters::Int
@@ -373,12 +398,17 @@ end
 function _build!(ns::HMultigridNS; all_levels::Bool=true)
   s = ns.solver
   ok = true
+  ns.failure = :none
   for (i, S) in enumerate(ns.levels)
-    (all_levels || i == length(ns.levels)) && _update_level!(S, s.range, s.inflate, s.eig_iters)
+    if all_levels || i == length(ns.levels)
+      why = _update_level!(S, s.range, s.inflate, s.eig_iters)
+      (why !== :none && ns.failure === :none) && (ns.failure = why)
+    end
     ok &= S.ok
   end
   if !all_levels
     ns.ok = ok && ns.coarse_ok
+    ok && !ns.coarse_ok && (ns.failure = :coarse)
     return ns
   end
   if ok && all(isfinite, nonzeros(ns.Acoarse))
@@ -388,6 +418,7 @@ function _build!(ns::HMultigridNS; all_levels::Bool=true)
       numerical_setup!(ns.coarse_ns, ns.Acoarse)
     end
   else
+    ok && (ns.failure = :coarse)
     ok = false
   end
   ns.coarse_ok = ok
@@ -407,7 +438,7 @@ function numerical_setup(ss::HMultigridSS, A::AbstractMatrix)
   ns = HMultigridNS{typeof(s),typeof(A),Any}(s, A, levels, spzeros(sizes[1], sizes[1]), nothing,
                                              [zeros(sizes[l-1]) for l in 2:L], [zeros(sizes[l-1]) for l in 2:L],
                                              [zeros(sizes[l]) for l in 2:L], [zeros(sizes[l]) for l in 2:L], zeros(sizes[L]),
-                                             false, false, 1, 0, 0, 0.0, true, s.rtol)
+                                             false, false, :none, 1, 0, 0, 0.0, true, s.rtol)
   _galerkin!(ns, Af)
   _build!(ns)
   ns
@@ -416,7 +447,9 @@ end
 function numerical_setup!(ns::HMultigridNS, A::AbstractMatrix)
   s = ns.solver
   ns.nsetup += 1
-  rebuild = A !== ns.A || (ns.nsetup - 1) % s.reuse == 0   # a new matrix object always rebuilds
+  # a new matrix object always rebuilds; so does the setup after a failed one (a lagged failure must not be reused —
+  # the cut-back of the Newton would fail again on the stale levels, S4-A's lesson)
+  rebuild = A !== ns.A || (ns.nsetup - 1) % s.reuse == 0 || !ns.coarse_ok
   ns.A = A
   Af = _sparse_fine(A)
   if rebuild
@@ -479,7 +512,7 @@ end
 linear_converged(ns::HMultigridNS) = ns.converged
 linear_iterations(ns::HMultigridNS) = ns.iters
 preconditioner_builds(ns::HMultigridNS) = ns.nbuild
-linear_info(ns::HMultigridNS) = " $(ns.iters)"
+linear_info(ns::HMultigridNS) = ns.ok ? " $(ns.iters)" : " failed ($(ns.failure))"
 set_tolerance!(ns::HMultigridNS, rtol) = (ns.rtol = rtol === nothing ? ns.solver.rtol : _check_rtol(rtol); ns)
 tolerance(ns::HMultigridNS) = ns.rtol
 
