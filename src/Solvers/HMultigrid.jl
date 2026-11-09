@@ -33,6 +33,7 @@ products (threads only in the assembly); the PETSc PCMG route is the MPI one (DS
 struct HMultigridSolver{S<:Tuple,P<:Tuple,C<:Algebra.LinearSolver} <: Algebra.LinearSolver
   spaces::S                                  # test spaces per level, coarsest first
   Ps::P                                      # Ps[l]: level l → l + 1
+  Pts::P                                     # their transposes as CSC (the prolongation as a threaded transposed product)
   krylov::Symbol
   rtol::Float64
   atol::Float64
@@ -60,8 +61,10 @@ struct HMultigridSolver{S<:Tuple,P<:Tuple,C<:Algebra.LinearSolver} <: Algebra.Li
     range > 1 || error("HyperFEM: HMultigridSolver: range must be > 1")
     inflate ≥ 1 || error("HyperFEM: HMultigridSolver: inflate must be ≥ 1")
     eig_iters ≥ 2 || error("HyperFEM: HMultigridSolver: eig_iters must be ≥ 2")
-    sp, ps = Tuple(spaces), Tuple(Ps)
-    new{typeof(sp),typeof(ps),typeof(coarse)}(sp, ps, krylov, rtol, atol, maxiter, restart, reuse, degree, range, inflate,
+    ps = Tuple(SparseMatrixCSC{Float64,Int}(P) for P in Ps)
+    pts = Tuple(SparseMatrixCSC{Float64,Int}(sparse(transpose(P))) for P in ps)
+    sp = Tuple(spaces)
+    new{typeof(sp),typeof(ps),typeof(coarse)}(sp, ps, pts, krylov, rtol, atol, maxiter, restart, reuse, degree, range, inflate,
                                                eig_iters, coarse)
   end
 end
@@ -76,9 +79,9 @@ _linear_name(s::HMultigridSolver) = _KSP_NAMES[s.krylov] * "+hMG($(length(s.spac
 matrix is a dot product per column, independent across threads (Julia's `mul!` with a CSC matrix scatters by columns and
 runs serially). The tangents this solver accepts are symmetric (CG) — for `:gmres` the serial `mul!` is used.
 """
-function _symmul!(y::AbstractVector, A::SparseMatrixCSC, x::AbstractVector)
-  colptr, rowval, nzval = A.colptr, A.rowval, A.nzval
-  Threads.@threads :static for j in 1:size(A, 2)
+function _tmul!(y::AbstractVector, M::SparseMatrixCSC, x::AbstractVector)
+  colptr, rowval, nzval = M.colptr, M.rowval, M.nzval
+  Threads.@threads :static for j in 1:size(M, 2)
     s = 0.0
     @inbounds for k in colptr[j]:colptr[j+1]-1
       s += nzval[k] * x[rowval[k]]
@@ -87,6 +90,8 @@ function _symmul!(y::AbstractVector, A::SparseMatrixCSC, x::AbstractVector)
   end
   y
 end
+"`y = Mᵀ x` for any CSC matrix `M`, threaded over its columns (the transfers: `Pᵀ r` with `P`, `P xc` with `Pᵀ` stored)."
+_symmul!(y, A::SparseMatrixCSC, x) = _tmul!(y, A, x)
 
 "Product `y = A x` of a level operator: threaded for symmetric tangents, Julia's `mul!` otherwise."
 _mul!(y, A::SparseMatrixCSC, x, symmetric::Bool) = symmetric ? _symmul!(y, A, x) : mul!(y, A, x)
@@ -202,7 +207,8 @@ end
 
 "`y = D x` with the nodal blocks themselves."
 function _dmul!(y::AbstractVector, D::BlockJacobiPrec, x::AbstractVector)
-  @inbounds for (k, b) in enumerate(D.blocks)
+  Threads.@threads :static for k in eachindex(D.blocks)
+    b = D.blocks[k]
     M = D.blk[k]
     for (i, ri) in enumerate(b)
       s = 0.0
@@ -216,7 +222,8 @@ function _dmul!(y::AbstractVector, D::BlockJacobiPrec, x::AbstractVector)
 end
 
 function LinearAlgebra.ldiv!(y::AbstractVector, D::BlockJacobiPrec, x::AbstractVector)
-  @inbounds for (k, b) in enumerate(D.blocks)
+  Threads.@threads :static for k in eachindex(D.blocks)
+    b = D.blocks[k]
     M = D.inv[k]
     for (i, ri) in enumerate(b)
       s = 0.0
@@ -389,7 +396,7 @@ function _galerkin!(ns::HMultigridNS, A::SparseMatrixCSC)
   ns.levels[L-1].A = A
   for l in L-1:-1:1
     Al = l == L - 1 ? A : ns.levels[l].A
-    Ac = transpose(s.Ps[l]) * (Al * s.Ps[l])
+    Ac = s.Pts[l] * (Al * s.Ps[l])
     if l == 1
       ns.Acoarse = Ac
     else
@@ -473,13 +480,13 @@ function _vcycle!(x::AbstractVector, ns::HMultigridNS, l::Int, b::AbstractVector
   S = ns.levels[l-1]
   bc, xc, e, res = ns.bc[l-1], ns.xc[l-1], ns.e[l-1], ns.res[l-1]
   smooth!(x, S, b; zero_guess=true, residual=res)
-  mul!(bc, transpose(s.Ps[l-1]), res)
+  _tmul!(bc, s.Ps[l-1], res)                              # restriction Pᵀ res, threaded over the coarse dofs
   if l == 2
     solve!(xc, ns.coarse_ns, bc)
   else
     _vcycle!(xc, ns, l - 1, bc)
   end
-  mul!(e, s.Ps[l-1], xc)
+  _tmul!(e, s.Pts[l-1], xc)                               # prolongation P xc = (Pᵀ)ᵀ xc, threaded over the fine dofs
   x .+= e
   smooth!(x, S, b)
   x
