@@ -33,6 +33,33 @@ end
 HyperFEM.Solvers.linear_converged(ns::IndefLUNS) = !ns.failed
 HyperFEM.Solvers.linear_indefinite(ns::IndefLUNS) = ns.failed
 
+# LU that reports an indefinite operator on its first `nfail` solves with the **consistent** tangent (it reads the
+# model's switch): the pattern past an instability, where every return to the consistent tangent is refused
+struct IndefConsistentLU{S} <: Gridap.Algebra.LinearSolver
+  switch::S
+  nfail::Int
+end
+struct IndefConsistentLUSS{S} <: Gridap.Algebra.SymbolicSetup
+  s::IndefConsistentLU{S}
+end
+mutable struct IndefConsistentLUNS{T,S} <: Gridap.Algebra.NumericalSetup
+  lu::T
+  s::IndefConsistentLU{S}
+  nfailed::Int
+  failed::Bool
+end
+Gridap.Algebra.symbolic_setup(s::IndefConsistentLU, A::AbstractMatrix) = IndefConsistentLUSS(s)
+Gridap.Algebra.numerical_setup(ss::IndefConsistentLUSS, A::AbstractMatrix) =
+  IndefConsistentLUNS(numerical_setup(symbolic_setup(LUSolver(), A), A), ss.s, 0, false)
+Gridap.Algebra.numerical_setup!(ns::IndefConsistentLUNS, A::AbstractMatrix) = (numerical_setup!(ns.lu, A); ns)
+function Gridap.Algebra.solve!(x::AbstractVector, ns::IndefConsistentLUNS, b::AbstractVector)
+  ns.failed = !is_projected(ns.s.switch) && ns.nfailed < ns.s.nfail
+  ns.failed && (ns.nfailed += 1; fill!(x, 0.0); return x)
+  solve!(x, ns.lu, b)
+end
+HyperFEM.Solvers.linear_converged(ns::IndefConsistentLUNS) = !ns.failed
+HyperFEM.Solvers.linear_indefinite(ns::IndefConsistentLUNS) = ns.failed
+
 # A line search that fails on its first `nfail` calls (the residual left at x) and takes the full step afterwards
 mutable struct FailFirstLS <: HyperFEM.Solvers.AbstractLineSearch
   nfail::Int
@@ -198,6 +225,28 @@ end
   x, flag = @test_logs (:warn, r"Bisection") match_mode = :any solve!(m; stepping=(nsteps=1, maxbisec=3))
   @test flag == 1 && converged(nls)
   @test isapprox(x, xref; rtol=1e-8)
+
+  # stay_projected (default 2): after the second indefinite report of a solve the Newton stays on the projected
+  # tangent and converges by the projected criterion; with stay_projected = 0 it returns to the consistent tangent
+  for (stay, last, why) in ((2, :projected, :converged_projected), (0, :consistent, nothing))
+    switch = TangentSwitch()
+    p = hybrid_test_problem(; switch)
+    nls = NewtonRaphson(IndefConsistentLU(switch, 2); maxiter=60, atol=1e-10, rtol=1e-12,
+                        tangent=HybridTangent(hybback=0.5, atol_projected=1e-9, stay_projected=stay))
+    m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=nls, tangent_switch=switch)
+    x, flag = solve!(m; stepping=(nsteps=1, maxbisec=0))
+    @test flag == 1 && converged(nls)
+    modes = mode_history(nls)
+    @test nls.log.nswitches == 2
+    @test modes[end] === last
+    why === nothing || @test stop_reason(nls) === why
+    second = findall(==(0.0), step_history(nls))[2]                  # the second refused consistent solve
+    stay == 2 && @test all(==(:projected), modes[second+1:end])
+    stay == 0 && @test :consistent in modes[second+1:end]
+    @test isapprox(x, xref; rtol=1e-6)
+    @test !is_projected(switch)
+  end
+  @test_throws ArgumentError HybridTangent(atol_projected=1.0, stay_projected=-1)
 
   # ConsistentTangent: the indefinite report fails the solve as any other linear failure
   p = hybrid_test_problem()

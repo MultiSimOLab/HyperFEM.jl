@@ -270,17 +270,26 @@ An iterative linear solver that reports an **indefinite tangent** ([`linear_inde
 multigrid smoothers, PETSc's CG, the matrix-free CG) is the same signal as a failed line search: the
 solve switches to the projected tangent at the same state instead of failing, so the driver does not
 bisect a load step the projected tangent can take (S5). With [`ConsistentTangent`](@ref), or already
-in projected mode, such a solve fails (`:linear_failed`).
+in projected mode, such a solve fails (`:linear_failed`). After `stay_projected` such reports within
+one solve (default 2) the solve **stays on the projected tangent** until it converges by the projected
+criterion: past an instability the consistent tangent remains indefinite and every return to it would
+be refused again (`stay_projected = 0`: always return when `hybback` says so).
 """
 struct HybridTangent <: TangentStrategy
   hybback::Float64
   atol_projected::Float64
-  function HybridTangent(; hybback::Real=1e-2, atol_projected::Real)
+  stay_projected::Int
+  function HybridTangent(; hybback::Real=1e-2, atol_projected::Real, stay_projected::Integer=2)
     0 < hybback < 1 || throw(ArgumentError("HybridTangent: hybback must be in (0, 1)"))
     atol_projected > 0 || throw(ArgumentError("HybridTangent: atol_projected must be > 0"))
-    new(hybback, atol_projected)
+    stay_projected ≥ 0 || throw(ArgumentError("HybridTangent: stay_projected must be ≥ 0"))
+    new(hybback, atol_projected, stay_projected)
   end
 end
+
+"Indefinite reports within a solve after which it stays on the projected tangent (0: never)."
+_stay_after(::TangentStrategy) = 0
+_stay_after(t::HybridTangent) = t.stay_projected
 
 # Mode at the start of a solve
 _start_mode(::TangentStrategy) = :consistent
@@ -552,6 +561,8 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
     reason = :maxiter
   end
   c0 = 0.0   # curvature |b·dx| of the first iteration
+  nindef = 0     # indefinite tangents reported by the linear solver in this solve
+  locked = false # the solve stays on the projected tangent (HybridTangent's stay_projected)
   τ = max(tols.atol, tols.rtol * r0)    # the residual the Newton accepts (floor of the forcing term)
   η, rprev = 0.0, r                     # forcing term of the current iteration (0: none) and the previous residual
   rtol_in = ew === nothing ? nothing : tolerance(ns)   # restored at the end, also on an exception
@@ -591,6 +602,8 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
       mode = planb
       r_sw = r
       log.nswitches += 1
+      nindef += 1
+      locked = _stay_after(tangent) > 0 && nindef >= _stay_after(tangent)
       _print_switch(log, mode, r)
       set_tangent!(op, mode)
       t1 = time()
@@ -614,7 +627,7 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
     end
 
     # back to the consistent tangent once the residual has dropped enough in projected mode
-    next = _next_mode(tangent, mode, r, r_sw)
+    next = locked ? mode : _next_mode(tangent, mode, r, r_sw)
     if next !== mode
       _print_switch(log, next, r)
       mode = next
