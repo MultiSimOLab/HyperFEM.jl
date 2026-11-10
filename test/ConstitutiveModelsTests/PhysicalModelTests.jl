@@ -116,6 +116,22 @@ end
   @test HessianRegularization(model; δ=-1e3)()[3](F) == C
 end
 
+@testset "HessianRegularization of an anisotropic model (extra arguments passed through)" begin
+  model = NonlinearMooneyRivlin2D(λ=2.0, μ1=1.0, μ2=1.0, α1=1.0, α2=1.0) + TransverseIsotropy2D(μ=1.0, α1=0.5, α2=2.0)
+  _, _, ∂FF = model()
+  F = TensorValue(1.0, 0.0, 0.0, 1.0) + TensorValue(-0.6, 0.3, 0.2, -0.5)
+  N = VectorValue(1.0, 0.0)
+  C = ∂FF(F, N)
+  δ = 1e3                                             # above every eigenvalue: the clamp changes the tangent
+  switch = TangentSwitch()
+  ∂FFr = HessianRegularization(model; δ, switch)()[3]
+  @test ∂FFr(F, N) == C
+  set_projected!(switch, true)
+  @test ∂FFr(F, N) == regularize_hessian(C, δ)
+  @test ∂FFr(F, N) != C
+  @test HessianRegularization(model; δ)()[3](F, N) == regularize_hessian(C, δ)
+end
+
 @testset "HessianRegularization of an electro-mechanical model (total mechanical tangent, in E)" begin
   model = ElectroMechModel(IdealDielectric(ε=1.0), NeoHookean3D(λ=10.0, μ=1.0))
   Ψ, ∂F, ∂E, ∂FF, ∂EF, ∂EE = model()
