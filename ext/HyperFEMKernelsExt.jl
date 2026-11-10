@@ -104,7 +104,11 @@ end
 const MFNS = HyperFEMKernels.MatrixFreeSolverNS
 HyperFEM.linear_converged(ns::MFNS) = HyperFEMKernels.linear_converged(ns)
 HyperFEM.linear_iterations(ns::MFNS) = HyperFEMKernels.linear_iterations(ns)
-HyperFEM.linear_indefinite(ns::MFNS) = HyperFEMKernels.linear_indefinite(ns)
+# `linear_indefinite` exists in HyperFEMKernels from the release after 0.2.2 (S5); with an older engine the matrix-free solver
+# never reports an indefinite tangent (the default `false`)
+@static if isdefined(HyperFEMKernels, :linear_indefinite)
+  HyperFEM.linear_indefinite(ns::MFNS) = HyperFEMKernels.linear_indefinite(ns)
+end
 HyperFEM.set_tolerance!(ns::MFNS, rtol) = HyperFEMKernels.set_tolerance!(ns, rtol)
 HyperFEM.tolerance(ns::MFNS) = HyperFEMKernels.tolerance(ns)
 HyperFEM.preconditioner_builds(ns::MFNS) = HyperFEMKernels.preconditioner_builds(ns)

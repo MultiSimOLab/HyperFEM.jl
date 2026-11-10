@@ -11,7 +11,7 @@
 
 Krylov method (`:cg` for symmetric positive definite tangents, `:gmres` otherwise) preconditioned by one V-cycle of
 geometric h-multigrid on a hierarchy of nested meshes: `spaces` are the test spaces of the levels, coarsest first (the
-finest is the Newton's), and `Ps[l]` the prolongation from level `l` to level `l + 1` ([`prolongation`](@ref), free dofs,
+finest is the Newton's), and `Ps[l]` the prolongation from level `l` to level `l + 1` ([`prolongation`](@ref HyperFEM.ComputationalModels.prolongation), free dofs,
 homogeneous Dirichlet). The coarse operators are the Galerkin products `A_l = P_lᵀ A_{l+1} P_l` of the assembled
 tangent, rebuilt every `reuse` setups (lagged, as `PETScSolver`'s `reuse`; the fine smoother always follows the
 current tangent); the
