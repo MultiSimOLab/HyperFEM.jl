@@ -12,6 +12,49 @@ struct ElectroMechModel{E<:Electro,M<:Mechano} <: ElectroMechano{E,M}
   end
 end
 
+"""
+    HessianRegularization(model::ElectroMechano; δ=1e-6, switch=nothing, symmetrize=false)
+
+Electro-mechanical model (in E) with its **total** mechanical tangent `∂²Ψ/∂F∂F(F, E)` projected at every point —
+the elastic part and the electro-mechanical (Maxwell) part `∂²Ψem/∂F∂F` together, at fixed E: the eigenvalues are
+clamped from below at `δ` (`regularize_hessian`). Energy, stresses, the coupling `∂²Ψ/∂E∂F` and the electric block
+`∂²Ψ/∂E∂E` are unchanged. In the E formulation the electric block is negative definite, so the Schur complement
+`K_FF − K_FE K_EE⁻¹ K_EF` adds a positive semi-definite term to `K_FF`: a loss of stability (pull-in) comes from
+`K_FF` itself, and with it projected the two diagonal blocks of the positive-real form are positive definite (what
+the block preconditioners and the hybrid Newton's projected step need). With a [`TangentSwitch`](@ref) the
+projection applies only while `is_projected(switch)` (the `HybridTangent` of the Newton, register the switch in the
+driver with `tangent_switch`). Wrapping only the mechanical model instead (`HessianRegularization(mechano)` inside
+`ElectroMechModel`) leaves the Maxwell part unprojected.
+"""
+struct ElectroMechHessianRegularization{E,M,P<:ElectroMechano{E,M},S} <: ElectroMechano{E,M}
+  model::P
+  δ::Float64
+  switch::S
+  symmetrize::Bool
+end
+HessianRegularization(model::ElectroMechano; δ::Float64=1.0e-6, switch=nothing, symmetrize::Bool=false) =
+  ElectroMechHessianRegularization(model, δ, switch, symmetrize)
+
+_projected(::Nothing) = true
+_projected(s::TangentSwitch) = is_projected(s)
+
+function (obj::ElectroMechHessianRegularization)(args...; kwargs...)
+  Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE = obj.model(args...; kwargs...)
+  δ, sym, switch = obj.δ, obj.symmetrize, obj.switch
+  function ∂Ψ∂FFr(F, E, vars...)
+    C = ∂Ψ∂FF(F, E, vars...)
+    _projected(switch) ? regularize_hessian(sym ? _symmetrize(C) : C, δ) : C
+  end
+  return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FFr, ∂Ψ∂EF, ∂Ψ∂EE)
+end
+
+# the state, the time step and the dissipation are those of the wrapped model
+update_time_step!(obj::ElectroMechHessianRegularization, Δt::Float64) = update_time_step!(obj.model, Δt)
+Gridap.CellData.CellState(obj::ElectroMechHessianRegularization, args...; kwargs...) = CellState(obj.model, args...; kwargs...)
+initialize_state(obj::ElectroMechHessianRegularization) = initialize_state(obj.model)
+Gridap.CellData.update_state!(obj::ElectroMechHessianRegularization, state, args...; kwargs...) = update_state!(obj.model, state, args...; kwargs...)
+Dissipation(obj::ElectroMechHessianRegularization) = Dissipation(obj.model)
+
 function (+)(Model1::Electro, Model2::Mechano)
   ElectroMechModel(Model1, Model2)
 end

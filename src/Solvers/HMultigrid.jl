@@ -11,7 +11,7 @@
 
 Krylov method (`:cg` for symmetric positive definite tangents, `:gmres` otherwise) preconditioned by one V-cycle of
 geometric h-multigrid on a hierarchy of nested meshes: `spaces` are the test spaces of the levels, coarsest first (the
-finest is the Newton's), and `Ps[l]` the prolongation from level `l` to level `l + 1` ([`prolongation`](@ref), free dofs,
+finest is the Newton's), and `Ps[l]` the prolongation from level `l` to level `l + 1` ([`prolongation`](@ref HyperFEM.ComputationalModels.prolongation), free dofs,
 homogeneous Dirichlet). The coarse operators are the Galerkin products `A_l = P_lᵀ A_{l+1} P_l` of the assembled
 tangent, rebuilt every `reuse` setups (lagged, as `PETScSolver`'s `reuse`; the fine smoother always follows the
 current tangent); the
@@ -361,6 +361,62 @@ function ChebyshevLevel(A::SparseMatrixCSC, blocks, degree, symmetric::Bool)
   ChebyshevLevel(A, BlockJacobiPrec(blocks), degree, 0.0, 0.0, 0.0, 0.0, false, zeros(n), zeros(n), zeros(n), start, symmetric)
 end
 
+"Threaded `dot`, with one partial sum per thread (the fine vectors are tens of MB; BLAS runs with one thread here)."
+function _tdot(x::AbstractVector, y::AbstractVector)
+  nt = Threads.maxthreadid()
+  parts = zeros(nt)
+  Threads.@threads :static for i in eachindex(x)
+    @inbounds parts[Threads.threadid()] += x[i] * y[i]
+  end
+  sum(parts)
+end
+
+"""
+One Lanczos step fused over the nodal blocks: from `r = A q`, `w = D⁻¹ r − α q − β qp` with `α = ⟨q, r⟩` (already known),
+and the `D`-norm² of `w` (`t = D w`, `⟨w, t⟩`) accumulated per block — one threaded pass instead of six vector sweeps.
+"""
+function _lanczos_step!(w::AbstractVector, D::BlockJacobiPrec, r::AbstractVector, q::AbstractVector, qp::AbstractVector,
+                        α::Float64, β::Float64)
+  nt = Threads.maxthreadid()
+  parts = zeros(nt)
+  Threads.@threads :static for k in eachindex(D.blocks)
+    b = D.blocks[k]
+    Mi = D.inv[k]; M = D.blk[k]
+    id = Threads.threadid()
+    @inbounds begin
+      for (i, ri) in enumerate(b)
+        s = 0.0
+        for (j, cj) in enumerate(b)
+          s += Mi[i, j] * r[cj]
+        end
+        w[ri] = s - α * q[ri] - β * qp[ri]
+      end
+      acc = 0.0
+      for (i, ri) in enumerate(b)                         # ⟨w, D w⟩ on the block
+        s = 0.0
+        for (j, cj) in enumerate(b)
+          s += M[i, j] * w[cj]
+        end
+        acc += w[ri] * s
+      end
+      parts[id] += acc
+    end
+  end
+  sum(parts)
+end
+
+"`qp .= q; q .= w ./ b`, threaded."
+function _lanczos_shift!(qp::AbstractVector, q::AbstractVector, w::AbstractVector, b::Float64)
+  ib = 1 / b
+  Threads.@threads :static for i in eachindex(q)
+    @inbounds begin
+      qp[i] = q[i]
+      q[i] = w[i] * ib
+    end
+  end
+  q
+end
+
 """
 Ritz values (min, max) of `D⁻¹A` after `k` Lanczos steps from the fixed start vector, in the `D`-inner product, in which
 `D⁻¹A` is self-adjoint when `A` is symmetric: the Ritz values are real and lie inside the spectrum of the pencil `(A, D)`,
@@ -372,26 +428,22 @@ function _ritz_bounds(S::ChebyshevLevel, k::Int)
   k = min(k, n)
   q = copy(S.start); qp = zeros(n); w = S.z; r = S.r; t = S.d
   _dmul!(t, S.D, q)
-  nq = dot(q, t)
+  nq = _tdot(q, t)
   nq > 0 || return (-Inf, -Inf)                          # the blocks are not positive definite (reported as :blocks)
   q ./= sqrt(nq)
   α = zeros(k); β = zeros(k)
   m = k
   for j in 1:k
     _mul!(r, S.A, q, S.symmetric)                         # r = A q
-    ldiv!(w, S.D, r)                                      # w = D⁻¹ A q
-    α[j] = dot(q, r)                                      # ⟨w, q⟩_D = qᵀ A q
-    w .-= α[j] .* q
-    j > 1 && (w .-= β[j-1] .* qp)
-    _dmul!(t, S.D, w)
-    b2 = dot(w, t)
+    α[j] = _tdot(q, r)                                    # ⟨D⁻¹ A q, q⟩_D = qᵀ A q
+    b2 = _lanczos_step!(w, S.D, r, q, qp, α[j], j > 1 ? β[j-1] : 0.0)   # w = D⁻¹ r − α q − β qp, b2 = ‖w‖_D²
     b2 ≥ -1e-12 * max(1.0, abs(α[j])) || return (-Inf, -Inf)   # a negative D-norm: the blocks are indefinite
     b = sqrt(max(b2, 0.0))                                # ‖w‖_D
     if j == k || b ≤ 1e-14 * max(1.0, abs(α[j]))
       m = j; break
     end
     β[j] = b
-    copyto!(qp, q); q .= w ./ b
+    _lanczos_shift!(qp, q, w, b)
   end
   all(isfinite, view(α, 1:m)) && all(isfinite, view(β, 1:m-1)) || return (NaN, NaN)
   ev = eigvals(SymTridiagonal(α[1:m], β[1:m-1]))
@@ -399,11 +451,18 @@ function _ritz_bounds(S::ChebyshevLevel, k::Int)
 end
 
 "Updates blocks and interval of a level; returns `:none` or the reason it is not usable."
-function _update_level!(S::ChebyshevLevel, range::Float64, inflate::Float64, eig_iters::Int)
+function _update_level!(S::ChebyshevLevel, range::Float64, inflate::Float64, eig_iters::Int; refresh::Bool=false)
   why = _update_blocks!(S.D, S.A)                          # finiteness of A and the blocks, in the same sweep
   if why !== :none
     S.ok = false; S.λmin = S.λmax = NaN
     return why
+  end
+  if refresh && S.ok                                        # a lagged refresh of the fine level: the previous interval is
+    k = max(3, eig_iters ÷ 3)                               # kept if a short Lanczos run stays inside it (the tangent of
+    lo, hi = _ritz_bounds(S, k)                             # one Newton iteration to the next changes little); a full
+    if lo > 0 && isfinite(hi) && hi ≤ S.λmax && lo ≥ S.λmin / 2   # estimate otherwise
+      return :none
+    end
   end
   S.λmin, S.λmax = _ritz_bounds(S, eig_iters)
   if S.λmin == -Inf                                         # the blocks are not positive definite in the Lanczos products
@@ -581,7 +640,7 @@ function _build!(ns::HMultigridNS; all_levels::Bool=true)
   ns.failure = :none
   for (i, S) in enumerate(ns.levels)
     if all_levels || i == length(ns.levels)
-      why = _update_level!(S, s.range, s.inflate, s.eig_iters)
+      why = _update_level!(S, s.range, s.inflate, s.eig_iters; refresh=!all_levels)
       (why !== :none && ns.failure === :none) && (ns.failure = why)
     end
     ok &= S.ok
@@ -715,6 +774,8 @@ end
 
 linear_converged(ns::HMultigridNS) = ns.converged
 linear_iterations(ns::HMultigridNS) = ns.iters
+"An indefinite tangent (a negative Ritz value, or non-SPD nodal blocks) is the instability signal of S5."
+linear_indefinite(ns::HMultigridNS) = !ns.ok && ns.failure in (:indefinite, :blocks)
 preconditioner_builds(ns::HMultigridNS) = ns.nbuild
 linear_info(ns::HMultigridNS) = ns.ok ? " $(ns.iters)" : " failed ($(ns.failure))"
 set_tolerance!(ns::HMultigridNS, rtol) = (ns.rtol = rtol === nothing ? ns.solver.rtol : _check_rtol(rtol); ns)

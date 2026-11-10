@@ -18,7 +18,7 @@ module HyperFEMPETScExt
 
 using HyperFEM
 using HyperFEM.Solvers: PETScSolver, _linear_name, split_nullspace
-import HyperFEM.Solvers: petsc_symbolic_setup, linear_converged, linear_iterations, linear_info, preconditioner_builds, set_tolerance!, tolerance, _check_rtol
+import HyperFEM.Solvers: petsc_symbolic_setup, linear_converged, linear_iterations, linear_indefinite, linear_info, preconditioner_builds, set_tolerance!, tolerance, _check_rtol
 using Gridap.Algebra
 import Gridap.Algebra: numerical_setup, numerical_setup!, solve!
 using GridapPETSc
@@ -417,6 +417,8 @@ end
 # Report to the Newton
 
 linear_converged(ns::PETScSolverNS) = ns.reason > 0
+"CG met an indefinite matrix or preconditioner (`KSP_DIVERGED_INDEFINITE_MAT` −10, `KSP_DIVERGED_INDEFINITE_PC` −8)."
+linear_indefinite(ns::PETScSolverNS) = ns.reason == -10 || ns.reason == -8
 linear_iterations(ns::PETScSolverNS) = ns.iters
 preconditioner_builds(ns::PETScSolverNS) = ns.nbuild
 linear_info(ns::PETScSolverNS) = ns.solver.ksp === :preonly ? "" : " $(ns.iters)"

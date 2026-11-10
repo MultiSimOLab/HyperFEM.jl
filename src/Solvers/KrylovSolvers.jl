@@ -275,6 +275,20 @@ Iterations of the last solve of an iterative linear solver (`0` for direct solve
 linear_iterations(::Algebra.NumericalSetup) = 0
 
 """
+    linear_indefinite(ns) -> Bool
+
+Whether the last solve of `ns` stopped because the operator is **not positive definite** — the signal of
+an instability (a limit point, pull-in, buckling) that the Newton with a [`HybridTangent`](@ref) treats as
+a failed line search: it switches to the projected tangent at the same state instead of letting the
+driver bisect the load step (S5). `false` by default, and for a solve that failed for another reason
+(iterations exhausted, a non-finite tangent, a coarse solver error). Set by `HMultigridSolver` (a
+negative or non-SPD Ritz pencil on a level), `FieldSplitSolver` (an indefinite block), `PETScSolver`
+(`KSP_DIVERGED_INDEFINITE_MAT` / `_PC`) and HyperFEMKernels' `MatrixFreeSolver` (p-multigrid, or the
+negative curvature met by CG).
+"""
+linear_indefinite(::Algebra.NumericalSetup) = false
+
+"""
     set_tolerance!(ns, rtol) -> ns
 
 Relative tolerance of the next solves of the numerical setup `ns` of an iterative solver: the forcing
