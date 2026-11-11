@@ -10,10 +10,9 @@ using Test
 # and the results of the other backends are compared with those of :lazy.
 #
 # TEST_BACKENDS comes from the environment variable HYPERFEM_TEST_BACKENDS (comma separated; default
-# "lazy,compiled", or "lazy" when HyperFEMKernels is not in the environment), e.g. HYPERFEM_TEST_BACKENDS=lazy
-# for a quick run.
+# "lazy,compiled", e.g. HYPERFEM_TEST_BACKENDS=lazy for a quick run without HyperFEMKernels.
 # The same functions are benchmarked in benchmark/SimulationsBenchmarks/benchmarks.jl
-const TEST_BACKENDS = Tuple(Symbol.(strip.(split(get(ENV, "HYPERFEM_TEST_BACKENDS", Base.find_package("HyperFEMKernels") === nothing ? "lazy" : "lazy,compiled"), ","))))
+const TEST_BACKENDS = Tuple(Symbol.(strip.(split(get(ENV, "HYPERFEM_TEST_BACKENDS", "lazy,compiled"), ","))))
 all(b -> b in (:lazy, :compiled), TEST_BACKENDS) || error("HYPERFEM_TEST_BACKENDS: unknown backend in $TEST_BACKENDS")
 :compiled in TEST_BACKENDS && @eval using HyperFEMKernels      # activates the extension HyperFEMKernelsExt
 

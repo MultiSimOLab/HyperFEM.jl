@@ -7,7 +7,7 @@ using HyperFEM
 using LinearAlgebra, SparseArrays
 using Test
 
-const S1_BACKENDS = Tuple(Symbol.(strip.(split(get(ENV, "HYPERFEM_TEST_BACKENDS", Base.find_package("HyperFEMKernels") === nothing ? "lazy" : "lazy,compiled"), ","))))
+const S1_BACKENDS = Tuple(Symbol.(strip.(split(get(ENV, "HYPERFEM_TEST_BACKENDS", "lazy,compiled"), ","))))
 :compiled in S1_BACKENDS && @eval using HyperFEMKernels
 
 # --- linear elasticity on a bar, n cells across ----------------------------------------------------------------
