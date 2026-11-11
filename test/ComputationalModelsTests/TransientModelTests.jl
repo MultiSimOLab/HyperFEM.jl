@@ -9,9 +9,9 @@ using SparseArrays
 using Logging
 using Test
 
-# both backends, as the simulation tests (HYPERFEM_TEST_BACKENDS, default "lazy,compiled")
+# both backends, as the simulation tests (HYPERFEM_TEST_BACKENDS, default "lazy,compiled", or "lazy" without HyperFEMKernels)
 const TEST_BACKENDS_T = isdefined(Main, :TEST_BACKENDS) ? TEST_BACKENDS :
-  Tuple(Symbol.(strip.(split(get(ENV, "HYPERFEM_TEST_BACKENDS", "lazy,compiled"), ","))))
+  Tuple(Symbol.(strip.(split(get(ENV, "HYPERFEM_TEST_BACKENDS", Base.find_package("HyperFEMKernels") === nothing ? "lazy" : "lazy,compiled"), ","))))
 :compiled in TEST_BACKENDS_T && @eval using HyperFEMKernels
 
 # observed order from errors e(Δt) on halved steps

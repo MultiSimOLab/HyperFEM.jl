@@ -34,10 +34,10 @@ type-stable and allocates.
 
 | Operator | Name               | Contracted indices                                             |
 |:--------:|:-------------------|:---------------------------------------------------------------|
-| `a ⊗ b`  | outer product      | none                                                           |
+| `a ⊗ b` | outer product      | none                                                           |
 | `a ⋅ b`  | single contraction | the last index of `a` with the first index of `b`              |
 | `a ⋅² b` | double contraction | the last two indices of `a` with the first two indices of `b`  |
-| `a ⊙ b`  | full contraction   | all the indices of the operand of lower order                  |
+| `a ⊙ b` | full contraction   | all the indices of the operand of lower order                  |
 | `a × b`  | cross product (3D) | the last two indices of `a` with the first two indices of `b`  |
 | `a'`     | transpose          | `W'[i,j,k] = W[k,i,j]`, `H'[i,j,k,l] = H[k,l,i,j]`             |
 | `a * b`  | same as `a ⋅ b`    | second-order tensors only, to be removed                       |
@@ -47,6 +47,9 @@ alias of Gridap's `double_contraction`. HyperFEM adds `⊙` between tensors of d
 the transposes, the norm of high-order tensors and the cross products. It also redefines, with the
 same results, the operations that are slower in Gridap for 81 components: `+`, `-` and the scaling
 of high-order tensors, and `A ⊗ B` of second-order tensors.
+
+The middle dot `·` (U+00B7) is the same operator as `⋅` (U+22C5): Julia normalizes it when parsing,
+so `A · B` and `H ·² G` are `A ⋅ B` and `H ⋅² G`.
 
 ## Index notation
 
