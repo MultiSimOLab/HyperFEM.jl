@@ -13,6 +13,8 @@ import Base: -
     FourthOrderTensorValue{D,T,L}
     FourthOrderTensorValue(data::Tuple)
     FourthOrderTensorValue(data::Number...)
+    FourthOrderTensorValue{D}(data::Tuple)
+    FourthOrderTensorValue{D}(data::Number...)
 
 Fourth-order tensor in dimension `D`, with full indices `H[i,j,k,l]` (Gridap's `HighOrderTensorValue`).
 
@@ -27,6 +29,8 @@ const FourthOrderTensorValue{D,T,L} = HighOrderTensorValue{Tuple{D,D,D,D},T,4,L}
 
 FourthOrderTensorValue(data::Tuple) = HighOrderTensorValue(Val(4), data)
 FourthOrderTensorValue(data::Number...) = HighOrderTensorValue(Val(4), data)
+FourthOrderTensorValue{D}(data::Tuple) where {D} = HighOrderTensorValue{Tuple{D,D,D,D}}(data)
+FourthOrderTensorValue{D}(data::Number...) where {D} = FourthOrderTensorValue{D}(data)
 
 export (*)
 export (+)

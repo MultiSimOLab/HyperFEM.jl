@@ -6,7 +6,7 @@
 _identity2(D::Int) = TensorValue{D,D,Float64}(Tuple(I[1] == I[2] ? 1.0 : 0.0 for I in CartesianIndices((D, D))))
 
 """Fourth-order identity tensor in dimension `D`, `𝕀[i,j,k,l] = δᵢₖδⱼₗ`."""
-_identity4(D::Int) = HighOrderTensorValue{Tuple{D,D,D,D},Float64}(
+_identity4(D::Int) = FourthOrderTensorValue{D,Float64}(
   Tuple(I[1] == I[3] && I[2] == I[4] ? 1.0 : 0.0 for I in CartesianIndices((D, D, D, D))))
 
 """

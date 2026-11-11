@@ -1,14 +1,16 @@
 # Code generation of the products in index notation.
 #
 # The tensors are stored with full indices: a tensor of order `o` in dimension `D` is a
-# `VectorValue{D}` (o = 1), a `TensorValue{D,D}` (o = 2) or a `HighOrderTensorValue{Tuple{D,…,D}}`
-# (o ≥ 3), and its components are read as `A[i,j,…]`.
+# `VectorValue{D}`, a `TensorValue{D,D}`, a `ThirdOrderTensorValue{D,D,D}` or a `FourthOrderTensorValue{D}`
+# (o = 1 to 4), and its components are read as `A[i,j,…]`.
 
 """Expression of the type of a tensor of order `o` in dimension `D`, with elements of type `T`."""
 function tensor_type(o::Int, D::Int, T)
   o == 1 && return :(VectorValue{$D,$T})
   o == 2 && return :(TensorValue{$D,$D,$T})
-  :(HighOrderTensorValue{Tuple{$(ntuple(_ -> D, o)...)},$T,$o,$(D^o)})
+  o == 3 && return :(ThirdOrderTensorValue{$D,$D,$D,$T})
+  o == 4 && return :(FourthOrderTensorValue{$D,$T})
+  throw(ArgumentError("Trying to get the type of a tensor of order $o"))
 end
 
 """

@@ -181,7 +181,7 @@ end
 # =====================
 
 @inline function (×ᵢ⁴)(A::TensorValue{3,3})
-  HighOrderTensorValue{Tuple{3,3,3,3}}(0.0, 0.0, 0.0, 0.0, A[9], -A[8], 0.0, -A[6], A[5], 0.0, 0.0, 0.0, -A[9],
+  FourthOrderTensorValue{3}(0.0, 0.0, 0.0, 0.0, A[9], -A[8], 0.0, -A[6], A[5], 0.0, 0.0, 0.0, -A[9],
     0.0, A[7], A[6], 0.0, -A[4], 0.0, 0.0, 0.0, A[8], -A[7], 0.0, -A[5], A[4], 0.0, 0.0, -A[9],
     A[8], 0.0, 0.0, 0.0, 0.0, A[3], -A[2], A[9], 0.0, -A[7], 0.0, 0.0, 0.0, -A[3], 0.0,
     A[1], -A[8], A[7], 0.0, 0.0, 0.0, 0.0, A[2], -A[1], 0.0, 0.0, A[6], -A[5], 0.0,
@@ -206,7 +206,7 @@ end
 
 @inline function Gridap.TensorValues.cross(H::FourthOrderTensorValue{3,T1}, A::TensorValue{3,3,T2}) where {T1,T2}
 
-  HighOrderTensorValue{Tuple{3,3,3,3}}(A[9] * H[37] - A[8] * H[46] - A[6] * H[64] + A[5] * H[73],
+  FourthOrderTensorValue{3}(A[9] * H[37] - A[8] * H[46] - A[6] * H[64] + A[5] * H[73],
     A[9] * H[38] - A[8] * H[47] - A[6] * H[65] + A[5] * H[74],
     A[9] * H[39] - A[8] * H[48] - A[6] * H[66] + A[5] * H[75],
     A[9] * H[40] - A[8] * H[49] - A[6] * H[67] + A[5] * H[76],
@@ -291,7 +291,7 @@ end
 
 @inline function Gridap.TensorValues.cross(A::TensorValue{3,3,T1}, H::FourthOrderTensorValue{3,T2}) where {T1,T2}
 
-  HighOrderTensorValue{Tuple{3,3,3,3}}(A[5] * H[9] - A[6] * H[8] - A[8] * H[6] + A[9] * H[5],
+  FourthOrderTensorValue{3}(A[5] * H[9] - A[6] * H[8] - A[8] * H[6] + A[9] * H[5],
     A[6] * H[7] - A[4] * H[9] + A[7] * H[6] - A[9] * H[4],
     A[4] * H[8] - A[5] * H[7] - A[7] * H[5] + A[8] * H[4],
     A[3] * H[8] - A[2] * H[9] + A[8] * H[3] - A[9] * H[2],

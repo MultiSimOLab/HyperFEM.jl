@@ -48,7 +48,7 @@ end
 
 """Derivative of the cofactor in 2D, `∂cof(F)/∂F`."""
 function _∂H∂F_2D()
-  HighOrderTensorValue{Tuple{2,2,2,2}}(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+  FourthOrderTensorValue{2}(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
 end
 
 
