@@ -266,7 +266,7 @@ function _getCoupling(term::Thermo, mec::Mechano, Λ::Float64)
   ∂Ψtm_∂J(F, δθ) = -6.0 * term.α * J(F) * δθ
   ∂Ψtm_u(F, δθ) = ∂Ψtm_∂J(F, δθ) * H(F)
   ∂Ψtm_θ(F, δθ) = -3.0 * term.α * (J(F)^2.0 - 1.0)
-  ∂Ψtm_uu(F, δθ) = (-6.0 * term.α * δθ) * (H(F) ⊗₁₂³⁴ H(F)) + ×ᵢ⁴(∂Ψtm_∂J(F, δθ) * F)
+  ∂Ψtm_uu(F, δθ) = (-6.0 * term.α * δθ) * (H(F) ⊗ᵢⱼᵏˡ H(F)) + ×ᵢ⁴(∂Ψtm_∂J(F, δθ) * F)
   ∂Ψtm_uθ(F, δθ) = -6.0 * term.α * J(F) * H(F)
   ∂Ψtm_θθ(F, δθ) = 0.0
 

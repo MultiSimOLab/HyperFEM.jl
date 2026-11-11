@@ -13,7 +13,7 @@ const ∇un = TensorValue(1.0:9.0...) * 5e-4
   model = IdealDielectric(ε=4.0*8.85e-12)
   Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE = model()
   E0 = VectorValue(rand(3)) * 6000 / 0.001
-  F1 = I3 + 0.1*TensorValue(rand(9)...)
+  F1 = I3D + 0.1*TensorValue(rand(9)...)
   @test get_array(∂Ψ∂F(F1,E0))  ≈ ForwardDiff.gradient(Fi -> Ψ(Fi, get_array(E0)), get_array(F1))
   @test get_array(∂Ψ∂E(F1,E0))  ≈ ForwardDiff.gradient(Ei -> Ψ(get_array(F1), Ei), get_array(E0))
   @test get_array(∂Ψ∂FF(F1,E0)) ≈ ForwardDiff.jacobian(Fi -> ∂Ψ∂F(Fi, get_array(E0)), get_array(F1))
@@ -128,7 +128,7 @@ end
   E  = get_Kinematics(Ke)
   K=Kinematics(Mechano,Solid)
   F, _, _  = get_Kinematics(K)
-  Uvn = TensorValue(1.,2.,3.,2.,4.,5.,3.,5.,6.) * 2e-4 + I3
+  Uvn = TensorValue(1.,2.,3.,2.,4.,5.,3.,5.,6.) * 2e-4 + I3D
   Uvn *= det(Uvn)^(-1/3)
   λvn = 1e-3
   Avn = VectorValue(Uvn..., λvn)
@@ -151,7 +151,7 @@ end
   E = get_Kinematics(Ke)
   K=Kinematics(Mechano,Solid)
   F, _, _  = get_Kinematics(K)
-  Uvn = TensorValue(1.,2.,3.,2.,4.,5.,3.,5.,6.) * 2e-4 + I3
+  Uvn = TensorValue(1.,2.,3.,2.,4.,5.,3.,5.,6.) * 2e-4 + I3D
   Uvn *= det(Uvn)^(-1/3)
   λvn = 1e-3
   Avn = VectorValue(Uvn..., λvn)

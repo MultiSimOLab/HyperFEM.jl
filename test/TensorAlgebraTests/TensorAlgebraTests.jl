@@ -1,4 +1,5 @@
 using Gridap.TensorValues
+using Gridap.TensorValues: ThirdOrderTensorValue
 using Gridap.Arrays
 using HyperFEM.TensorAlgebra
 using Test
@@ -29,16 +30,16 @@ end
 
 
 @testset "transpose" begin
-  function reference_transpose_IJK_KIJ(A::TensorValue{3,9})
-    D = size(A, 1)
-    C = zeros(Float64, D, D, D)
-    for i in 1:D, j in 1:D, k in 1:D
-      C[i, j, k] = A[_flat_idx(k, i, j, D)]
-    end
-    TensorValue{D,D*D}(C...)
+  # third-order tensors: cyclic index shift Aᵀ[i,j,k] = A[k,i,j]
+  for D in (2, 3)
+    a = digits3(D)
+    A = ThirdOrderTensorValue{D,D,D}(a...)
+    @test A' == ThirdOrderTensorValue{D,D,D}([a[k, i, j] for i in 1:D, j in 1:D, k in 1:D]...)
+    @test A''' == A
   end
-  A = TensorValue{3,9}(digits3(3)...)
-  @test A' == reference_transpose_IJK_KIJ(A)
+  # a `TensorValue{D,D²}` is a matrix for `transpose`
+  W = TensorValue{3,9}(digits3(3)...)
+  @test W' == TensorValue{9,3}(permutedims(reshape(collect(W.data), 3, 9))...)
 end
 
 
@@ -59,14 +60,14 @@ end
   u = VectorValue(1.0, 2.0)
   v = VectorValue(3.0, 4.0)
   @test u ⊗ v     == TensorValue(3.0, 6.0, 4.0, 8.0)
-  @test u ⊗₁² v   == TensorValue(3.0, 6.0, 4.0, 8.0)
+  @test u ⊗ᵢʲ v   == TensorValue(3.0, 6.0, 4.0, 8.0)
   @test A ⊗ B     == TensorValue(5.0, 10.0, 15.0, 20.0, 6.0, 12.0, 18.0, 24.0, 7.0, 14.0, 21.0, 28.0, 8.0, 16.0, 24.0, 32.0)
-  @test A ⊗₁₂³⁴ B == TensorValue(5.0, 10.0, 15.0, 20.0, 6.0, 12.0, 18.0, 24.0, 7.0, 14.0, 21.0, 28.0, 8.0, 16.0, 24.0, 32.0)
-  @test A ⊗₁₃²⁴ B == TensorValue(5.0, 10.0, 6.0, 12.0, 15.0, 20.0, 18.0, 24.0, 7.0, 14.0, 8.0, 16.0, 21.0, 28.0, 24.0, 32.0)
-  @test A ⊗₁₄²³ B == TensorValue(5.0, 10.0, 6.0, 12.0, 7.0, 14.0, 8.0, 16.0, 15.0, 20.0, 18.0, 24.0, 21.0, 28.0, 24.0, 32.0)
-  @test u ⊗₁²³ A  == TensorValue{2,4}(1.0, 2.0, 2.0, 4.0, 3.0, 6.0, 4.0, 8.0)
-  @test A ⊗₁₂³ u  == TensorValue{2,4}(1.0, 2.0, 3.0, 4.0, 2.0, 4.0, 6.0, 8.0)
-  @test A ⊗₁₃² u  == TensorValue{2,4}(1.0, 2.0, 2.0, 4.0, 3.0, 4.0, 6.0, 8.0)
+  @test A ⊗ᵢⱼᵏˡ B == TensorValue(5.0, 10.0, 15.0, 20.0, 6.0, 12.0, 18.0, 24.0, 7.0, 14.0, 21.0, 28.0, 8.0, 16.0, 24.0, 32.0)
+  @test A ⊗ᵢₖʲˡ B == TensorValue(5.0, 10.0, 6.0, 12.0, 15.0, 20.0, 18.0, 24.0, 7.0, 14.0, 8.0, 16.0, 21.0, 28.0, 24.0, 32.0)
+  @test A ⊗ᵢₗʲᵏ B == TensorValue(5.0, 10.0, 6.0, 12.0, 7.0, 14.0, 8.0, 16.0, 15.0, 20.0, 18.0, 24.0, 21.0, 28.0, 24.0, 32.0)
+  @test u ⊗ᵢʲᵏ A  == TensorValue{2,4}(1.0, 2.0, 2.0, 4.0, 3.0, 6.0, 4.0, 8.0)
+  @test A ⊗ᵢⱼᵏ u  == TensorValue{2,4}(1.0, 2.0, 3.0, 4.0, 2.0, 4.0, 6.0, 8.0)
+  @test A ⊗ᵢₖʲ u  == TensorValue{2,4}(1.0, 2.0, 2.0, 4.0, 3.0, 4.0, 6.0, 8.0)
 end
 
 
@@ -135,18 +136,18 @@ end
     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0)
-  @test I2_ == I2
-  @test I3_ == I3
-  @test I4_ == I4
-  @test I9_ == I9
+  @test I2_ == I2D
+  @test I3_ == I3D
+  @test I4_ == 𝕀2D
+  @test I9_ == 𝕀3D
 end
 
 
 @testset "contraction" begin
   A = TensorValue(1.0, 2.0, 3.0, 4.0)
   H = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0)
-  @test contraction_IP_PJKL(A,H) == TensorValue(7.0, 10.0, 15.0, 22.0, 23.0, 34.0, 31.0, 46.0, 39.0, 58.0, 47.0, 70.0, 55.0, 82.0, 63.0, 94.0)
-  @test contraction_IP_JPKL(A,H) == TensorValue(10.0, 14.0, 14.0, 20.0, 26.0, 38.0, 30.0, 44.0, 42.0, 62.0, 46.0, 68.0, 58.0, 86.0, 62.0, 92.0)
+  @test A ⊗ᵢₘᵐʲᵏˡ H == TensorValue(7.0, 10.0, 15.0, 22.0, 23.0, 34.0, 31.0, 46.0, 39.0, 58.0, 47.0, 70.0, 55.0, 82.0, 63.0, 94.0)
+  @test A ⊗ᵢₘʲᵐᵏˡ H == TensorValue(10.0, 14.0, 14.0, 20.0, 26.0, 38.0, 30.0, 44.0, 42.0, 62.0, 46.0, 68.0, 58.0, 86.0, 62.0, 92.0)
 
   function reference_IJK_KLP(A::TensorValue{3,9}, B::TensorValue{3,9})
     D = size(A, 1)
@@ -216,16 +217,66 @@ end
 end
 
 
+@testset "index notation" begin
+  TA = HyperFEM.TensorAlgebra
+  # Reference: Einstein summation on plain arrays
+  flat(o, D) = o == 1 ? VectorValue{D,Float64} : TensorValue{TA._flat_shape(o, D)...,Float64}
+  function reference(la, lb, a, b, D)
+    labels = (la..., lb...)
+    out = sort(filter(l -> count(==(l), labels) == 1, collect(labels)))
+    summed = sort(unique(filter(l -> count(==(l), labels) == 2, collect(labels))))
+    R = zeros(ntuple(_ -> D, length(out)))
+    for I in CartesianIndices(R), J in CartesianIndices(ntuple(_ -> D, length(summed)))
+      v = Dict(zip([out; summed], [Tuple(I)...; Tuple(J)...]))
+      R[I] += a[map(l -> v[l], la)...] * b[map(l -> v[l], lb)...]
+    end
+    R
+  end
+  Random.seed!(20261110)
+  for op in TA._INDEX_PRODUCTS, D in (2, 3)
+    la, lb = TA._index_labels(op)
+    a, b = randn(ntuple(_ -> D, length(la))), randn(ntuple(_ -> D, length(lb)))
+    A, B = flat(length(la), D)(a...), flat(length(lb), D)(b...)
+    R = getfield(TA, op)(A, B)
+    @test collect(R isa Real ? R : R.data) ≈ vec(reference(la, lb, a, b, D))
+  end
+  # the operands must have the orders and dimension of the notation
+  @test_throws DimensionMismatch I2D ⊗ᵢⱼₘₙᵐⁿ I2D
+  @test_throws DimensionMismatch 𝕀2D ⊗ᵢⱼₘₙᵐⁿ I3D
+  # the notation is canonical: a single name for each operation
+  @test TA._index_labels(:⊗ᵢⱼₘₙᵐⁿᵏˡ) == (('i', 'j', 'm', 'n'), ('m', 'n', 'k', 'l'))
+  @test_throws AssertionError TA._index_labels(:⊗ᵢⱼₙₘᵐⁿᵏˡ)  # summed indices out of order
+  @test_throws AssertionError TA._index_labels(:⊗ᵢⱼₘₙᵐⁿᵏᵖ)  # p is a summed index
+  @test_throws AssertionError TA._index_labels(:⊗ᵢₖʲᵐ)      # m summed in a single operand
+  @test_throws AssertionError TA._index_labels(:⊗ᵢⱼₘₘ)      # m twice in the same operand
+  @test_throws AssertionError TA._index_labels(:⊗ᵢʲₖ)       # subscript after a superscript
+end
+
+
+@testset "double contraction" begin
+  for D in (2, 3)
+    a, h, g = digits2(D), digits4(D), reverse(digits4(D))
+    A, H, G = TensorValue{D,D}(a...), TensorValue{D^2,D^2}(h...), TensorValue{D^2,D^2}(g...)
+    @test H ⋅² G == TensorValue{D^2,D^2}(reshape(reshape(h, D^2, D^2) * reshape(g, D^2, D^2), :)...)
+    @test H ⋅² G == H * G  # the matrix product of the flattened representation
+    @test H ⋅² A == H ⊙ A
+    @test A ⋅² H == TensorValue{D,D}([sum(a[m, n] * h[m, n, i, j] for m in 1:D, n in 1:D) for i in 1:D, j in 1:D]...)
+    @test A ⋅² A == A ⊙ A
+    @test 𝕀2D ⋅² 𝕀2D == 𝕀2D
+  end
+end
+
+
 @testset "sqrt" begin
   A = TensorValue(1.:9...)
-  A = A'*A + I3
+  A = A'*A + I3D
   sqrtA = TensorValue(sqrt(get_array(A)))
   @test isapprox(sqrt(A), sqrtA, rtol=1e-14)
 end
 
 
 @testset "cofactor" begin
-  A = TensorValue(1.:9...) + I3
+  A = TensorValue(1.:9...) + I3D
   cofA = det(A) * inv(A')
   @test isapprox(cof(A), cofA)
 end
@@ -235,22 +286,23 @@ end
   A  = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0)
   B  = TensorValue(1.0, 4.0, 2.0, 5.0, 3.0, 6.0, 8.0, 7.0, 9.0)
 
-  # 1. IIsym(I3) : B yields the symmetric part 0.5 * (B + Bᵀ)
-  @test IIsym(I3) ⊙ B == 0.5 * (B + B')
+  # 1. IIsym(I3D) : B yields the symmetric part 0.5 * (B + Bᵀ)
+  @test IIsym(I3D) ⊙ B == 0.5 * (B + B')
 
   # 2. IIsym(A) : B yields 0.5 * (A * B * Aᵀ + A * Bᵀ * Aᵀ)
   @test IIsym(A) ⊙ B ≈ 0.5 * (A · B · A' + A · B' · A')
 
-  # 3. IIsym(I3) == 1/2 (δᵢₖδⱼₗ3D + δⱼₖδᵢₗ3D)
-  @test IIsym(I3) == 0.5 * (δᵢₖδⱼₗ3D + δⱼₖδᵢₗ3D)
+  # 3. IIsym(I3D) == 1/2 (δᵢₖδⱼₗ + δᵢₗδⱼₖ)
+  @test IIsym(I3D) == 0.5 * (I3D ⊗ᵢₖʲˡ I3D + I3D ⊗ᵢₗʲᵏ I3D)
+  @test I3D ⊗ᵢₖʲˡ I3D == 𝕀3D
 end
 
 @testset "push_forward_C_to_F" begin
   H = TensorValue(rand(81)...)
   H = H'·H
-  F = TensorValue(rand(9)...) * 1e-2 + I3
+  F = TensorValue(rand(9)...) * 1e-2 + I3D
 
-  DCDF = F' ⊗₁₃²⁴ I3 + I3 ⊗₁₄²³ F'
+  DCDF = F' ⊗ᵢₖʲˡ I3D + I3D ⊗ᵢₗʲᵏ F'
   S_ref = 0.5 * DCDF' · H · DCDF
   @test push_forward_C_to_F(F, H) ≈ S_ref
 end

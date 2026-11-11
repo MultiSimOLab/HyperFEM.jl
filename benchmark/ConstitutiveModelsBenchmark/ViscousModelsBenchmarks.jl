@@ -12,9 +12,9 @@ function benchmark_viscous_model()
   model = GeneralizedMaxwell(elasto, visco)
   update_time_step!(model, 1e-2)
   Ψ, ∂Ψ∂F, ∂∂Ψ∂FF = model()
-  F = TensorValue(1.:9...) * 1e-3 + I3
-  Fn = TensorValue(1.:9...) * 5e-4 + I3
-  Uvn = TensorValue(1.,2.,3.,2.,4.,5.,3.,5.,6.) * 2e-4 + I3
+  F = TensorValue(1.:9...) * 1e-3 + I3D
+  Fn = TensorValue(1.:9...) * 5e-4 + I3D
+  Uvn = TensorValue(1.,2.,3.,2.,4.,5.,3.,5.,6.) * 2e-4 + I3D
   J = det(F)
   Uvn *= J^(-1/3)
   λvn = 1e-3
@@ -33,8 +33,8 @@ function benchmark_viscous_polyconvex_model()
   model = GeneralizedMaxwell(elasto, visco)
   update_time_step!(model, 1e-1)
   Ψ, ∂Ψ∂F, ∂∂Ψ∂FF = model()
-  F = TensorValue(1.:9...) * 1e-2 + I3
-  Fn = TensorValue(1.:9...) * 5e-3 + I3
+  F = TensorValue(1.:9...) * 1e-2 + I3D
+  Fn = TensorValue(1.:9...) * 5e-3 + I3D
   Cvn = 0.25 * (F+Fn) · (F+Fn)'
   F /= det(F)
   Fn /= det(Fn)

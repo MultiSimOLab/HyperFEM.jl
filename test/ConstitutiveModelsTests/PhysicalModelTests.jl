@@ -50,16 +50,16 @@ end
 
 function test_equilibrium_at_rest_2D(obj::Mechano; atol=1e-10)
   Ψ, _... = obj()
-  @test isapprox(Ψ(I2), 0.0, atol=atol)
+  @test isapprox(Ψ(I2D), 0.0, atol=atol)
 end
 
 function test_equilibrium_at_rest_3D(obj::Mechano, atol=1e-10)
   Ψ, _... = obj()
-  @test isapprox(Ψ(I3), 0.0, atol=atol)
+  @test isapprox(Ψ(I3D), 0.0, atol=atol)
 end
 
 function test_second_piola_3D_(model::PhysicalModel; rtol=1e-12, kwargs...)
-  F = I3 + ∇u3
+  F = I3D + ∇u3
   C = F'·F
   Ψ, S, ∂S∂C = SecondPiola(model)
   @test isapprox(S(C),  2*TensorValue(ForwardDiff.gradient(Ψ, get_array(C))), rtol=rtol, kwargs...)
@@ -82,9 +82,9 @@ end
     test_derivatives__(barrier, K, TensorValue(-0.9, 0.0, 0.0, 0.0, -0.5, 0.0, 0.0, 0.0, -0.7); rtol=1e-10)
   end
   Ψ, ∂Ψu, ∂Ψuu = LogBarrier(κ=1.0, p=2)()
-  @test Ψ(I2) == 0 && Ψ(I3) == 0
+  @test Ψ(I2D) == 0 && Ψ(I3D) == 0
   @test isnan(Ψ(TensorValue(-1.0, 0.0, 0.0, 1.0))) && all(isnan, ∂Ψu(TensorValue(-1.0, 0.0, 0.0, 1.0)).data)
-  @test Ψ(0.01 * I2) > Ψ(0.5 * I2) > 0
+  @test Ψ(0.01 * I2D) > Ψ(0.5 * I2D) > 0
   @test_throws ArgumentError LogBarrier(κ=1.0, p=0)
   # composition with the third-medium model of the piston
   tm = ARAP2D(μ=1e-6) + LogBarrier(κ=1e-6, p=2)
@@ -414,7 +414,7 @@ end
   @test Ψ(F(∇u), N) == 0.27292220826242186
   @test norm(∂Ψu(F(∇u), N)) == 100.64088114687468
   @test norm(∂Ψuu(F(∇u), N)) == 46792.35008576098
-  @test isapprox(Ψ(I2, N), 0.0, atol=1e-10)
+  @test isapprox(Ψ(I2D, N), 0.0, atol=1e-10)
 end
 
 
@@ -434,7 +434,7 @@ end
   @test Ψ(F(∇u), N) == 2.5259068330070704
   @test norm(∂Ψu(F(∇u), N)) == 309.14297430663385
   @test norm(∂Ψuu(F(∇u), N)) == 81316.15339475962
-  @test isapprox(Ψ(I3, N), 0.0, atol=1e-10)
+  @test isapprox(Ψ(I3D, N), 0.0, atol=1e-10)
 end
 
 
@@ -567,7 +567,7 @@ end
   @test isapprox(∂ΨFθ(F(∇u), E(∇φ), θt), ∂2Ψ_∂2Fθ(F(∇u), E(∇φ), θt); rtol=1e-14)
   @test isapprox(∂ΨEF(F(∇u), E(∇φ), θt), ∂2Ψ_∂EF(F(∇u), E(∇φ), θt); rtol=1e-14)
 
-  F0 = I3
+  F0 = I3D
   E0 = VectorValue(0.,0.,0.)
   cv(F,E,θ,x...) = -θ*∂2Ψ∂2θ(F,E,θ,x...)
   @test isapprox(cv0, cv(F0, E0, θr); rtol=1e-14)
@@ -990,9 +990,9 @@ end
   # type-stable and allocation-free, and still read the current value of `αr` at each call.
   cases = (
     (MooneyRivlin2D(λ=3.0, μ1=1.0, μ2=2.0), HardMagnetic2D(μ0=1.2566e-6, αr=40e-3, χe=0.0, χr=8.0; βmok=1.0, βcoup=1.0),
-     I2 + 1e-3 * TensorValue(1.0, 2.0, 3.0, 4.0), VectorValue(1.0, 2.0), VectorValue(0.0, 1.0)),
+     I2D + 1e-3 * TensorValue(1.0, 2.0, 3.0, 4.0), VectorValue(1.0, 2.0), VectorValue(0.0, 1.0)),
     (MooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0), HardMagnetic(μ0=1.2566e-6, αr=40e-3, χe=0.0, χr=8.0; βmok=1.0, βcoup=1.0),
-     I3 + 1e-3 * TensorValue(1.0:9.0...), VectorValue(1.0, 2.0, 3.0), VectorValue(0.0, 0.0, 1.0)))
+     I3D + 1e-3 * TensorValue(1.0:9.0...), VectorValue(1.0, 2.0, 3.0), VectorValue(0.0, 0.0, 1.0)))
   for (mech, mag, F, ℋ₀, N) in cases
     funcs = (mech + mag)()
     for f in funcs

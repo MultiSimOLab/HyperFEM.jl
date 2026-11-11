@@ -9,22 +9,23 @@ end
 @publish TensorAlgebra TensorValue  # Reexport from Gridap for convenience
 @publish TensorAlgebra VectorValue  # Reexport from Gridap for convenience
 @publish TensorAlgebra (*)
+@publish TensorAlgebra (⋅²)
 @publish TensorAlgebra (×ᵢ⁴)
-@publish TensorAlgebra (⊗₁²)
-@publish TensorAlgebra (⊗₁₂³)
-@publish TensorAlgebra (⊗₁₃²)
-@publish TensorAlgebra (⊗₁²³)
-@publish TensorAlgebra (⊗₁₃²⁴)
-@publish TensorAlgebra (⊗₁₂³⁴)
-@publish TensorAlgebra (⊗₁₂₃⁴)
-@publish TensorAlgebra (⊙₁₂₃₄²⁴)
+@publish TensorAlgebra (⊗ᵢʲ)
+@publish TensorAlgebra (⊗ᵢⱼᵏ)
+@publish TensorAlgebra (⊗ᵢₖʲ)
+@publish TensorAlgebra (⊗ᵢʲᵏ)
+@publish TensorAlgebra (⊗ᵢₖʲˡ)
+@publish TensorAlgebra (⊗ᵢⱼᵏˡ)
+@publish TensorAlgebra (⊗ᵢⱼₖˡ)
+@publish TensorAlgebra (⊗ᵢₘⱼₙᵐⁿ)
 @publish TensorAlgebra logreg
 @publish TensorAlgebra Box
 @publish TensorAlgebra Ellipsoid
-@publish TensorAlgebra I2
-@publish TensorAlgebra I3
-@publish TensorAlgebra I4
-@publish TensorAlgebra I9
+@publish TensorAlgebra I2D
+@publish TensorAlgebra I3D
+@publish TensorAlgebra 𝕀2D
+@publish TensorAlgebra 𝕀3D
 @publish TensorAlgebra Tensorize
 @publish TensorAlgebra hessian_nonaffine
 

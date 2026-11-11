@@ -72,9 +72,9 @@ end
 function test_viscous_derivatives_numerical(model; rtolP=1e-12, rtolH=1e-12)
   update_time_step!(model, 1e-2)
   Ψ, ∂Ψu, ∂Ψuu = model()
-  F = TensorValue(1.:9...) * 1e-3 + I3
-  Fn = TensorValue(1.:9...) * 5e-4 + I3
-  Uvn = isochoric_F(TensorValue(1.,2.,3.,2.,4.,5.,3.,5.,6.) * 2e-4 + I3)
+  F = TensorValue(1.:9...) * 1e-3 + I3D
+  Fn = TensorValue(1.:9...) * 5e-4 + I3D
+  Uvn = isochoric_F(TensorValue(1.,2.,3.,2.,4.,5.,3.,5.,6.) * 2e-4 + I3D)
   λvn = 1e-3
   Avn = VectorValue(Uvn..., λvn)
   piola = richardson_expansion((F, ϵ) -> numerical_piola(F -> Ψ(F, Fn, Avn), F, ϵ), F, 1e-5)
@@ -86,7 +86,7 @@ end
 
 function test_elastic_derivatives_numerical(model; rtolP=1e-12, rtolH=1e-12)
   Ψ, ∂Ψu, ∂Ψuu = model()
-  F = TensorValue(1.:9...) * 1e-3 + I3
+  F = TensorValue(1.:9...) * 1e-3 + I3D
   piola = richardson_expansion((F,ϵ) -> numerical_piola(Ψ,F,ϵ), F, 1e-5)
   tangent = richardson_expansion((F,ϵ) -> numerical_tangent(Ψ,F,ϵ), F, 1e-4)
   @test isapprox(∂Ψu(F), piola, rtol=rtolP)
@@ -133,9 +133,9 @@ end
   visco = ViscousIncompressible(IsochoricNeoHookean3D(μ=1.0), τ=10.0)
   update_time_step!(visco, 0.1)
   Ψ, ∂Ψu, ∂Ψuu = visco()
-  F    =  1e-2*TensorValue(1,2,3,4,5,6,7,8,9) + I3
-  Fn   =  5e-3*TensorValue(1,2,3,4,5,6,7,8,9) + I3
-  Fvn  =  2e-2*TensorValue(1.0,2.0,3.0,4.0,5.0,8.7,6.5,4.3,6.5) + I3
+  F    =  1e-2*TensorValue(1,2,3,4,5,6,7,8,9) + I3D
+  Fn   =  5e-3*TensorValue(1,2,3,4,5,6,7,8,9) + I3D
+  Fvn  =  2e-2*TensorValue(1.0,2.0,3.0,4.0,5.0,8.7,6.5,4.3,6.5) + I3D
   Cvn  =  Fvn'*Fvn
   Uvn  =  sqrt(Cvn)
   Avn  =  VectorValue(Uvn...,0.0)
@@ -165,9 +165,9 @@ end
 @testset "Dissipation ViscousIncompressible" begin
   branch1 = ViscousIncompressible(IsochoricNeoHookean3D(μ=μ1), τ=τ1)
   D = Dissipation(branch1, 0.1)
-  F = I3
-  Fn = I3
-  A = VectorValue(I3..., 0)
+  F = I3D
+  Fn = I3D
+  A = VectorValue(I3D..., 0)
   @test D(F, Fn, A) == 0
 end
 
@@ -182,9 +182,9 @@ end
   Ψ, S, ∂S∂C = SecondPiola(short_term)
   return_mapping(C,Cet,Cen,λ) = HyperFEM.PhysicalModels.return_mapping_algorithm!(branch1, S, ∂S∂C, C, Cet, Cen, λ)
 
-  F = I3 + TensorValue(1e-1, zeros(8)...)
-  Fn = I3 + TensorValue(2e-2, zeros(8)...)
-  Uvn = isochoric_F(I3 + TensorValue(2e-2, zeros(8)...))
+  F = I3D + TensorValue(1e-1, zeros(8)...)
+  Fn = I3D + TensorValue(2e-2, zeros(8)...)
+  Uvn = isochoric_F(I3D + TensorValue(2e-2, zeros(8)...))
   C = F'·F
   Cn = Fn'·Fn
   Cet = inv(Uvn)' · C · inv(Uvn)
@@ -216,8 +216,8 @@ end
   cons_model = GeneralizedMaxwell(hyper_elastic_model, visco_branch)
   update_time_step!(cons_model, 0.1)
   Ψ, ∂Ψ∂F, ∂∂Ψ∂FF = cons_model()
-  F1 = I3
-  A1 = VectorValue(I3..., 0)
+  F1 = I3D
+  A1 = VectorValue(I3D..., 0)
   @test Ψ(F1, F1, A1) == 0
 
   Ψh, ∂Ψh∂F, ∂∂Ψh∂FF = hyper_elastic_model()
@@ -235,11 +235,11 @@ end
 @testset "ViscousPolyconvex" begin
   model = ViscousPolyconvex(τ=1.15, μ=7e4)
   update_time_step!(model, 0.1)
-  Fn = I3
-  F1 = I3 + 0.1*TensorValue(rand(9)...)
+  Fn = I3D
+  F1 = I3D + 0.1*TensorValue(rand(9)...)
   C1 = F1' · F1
-  Cn = I3
-  Cv = I3
+  Cn = I3D
+  Cv = I3D
 
   # --- Test neo-Hookean model ---
   Ψv          = HyperFEM.PhysicalModels.Ψv
@@ -284,9 +284,9 @@ end
   update_time_step!(cons_model, 0.1)
   Ψ, ∂Ψ∂F, ∂∂Ψ∂FF = cons_model()
   D = Dissipation(cons_model)
-  F = I3 + 1e-2*TensorValue(1:9...)
-  Fn = I3
-  Cv = I3
+  F = I3D + 1e-2*TensorValue(1:9...)
+  Fn = I3D
+  Cv = I3D
   @test allocations(Ψ, F, Fn, Cv, Cv) == 0
   @test allocations(∂Ψ∂F, F, Fn, Cv, Cv) == 0
   @test allocations(∂∂Ψ∂FF, F, Fn, Cv, Cv) == 0

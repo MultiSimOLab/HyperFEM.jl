@@ -33,11 +33,11 @@ function Gridap.CellData.CellState(::ViscousIncompressible, F0::TensorValue, poi
 end
 
 function Gridap.CellData.CellState(obj::ViscousIncompressible, points::Measure; backend=:lazy)
-  CellState(obj, I3, points; backend)
+  CellState(obj, I3D, points; backend)
 end
 
 function initialize_state(::ViscousIncompressible)
-  VectorValue(I3..., 0.0)
+  VectorValue(I3D..., 0.0)
 end
 
 function Gridap.CellData.update_state!(obj::ViscousIncompressible, A, F, Fn; backend=:lazy)
@@ -93,8 +93,10 @@ function (obj::NVisco)()
   ∂ΨαF  = map(d -> d[2], DΨv)
   ∂ΨαFF = map(d -> d[3], DΨv)
   Ψ(F, Fn, A::Vararg{Any,N})     where N = _sum_branches((Ψi, Ai) -> Ψi(F, Fn, Ai), Ψα, A, 0.0)
-  ∂Ψ∂F(F, Fn, A::Vararg{Any,N})  where N = _sum_branches((∂ΨiF, Ai) -> ∂ΨiF(F, Fn, Ai), ∂ΨαF, A, zerotensor3)
-  ∂Ψ∂FF(F, Fn, A::Vararg{Any,N}) where N = _sum_branches((∂ΨiFF, Ai) -> ∂ΨiFF(F, Fn, Ai), ∂ΨαFF, A, zerotensor9)
+  zero2 = zero(TensorValue{3,3,Float64,9})
+  zero4 = zero(TensorValue{9,9,Float64,81})
+  ∂Ψ∂F(F, Fn, A::Vararg{Any,N})  where N = _sum_branches((∂ΨiF, Ai) -> ∂ΨiF(F, Fn, Ai), ∂ΨαF, A, zero2)
+  ∂Ψ∂FF(F, Fn, A::Vararg{Any,N}) where N = _sum_branches((∂ΨiFF, Ai) -> ∂ΨiFF(F, Fn, Ai), ∂ΨαFF, A, zero4)
   (Ψ, ∂Ψ∂F, ∂Ψ∂FF)
 end
 
@@ -350,7 +352,7 @@ function ∂Ce_∂C(::ViscousIncompressible, γα, ∂Se∂Ce_, invUvn, Ce, Ce_t
   Ge = cof(Ce)
   ∂Se∂Ce = ∂Se∂Ce_(Ce)
   ∂Se∂Ce_trial = ∂Se∂Ce_(Ce_trial)
-  ∂Ce_trial_∂C = invUvn ⊗₁₃²⁴ invUvn
+  ∂Ce_trial_∂C = invUvn ⊗ᵢₖʲˡ invUvn
   #------------------------------------------
   # Derivative of return mapping with respect to Ce and λα
   #------------------------------------------   
@@ -360,7 +362,7 @@ function ∂Ce_∂C(::ViscousIncompressible, γα, ∂Se∂Ce_, invUvn, Ce, Ce_t
   #------------------------------------------
   # Derivative of return mapping with respect to C
   #------------------------------------------   
-  F1 = γα * ∂Se∂Ce_trial * ∂Ce_trial_∂C
+  F1 = (γα * ∂Se∂Ce_trial) ⋅² ∂Ce_trial_∂C
   F2 = G
   #------------------------------------------
   # Derivative of {Ce,λα} with respect to C
@@ -380,7 +382,7 @@ end
 Tangent operator of Ce at fixed Uv
 """
 function ∂Ce_∂C_Uvfixed(invUv)
-  invUv ⊗₁₃²⁴ invUv
+  invUv ⊗ᵢₖʲˡ invUv
 end
 
 
@@ -389,7 +391,7 @@ end
 """
 function ∂Ce_∂invUv(C, invU)
   invU_C = invU * C
-  invU_C ⊗₁₃²⁴ I3 + I3 ⊗₁₃²⁴ invU_C
+  invU_C ⊗ᵢₖʲˡ I3D + I3D ⊗ᵢₖʲˡ invU_C
 end
 
 
@@ -427,7 +429,7 @@ function ViscousTangentOperator(obj::ViscousIncompressible,
   DCe_DC_Uvfixed = ∂Ce_∂C_Uvfixed(invUv)
   DCe_DinvUv = ∂Ce_∂invUv(C, invUv)
   DinvUv_DC = inv(DCe_DinvUv) * (DCe_DC - DCe_DC_Uvfixed)
-  DCDF = F' ⊗₁₃²⁴ I3 + I3 ⊗₁₄²³ F'
+  DCDF = F' ⊗ᵢₖʲˡ I3D + I3D ⊗ᵢₗʲᵏ F'
   #------------------------------------------
   # 0.5*δC_{Uvfixed}:DSe[ΔC]
   #------------------------------------------
@@ -436,13 +438,13 @@ function ViscousTangentOperator(obj::ViscousIncompressible,
   # Se:0.5*(DUv^{-1}[ΔC]*δC*Uv^{-1} + Uv^{-1}*δC*DUv^{-1}[ΔC])
   #------------------------------------------
   invUv_Se = invUv * Se_(Ce)
-  C2 = 0.5 * (contraction_IP_JPKL(invUv_Se, DinvUv_DC) +
-              contraction_IP_PJKL(invUv_Se, DinvUv_DC))
+  C2 = 0.5 * ((invUv_Se ⊗ᵢₘʲᵐᵏˡ DinvUv_DC) +
+              (invUv_Se ⊗ᵢₘᵐʲᵏˡ DinvUv_DC))
   #------------------------------------------
   # Sv:(D(δC_{Uvfixed})[ΔC])
   #------------------------------------------
   Sv = invUv_Se * invUv
-  C3 = I3 ⊗₁₃²⁴ Sv
+  C3 = I3D ⊗ᵢₖʲˡ Sv
   #------------------------------------------
   # Total Contribution
   #------------------------------------------
