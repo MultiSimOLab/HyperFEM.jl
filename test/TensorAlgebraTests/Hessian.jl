@@ -48,7 +48,7 @@ using Test
     v = VectorValue(1.0, 2.0); A = TensorValue(1.0, 2.0, 3.0, 4.0)
     @test v ⊗ A isa ThirdOrderTensorValue{2,2,2}
     @test A ⊗ v isa ThirdOrderTensorValue{2,2,2}
-    @test (v ⊗ A).data == (v ⊗ᵢʲᵏ A).data
-    @test (A ⊗ v).data == (A ⊗ᵢⱼᵏ v).data
+    @test Tuple(v ⊗ A) == Tuple(v ⊗ᵢʲᵏ A)
+    @test Tuple(A ⊗ v) == Tuple(A ⊗ᵢⱼᵏ v)
   end
 end
