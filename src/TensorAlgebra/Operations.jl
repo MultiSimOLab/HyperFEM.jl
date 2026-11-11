@@ -145,6 +145,22 @@ LinearAlgebra.norm(A::HighOrderTensorValue{S,<:Real}) where {S} = sqrt(sum(abs2,
 
 
 # =====================
+# muladd (temporary, until a Gridap release > 0.20.10)
+# =====================
+# Julia 1.14 computes the generic matrix-vector product with `muladd(a, b, c)`. Gridap 0.20.10 has no
+# `muladd` for its tensors, and the fallback promotes a scalar and a tensor, which fails: e.g. when Gridap
+# builds the nodes of the Lagrangian elements of order ≥ 2 (`Matrix{Float64} * Vector{VectorValue}`).
+# Gridap defines it after 0.20.10 (gridap/Gridap.jl#1347). The methods are only defined while Gridap does
+# not have them: redefining Gridap's methods would break the precompilation. Remove when Gridap > 0.20.10
+# is required.
+
+if which(muladd, Tuple{Float64,VectorValue{2,Float64},VectorValue{2,Float64}}).module === Base
+  Base.muladd(a::Number, b::MultiValue, c::MultiValue) = a * b + c
+  Base.muladd(a::MultiValue, b::Number, c::MultiValue) = a * b + c
+end
+
+
+# =====================
 # Other products
 # =====================
 
