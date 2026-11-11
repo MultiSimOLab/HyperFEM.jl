@@ -152,14 +152,15 @@ _symmetrize(C) = 0.5 * (C + C')
 function (obj::HessianRegularization{Nothing})(Λ::Float64=1.0)
   Ψs, ∂Ψs, ∂2Ψs = obj.mechano()
   δ, sym = obj.δ, obj.symmetrize
-  ∂2Ψ(F) = regularize_hessian(sym ? _symmetrize(∂2Ψs(F)) : ∂2Ψs(F), δ)
+  # extra arguments (the fibre direction of an anisotropic model) are passed through
+  ∂2Ψ(F, args...) = (C = ∂2Ψs(F, args...); regularize_hessian(sym ? _symmetrize(C) : C, δ))
   return (Ψs, ∂Ψs, ∂2Ψ)
 end
 
 function (obj::HessianRegularization{TangentSwitch})(Λ::Float64=1.0)
   Ψs, ∂Ψs, ∂2Ψs = obj.mechano()
   δ, sym, switch = obj.δ, obj.symmetrize, obj.switch
-  ∂2Ψ(F) = is_projected(switch) ? regularize_hessian(sym ? _symmetrize(∂2Ψs(F)) : ∂2Ψs(F), δ) : ∂2Ψs(F)
+  ∂2Ψ(F, args...) = (C = ∂2Ψs(F, args...); is_projected(switch) ? regularize_hessian(sym ? _symmetrize(C) : C, δ) : C)
   return (Ψs, ∂Ψs, ∂2Ψ)
 end
 

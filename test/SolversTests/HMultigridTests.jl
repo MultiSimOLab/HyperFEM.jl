@@ -170,6 +170,7 @@ end
     numerical_setup!(ns, A)
     solve!(x, ns, t.b)
     @test !linear_converged(ns) && linear_iterations(ns) == 0
+    @test !linear_indefinite(ns)                                     # non-finite is not the instability signal (S5)
     copyto!(A.nzval, t.A.nzval)
     numerical_setup!(ns, A)
     solve!(x, ns, t.b)
@@ -185,6 +186,10 @@ end
     @test occursin(r"indefinite|blocks", HyperFEM.Solvers.linear_info(ns))
     solve!(x, ns, t.b)
     @test !linear_converged(ns) && linear_iterations(ns) == 0
+    @test linear_indefinite(ns)                                      # the S5 signal: HybridTangent switches on it
+    numerical_setup!(ns, t.A)
+    solve!(x, ns, t.b)
+    @test linear_converged(ns) && !linear_indefinite(ns)
   end
 
   @testset "Newton trajectory of LU inside the drivers (Dirichlet projection, load steps, reuse)" begin

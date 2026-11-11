@@ -174,6 +174,42 @@ and ×5.0 (218k dofs) faster (our measurement: Mac, 6 Julia threads, PETSc seria
 matrix-free product is slower than the assembled one; there the assembled configurations above remain the
 choice.
 
+### Geometric multigrid on a refined mesh hierarchy
+
+For Q1/P1 models whose geometry a coarse mesh can describe, `MeshHierarchy` refines it uniformly (Gridap's
+`refine`, tetrahedra and hexahedra; the Dirichlet tags must be closed sets — face, edges and vertices — so
+that every level has the same Dirichlet boundary) and `HMultigridSolver` preconditions CG with one geometric
+V-cycle (Galerkin coarse operators, Chebyshev smoothing on the nodal blocks, any linear solver on the coarsest
+level). `FieldSplitSolver` applies one V-cycle per block of a multi-field saddle point. Both are pure Julia
+(threads); the coarsest level is the only place PETSc enters:
+
+```julia
+using GridapPETSc
+
+h  = MeshHierarchy(coarse_model, 4)                      # 3 uniform refinements: the Newton sees fine_model(h)
+Vh(m) = TestFESpace(m, ReferenceFE(lagrangian, VectorValue{3,Float64}, 1), D, conformity=:H1)
+Uc = TrialFESpace(Vh(level_model(h, 1)))
+# mechanics: CG + one V-cycle, the coarse levels rebuilt every 3 Newton iterations (the fine smoother always
+# follows the current tangent), the coarsest level one GAMG cycle with the rigid-body modes
+ls  = HMultigridSolver(h, Vh; krylov=:cg, reuse=3,
+                       coarse=PETScSolver(:preonly, :gamg; nullspace=near_nullspace(Uc), blocksize=3))
+nls = NewtonRaphson(ls; maxiter=20, rtol=1e-8, forcing=EisenstatWalker())
+
+# electro-mechanics (u, φ): GMRES with one V-cycle per block (Schur split), the same recommendation
+ls  = FieldSplitSolver(U, (HMultigridSolver(h, Vu; krylov=:cg, reuse=3, coarse=…),
+                           HMultigridSolver(h, Vφ; krylov=:cg, reuse=3, coarse=…)); split=:schur)
+nls = NewtonRaphson(ls; maxiter=20, rtol=1e-8, forcing=EisenstatWalker())
+```
+
+The CG iterations are independent of the mesh (17 on Q1 hexahedra, 32 on P1 tetrahedra, from 100k to 900k
+dofs). Against CG + GAMG on the same assembled tangent the Newton iteration is ×5 faster at 800k–900k dofs,
+and ×3 against the PETSc fieldsplit on the electro-mechanical plate at 555k; with `forcing = EisenstatWalker()`
+(the recommended configuration, as above; the defaults keep the exact Newton) the Krylov iterations drop by
+×4–5 and the whole simulation of the 893k-dof tetrahedral cube takes 86 s against 815 s with CG + GAMG (our
+measurement: Mac, 6 Julia threads, PETSc serial). With `tangent = HybridTangent(…)` an indefinite tangent
+reported by these solvers (a limit point, pull-in, buckling) switches the Newton to the projected tangent at
+the same state instead of bisecting the load step.
+
 ## Staggered (partitioned) models
 
 A coupled problem can also be solved field by field: `StaggeredModel` takes one computational model per
