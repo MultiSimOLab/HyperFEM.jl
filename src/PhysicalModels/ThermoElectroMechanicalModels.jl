@@ -106,13 +106,13 @@ struct ThermoElectroMech_Govindjee{T<:Thermo,E<:Electro,M<:Mechano} <: ThermoEle
     ∂ΨEθ(F, E, θ) = VectorValue(∂2Ψ_∂2Eθ(F, E, θ))
 
     ∂2Ψ_∂2F(F, E, θ) = ForwardDiff.hessian(F -> Ψ(F, get_array(E), θ), get_array(F))
-    ∂ΨFF(F, E, θ) = TensorValue(∂2Ψ_∂2F(F, E, θ))
+    ∂ΨFF(F, E, θ) = FourthOrderTensorValue(Tuple(∂2Ψ_∂2F(F, E, θ)))
 
     ∂2Ψ_∂2Fθ(F, E, θ) = ForwardDiff.derivative(θ -> ∂Ψ_∂F(get_array(F), get_array(E), θ), θ)
     ∂ΨFθ(F, E, θ) = TensorValue(∂2Ψ_∂2Fθ(F, E, θ))
 
     ∂2Ψ_∂EF(F, E, θ) = ForwardDiff.jacobian(F -> ∂Ψ_∂E(F, get_array(E), θ), get_array(F))
-    ∂ΨEF(F, E, θ) = TensorValue(∂2Ψ_∂EF(F, E, θ))
+    ∂ΨEF(F, E, θ) = ThirdOrderTensorValue(Tuple(∂2Ψ_∂EF(F, E, θ)))
 
     η(F, E, θ) = -∂Ψθ(F, E, θ)
 

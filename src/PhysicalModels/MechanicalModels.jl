@@ -147,7 +147,7 @@ struct HessianRegularization{S} <: Mechano
   end
 end
 
-_symmetrize(C::TensorValue{N,N}) where {N} = 0.5 * (C + C')
+_symmetrize(C) = 0.5 * (C + C')
 
 function (obj::HessianRegularization{Nothing})(Λ::Float64=1.0)
   Ψs, ∂Ψs, ∂2Ψs = obj.mechano()
@@ -394,7 +394,7 @@ struct LinearElasticity2D <: IsoElastic
 
   function (obj::LinearElasticity2D)(Λ::Float64=1.0)
     λ, μ = obj.λ, obj.μ
-    δᵢₖδⱼₗ, δᵢₗδⱼₖ, δᵢⱼδₖₗ = I2D ⊗ᵢₖʲˡ I2D, I2D ⊗ᵢₗʲᵏ I2D, I2D ⊗ᵢⱼᵏˡ I2D
+    δᵢₖδⱼₗ, δᵢₗδⱼₖ, δᵢⱼδₖₗ = I2D ⊗ᵢₖʲˡ I2D, I2D ⊗ᵢₗʲᵏ I2D, I2D ⊗ I2D
     ε(F) = 0.5(F + F') - I2D
     ∂Ψuu(F) = μ * (δᵢₖδⱼₗ + δᵢₗδⱼₖ) + λ * δᵢⱼδₖₗ
     ∂Ψu(F) = ∂Ψuu(F) ⊙ (F - I2D)
@@ -414,7 +414,7 @@ mutable struct LinearElasticity3D <: IsoElastic
 
   function (obj::LinearElasticity3D)(Λ::Float64=1.0)
     λ, μ = obj.λ, obj.μ
-    δᵢₖδⱼₗ, δᵢₗδⱼₖ, δᵢⱼδₖₗ = I3D ⊗ᵢₖʲˡ I3D, I3D ⊗ᵢₗʲᵏ I3D, I3D ⊗ᵢⱼᵏˡ I3D
+    δᵢₖδⱼₗ, δᵢₗδⱼₖ, δᵢⱼδₖₗ = I3D ⊗ᵢₖʲˡ I3D, I3D ⊗ᵢₗʲᵏ I3D, I3D ⊗ I3D
     ε(F) = 0.5(F + F') - I3D
     ∂Ψuu(F) = μ * (δᵢₖδⱼₗ + δᵢₗδⱼₖ) + λ * δᵢⱼδₖₗ
     ∂Ψu(F) = ∂Ψuu(F) ⊙ (F - I3D)
@@ -541,7 +541,7 @@ struct MooneyRivlin2D <: IsoElastic
     ∂2Ψ_(F) = ForwardDiff.jacobian(F -> ∂Ψ_(F), get_array(F))
 
     ∂Ψu(F) = TensorValue(∂Ψ_(F))
-    ∂Ψuu(F) = TensorValue(∂2Ψ_(F))
+    ∂Ψuu(F) = FourthOrderTensorValue(Tuple(∂2Ψ_(F)))
     return (Ψ, ∂Ψu, ∂Ψuu)
   end
 end

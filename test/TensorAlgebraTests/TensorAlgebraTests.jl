@@ -1,5 +1,4 @@
 using Gridap.TensorValues
-using Gridap.TensorValues: ThirdOrderTensorValue
 using Gridap.Arrays
 using HyperFEM.TensorAlgebra
 using Test
@@ -12,34 +11,24 @@ digits2(D) = [Float64(10i + j) for i in 1:D, j in 1:D]
 digits3(D) = [Float64(100i + 10j + k) for i in 1:D, j in 1:D, k in 1:D]
 digits4(D) = [Float64(1000i + 100j + 10k + l) for i in 1:D, j in 1:D, k in 1:D, l in 1:D]
 
-
-@testset "Flat indexing" begin
-  A = rand(3,3)
-  B = rand(3,3,3)
-  C = rand(3,3,3,3)
-  @test TensorValue{3,3}(ntuple(α -> A[_ij(α,3)...], 9)) == TensorValue{3,3}(A...)
-  @test TensorValue{3,9}(ntuple(α -> B[_ijk(α,3)...], 27)) == TensorValue{3,9}(B...)
-  @test TensorValue{9,9}(ntuple(α -> C[_ijkl(α,3)...], 81)) == TensorValue{9,9}(C...)
-  
-  for D in (2, 3)
-    @test all(_ij(_flat_idx(i, j, D), D) == (i, j) for i in 1:D, j in 1:D)
-    @test all(_ijk(_flat_idx(i, j, k, D), D) == (i, j, k) for i in 1:D, j in 1:D, k in 1:D)
-    @test all(_ijkl(_flat_idx(i, j, k, l, D), D) == (i, j, k, l) for i in 1:D, j in 1:D, k in 1:D, l in 1:D)
-  end
-end
+third(a::Array{Float64,3}) = ThirdOrderTensorValue{size(a)...}(a...)
+fourth(a::Array{Float64,4}) = FourthOrderTensorValue(Tuple(a))
 
 
 @testset "transpose" begin
-  # third-order tensors: cyclic index shift Aᵀ[i,j,k] = A[k,i,j]
   for D in (2, 3)
-    a = digits3(D)
-    A = ThirdOrderTensorValue{D,D,D}(a...)
-    @test A' == ThirdOrderTensorValue{D,D,D}([a[k, i, j] for i in 1:D, j in 1:D, k in 1:D]...)
-    @test A''' == A
+    # third-order tensors: cyclic index shift Wᵀ[i,j,k] = W[k,i,j]
+    w = digits3(D)
+    W = third(w)
+    @test W' == third([w[k, i, j] for i in 1:D, j in 1:D, k in 1:D])
+    @test W''' == W
+    # fourth-order tensors: major transpose Hᵀ[i,j,k,l] = H[k,l,i,j]
+    h = digits4(D)
+    H = fourth(h)
+    @test H' == fourth([h[k, l, i, j] for i in 1:D, j in 1:D, k in 1:D, l in 1:D])
+    @test H'' == H
+    @test Tuple(H') == Tuple(TensorValue(Tuple(H))')  # the transpose of the D²×D² matrix
   end
-  # a `TensorValue{D,D²}` is a matrix for `transpose`
-  W = TensorValue{3,9}(digits3(3)...)
-  @test W' == TensorValue{9,3}(permutedims(reshape(collect(W.data), 3, 9))...)
 end
 
 
@@ -59,15 +48,13 @@ end
   B = TensorValue(5.0, 6.0, 7.0, 8.0)
   u = VectorValue(1.0, 2.0)
   v = VectorValue(3.0, 4.0)
-  @test u ⊗ v     == TensorValue(3.0, 6.0, 4.0, 8.0)
-  @test u ⊗ᵢʲ v   == TensorValue(3.0, 6.0, 4.0, 8.0)
-  @test A ⊗ B     == TensorValue(5.0, 10.0, 15.0, 20.0, 6.0, 12.0, 18.0, 24.0, 7.0, 14.0, 21.0, 28.0, 8.0, 16.0, 24.0, 32.0)
-  @test A ⊗ᵢⱼᵏˡ B == TensorValue(5.0, 10.0, 15.0, 20.0, 6.0, 12.0, 18.0, 24.0, 7.0, 14.0, 21.0, 28.0, 8.0, 16.0, 24.0, 32.0)
-  @test A ⊗ᵢₖʲˡ B == TensorValue(5.0, 10.0, 6.0, 12.0, 15.0, 20.0, 18.0, 24.0, 7.0, 14.0, 8.0, 16.0, 21.0, 28.0, 24.0, 32.0)
-  @test A ⊗ᵢₗʲᵏ B == TensorValue(5.0, 10.0, 6.0, 12.0, 7.0, 14.0, 8.0, 16.0, 15.0, 20.0, 18.0, 24.0, 21.0, 28.0, 24.0, 32.0)
-  @test u ⊗ᵢʲᵏ A  == TensorValue{2,4}(1.0, 2.0, 2.0, 4.0, 3.0, 6.0, 4.0, 8.0)
-  @test A ⊗ᵢⱼᵏ u  == TensorValue{2,4}(1.0, 2.0, 3.0, 4.0, 2.0, 4.0, 6.0, 8.0)
-  @test A ⊗ᵢₖʲ u  == TensorValue{2,4}(1.0, 2.0, 2.0, 4.0, 3.0, 4.0, 6.0, 8.0)
+  @test u ⊗ v == TensorValue(3.0, 6.0, 4.0, 8.0)
+  @test Tuple(A ⊗ B)     == (5.0, 10.0, 15.0, 20.0, 6.0, 12.0, 18.0, 24.0, 7.0, 14.0, 21.0, 28.0, 8.0, 16.0, 24.0, 32.0)
+  @test Tuple(A ⊗ᵢₖʲˡ B) == (5.0, 10.0, 6.0, 12.0, 15.0, 20.0, 18.0, 24.0, 7.0, 14.0, 8.0, 16.0, 21.0, 28.0, 24.0, 32.0)
+  @test Tuple(A ⊗ᵢₗʲᵏ B) == (5.0, 10.0, 6.0, 12.0, 7.0, 14.0, 8.0, 16.0, 15.0, 20.0, 18.0, 24.0, 21.0, 28.0, 24.0, 32.0)
+  @test Tuple(u ⊗ A)     == (1.0, 2.0, 2.0, 4.0, 3.0, 6.0, 4.0, 8.0)
+  @test Tuple(A ⊗ u)     == (1.0, 2.0, 3.0, 4.0, 2.0, 4.0, 6.0, 8.0)
+  @test Tuple(A ⊗ᵢₖʲ u)  == (1.0, 2.0, 2.0, 4.0, 3.0, 4.0, 6.0, 8.0)
 end
 
 
@@ -75,21 +62,21 @@ end
   A = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0) * 1e-3
   B = TensorValue(4.6, 2.1, 1.7, 3.2, 6.5, 1.4, 9.2, 8.0, 9.0) * 1e-3
   C = A ⊗ B
-  D = TensorValue([4.6 2.1 1.7 3.2 6.5 1.4 9.2 8.0 9.0;
-  1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0;
-  5.3 2.0 3.1 1.9 5.4 9.8 0.4 8.8 3.1] * 1e-3)
-  @test norm(×ᵢ⁴(A)) == 0.033763886032268264
+  D = ThirdOrderTensorValue(Tuple([4.6 2.1 1.7 3.2 6.5 1.4 9.2 8.0 9.0;
+                          1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0;
+                          5.3 2.0 3.1 1.9 5.4 9.8 0.4 8.8 3.1] * 1e-3))
+  @test sqrt(×ᵢ⁴(A) ⊙ ×ᵢ⁴(A)) == 0.033763886032268264
   @test norm(A × B) == 6.246230863488799e-5
-  @test norm(C × B) == 2.4491455542698976e-6
-  @test norm(B × C) == 1.104276381618298e-6
-  @test norm(D × A) == 0.00012378691368638284
+  @test sqrt((C × B) ⊙ (C × B)) == 2.4491455542698976e-6
+  @test sqrt((B × C) ⊙ (B × C)) == 1.104276381618298e-6
+  @test sqrt((D × A) ⊙ (D × A)) == 0.00012378691368638284
   @test norm(get_array(A) × get_array(B))== 6.246230863488799e-5
 end
 
 
 @testset "inner" begin
-  H = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0)
-  G = TensorValue{2,4}(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0)
+  H = fourth(reshape(collect(1.0:16.0), 2, 2, 2, 2))
+  G = third(reshape(collect(1.0:8.0), 2, 2, 2))
   A = TensorValue(1.0, 2.0, 3.0, 4.0)
   V = VectorValue(5.0, 6.0)
   @test inner(H,H) == 1496.0
@@ -119,151 +106,106 @@ end
   @test E + E == E
   @test E - E == E
   @test -E == E
+  # high-order tensors
+  for D in (2, 3)
+    h, g = digits4(D), reverse(digits4(D))
+    H, G = fourth(h), fourth(g)
+    @test H + G == fourth(h + g)
+    @test H - G == fourth(h - g)
+    @test -H == fourth(-h)
+    W = third(digits3(D))
+    @test W + W == third(2 * digits3(D))
+  end
 end
 
 
 @testset "identity" begin
-  I2_ = TensorValue(1.0, 0.0, 0.0, 1.0)
-  I3_ = TensorValue(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
-  I4_ = TensorValue(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0)
-  I9_ = TensorValue(
-    1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
-    0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
-    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
-    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0)
-  @test I2_ == I2D
-  @test I3_ == I3D
-  @test I4_ == 𝕀2D
-  @test I9_ == 𝕀3D
+  @test I2D == TensorValue(1.0, 0.0, 0.0, 1.0)
+  @test I3D == TensorValue(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+  for (D, 𝕀) in ((2, 𝕀2D), (3, 𝕀3D))
+    @test 𝕀 isa FourthOrderTensorValue{D,Float64}
+    @test 𝕀 == fourth([Float64(i == k && j == l) for i in 1:D, j in 1:D, k in 1:D, l in 1:D])
+    @test Tuple(TensorValue(Tuple(𝕀))) == Tuple(one(TensorValue{D^2,D^2,Float64}))  # the identity matrix
+    A = TensorValue{D,D}(digits2(D)...)
+    @test 𝕀 ⊙ A == A
+  end
+end
+
+
+@testset "matrix representation and constructors" begin
+  for D in (2, 3)
+    H = fourth(digits4(D))
+    M = TensorValue(Tuple(H))
+    @test M isa TensorValue{D^2,D^2,Float64}
+    @test M[1 + (2 - 1) * D, D] == H[1, 2, D, 1]  # rows (i,j), columns (k,l)
+    @test FourthOrderTensorValue(Tuple(M)) == H
+    @test FourthOrderTensorValue(Tuple(get_array(M))) == H
+    w = digits3(D)
+    @test ThirdOrderTensorValue(Tuple(reshape(w, D, D^2))) == third(w)
+    @test FourthOrderTensorValue(Tuple(digits4(D))...) == H  # varargs
+  end
+end
+
+
+@testset "products in index notation" begin
+  # each product against its Einstein summation on plain arrays
+  for D in (2, 3)
+    a, b, h, v = randn(D, D), randn(D, D), randn(D, D, D, D), randn(D)
+    A, B, H, V = TensorValue{D,D}(a...), TensorValue{D,D}(b...), fourth(h), VectorValue{D}(v...)
+    r = 1:D
+    @test A ⊗ᵢₖʲ V == third([a[i, k] * v[j] for i in r, j in r, k in r])
+    @test A ⊗ᵢₖʲˡ B == fourth([a[i, k] * b[j, l] for i in r, j in r, k in r, l in r])
+    @test A ⊗ᵢₗʲᵏ B == fourth([a[i, l] * b[j, k] for i in r, j in r, k in r, l in r])
+    @test A ⊗ᵢₘʲᵐᵏˡ H ≈ fourth([sum(a[i, m] * h[j, m, k, l] for m in r) for i in r, j in r, k in r, l in r])
+  end
+  # the operands must have all their dimensions equal
+  @test_throws DimensionMismatch I2D ⊗ᵢₖʲˡ I3D
 end
 
 
 @testset "contraction" begin
-  A = TensorValue(1.0, 2.0, 3.0, 4.0)
-  H = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0)
-  @test A ⊗ᵢₘᵐʲᵏˡ H == TensorValue(7.0, 10.0, 15.0, 22.0, 23.0, 34.0, 31.0, 46.0, 39.0, 58.0, 47.0, 70.0, 55.0, 82.0, 63.0, 94.0)
-  @test A ⊗ᵢₘʲᵐᵏˡ H == TensorValue(10.0, 14.0, 14.0, 20.0, 26.0, 38.0, 30.0, 44.0, 42.0, 62.0, 46.0, 68.0, 58.0, 86.0, 62.0, 92.0)
-
-  function reference_IJK_KLP(A::TensorValue{3,9}, B::TensorValue{3,9})
-    D = size(A, 1)
-    C = zeros(Float64, D, D, D, D)
-    for i in 1:D, j in 1:D, l in 1:D, p in 1:D
-      s = zero(Float64)
-      for k in 1:D
-        s += A[i, _flat_idx(j, k, D)] * B[k, _flat_idx(l, p, 3)]
-      end
-      C[i, j, l, p] = s
-    end
-    TensorValue{D*D,D*D}(C...)
-  end
-
-  A = TensorValue{3,9}(digits3(3)...)
-  B = TensorValue{3,9}(reverse(digits3(3))...)
-  @test A · B == reference_IJK_KLP(A, B)
-
-  function reference_IJK_K(A::TensorValue{3,9}, B::VectorValue{3})
-    D = size(A,1)
-    C = zeros(Float64, D, D)
-    for i in 1:D, j in 1:D
-      s = zero(Float64)
-      for k in 1:D
-        s += A[_flat_idx(i, j, k, D)] * B[k]
-      end
-      C[i, j] = s
-    end
-    TensorValue{3,3}(C...)
-  end
-
-  A = TensorValue{3,9}(digits3(3)...)
-  V = VectorValue{3}(digits1(3)...)
-  @test A · V == reference_IJK_K(A, V)
-  
-  function reference_I_IJK(A::VectorValue{3}, B::TensorValue{3,9})
-    D = size(A,1)
-    C = zeros(Float64, D, D)
-    for j in 1:D, k in 1:D
-      s = zero(Float64)
-      for i in 1:D
-        s += A[i] * B[_flat_idx(i, j, k, D)]
-      end
-      C[j, k] = s
-    end
-    TensorValue{3,3}(C...)
-  end
-
-  @test V · A == reference_I_IJK(V, A)
-
-  function reference_IJK_KL(A::TensorValue{3,9}, B::TensorValue{3,3})
-    D = size(A, 1)
-    C = zeros(Float64, D, D, D)
-    for i in 1:D, j in 1:D, l in 1:D
-      s = zero(Float64)
-      for k in 1:D
-        s += A[_flat_idx(i, j, k, D)] * B[k, l]
-      end
-      C[i, j, l] = s
-    end
-    TensorValue{D,D*D}(C...)
-  end
-
-  A = TensorValue{3,9}(digits3(3)...)
-  B = TensorValue{3,3}(digits2(3)...)
-  @test A · B == reference_IJK_KL(A, B)
-end
-
-
-@testset "index notation" begin
-  TA = HyperFEM.TensorAlgebra
-  # Reference: Einstein summation on plain arrays
-  flat(o, D) = o == 1 ? VectorValue{D,Float64} : TensorValue{TA._flat_shape(o, D)...,Float64}
-  function reference(la, lb, a, b, D)
-    labels = (la..., lb...)
-    out = sort(filter(l -> count(==(l), labels) == 1, collect(labels)))
-    summed = sort(unique(filter(l -> count(==(l), labels) == 2, collect(labels))))
-    R = zeros(ntuple(_ -> D, length(out)))
-    for I in CartesianIndices(R), J in CartesianIndices(ntuple(_ -> D, length(summed)))
-      v = Dict(zip([out; summed], [Tuple(I)...; Tuple(J)...]))
-      R[I] += a[map(l -> v[l], la)...] * b[map(l -> v[l], lb)...]
-    end
-    R
-  end
-  Random.seed!(20261110)
-  for op in TA._INDEX_PRODUCTS, D in (2, 3)
-    la, lb = TA._index_labels(op)
-    a, b = randn(ntuple(_ -> D, length(la))), randn(ntuple(_ -> D, length(lb)))
-    A, B = flat(length(la), D)(a...), flat(length(lb), D)(b...)
-    R = getfield(TA, op)(A, B)
-    @test collect(R isa Real ? R : R.data) ≈ vec(reference(la, lb, a, b, D))
-  end
-  # the operands must have the orders and dimension of the notation
-  @test_throws DimensionMismatch I2D ⊗ᵢⱼₘₙᵐⁿ I2D
-  @test_throws DimensionMismatch 𝕀2D ⊗ᵢⱼₘₙᵐⁿ I3D
-  # the notation is canonical: a single name for each operation
-  @test TA._index_labels(:⊗ᵢⱼₘₙᵐⁿᵏˡ) == (('i', 'j', 'm', 'n'), ('m', 'n', 'k', 'l'))
-  @test_throws AssertionError TA._index_labels(:⊗ᵢⱼₙₘᵐⁿᵏˡ)  # summed indices out of order
-  @test_throws AssertionError TA._index_labels(:⊗ᵢⱼₘₙᵐⁿᵏᵖ)  # p is a summed index
-  @test_throws AssertionError TA._index_labels(:⊗ᵢₖʲᵐ)      # m summed in a single operand
-  @test_throws AssertionError TA._index_labels(:⊗ᵢⱼₘₘ)      # m twice in the same operand
-  @test_throws AssertionError TA._index_labels(:⊗ᵢʲₖ)       # subscript after a superscript
-end
-
-
-@testset "double contraction" begin
   for D in (2, 3)
-    a, h, g = digits2(D), digits4(D), reverse(digits4(D))
-    A, H, G = TensorValue{D,D}(a...), TensorValue{D^2,D^2}(h...), TensorValue{D^2,D^2}(g...)
-    @test H ⋅² G == TensorValue{D^2,D^2}(reshape(reshape(h, D^2, D^2) * reshape(g, D^2, D^2), :)...)
-    @test H ⋅² G == H * G  # the matrix product of the flattened representation
+    a, w, h = digits2(D), digits3(D), digits4(D)
+    A, W, H, V = TensorValue{D,D}(a...), third(w), fourth(h), VectorValue{D}(digits1(D)...)
+    r = 1:D
+    @test A ⋅ H == fourth([sum(a[i, m] * h[m, j, k, l] for m in r) for i in r, j in r, k in r, l in r])
+    @test W ⋅ W == fourth([sum(w[i, j, m] * w[m, k, l] for m in r) for i in r, j in r, k in r, l in r])
+    @test W ⋅ A == third([sum(w[i, j, m] * a[m, k] for m in r) for i in r, j in r, k in r])
+    @test W ⋅ V == TensorValue{D,D}([sum(w[i, j, m] * V[m] for m in r) for i in r, j in r]...)
+    @test V ⋅ W == TensorValue{D,D}([sum(V[m] * w[m, i, j] for m in r) for i in r, j in r]...)
+    # double contraction
+    g = reverse(h)
+    G = fourth(g)
+    @test H ⋅² G == fourth([sum(h[i, j, m, n] * g[m, n, k, l] for m in r, n in r) for i in r, j in r, k in r, l in r])
+    @test Tuple(H ⋅² G) == Tuple(TensorValue(Tuple(H)) ⋅ TensorValue(Tuple(G)))  # the product of the D²×D² matrices
     @test H ⋅² A == H ⊙ A
-    @test A ⋅² H == TensorValue{D,D}([sum(a[m, n] * h[m, n, i, j] for m in 1:D, n in 1:D) for i in 1:D, j in 1:D]...)
-    @test A ⋅² A == A ⊙ A
-    @test 𝕀2D ⋅² 𝕀2D == 𝕀2D
+    @test A ⋅² H == TensorValue{D,D}([sum(a[m, n] * h[m, n, i, j] for m in r, n in r) for i in r, j in r]...)
+    @test W ⋅² A == W ⊙ A
   end
+  @test 𝕀2D ⋅² 𝕀2D == 𝕀2D
+end
+
+
+@testset "IIsym" begin
+  A  = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0)
+  B  = TensorValue(1.0, 4.0, 2.0, 5.0, 3.0, 6.0, 8.0, 7.0, 9.0)
+  # 1. IIsym(I3D) ⊙ B yields the symmetric part 0.5 * (B + Bᵀ)
+  @test IIsym(I3D) ⊙ B == 0.5 * (B + B')
+  # 2. IIsym(A) ⊙ B yields 0.5 * (A ⋅ B ⋅ Aᵀ + A ⋅ Bᵀ ⋅ Aᵀ)
+  @test IIsym(A) ⊙ B ≈ 0.5 * (A ⋅ B ⋅ A' + A ⋅ B' ⋅ A')
+  # 3. IIsym(I3D) == ½ (δᵢₖδⱼₗ + δᵢₗδⱼₖ)
+  @test IIsym(I3D) == 0.5 * (I3D ⊗ᵢₖʲˡ I3D + I3D ⊗ᵢₗʲᵏ I3D)
+  @test I3D ⊗ᵢₖʲˡ I3D == 𝕀3D
+end
+
+
+@testset "push_forward_C_to_F" begin
+  H = fourth(rand(3, 3, 3, 3))
+  H = H' ⋅² H
+  F = TensorValue(rand(9)...) * 1e-2 + I3D
+  DCDF = F' ⊗ᵢₖʲˡ I3D + I3D ⊗ᵢₗʲᵏ F'
+  S_ref = 0.5 * DCDF' ⋅² H ⋅² DCDF
+  @test push_forward_C_to_F(F, H) ≈ S_ref
 end
 
 
@@ -279,32 +221,6 @@ end
   A = TensorValue(1.:9...) + I3D
   cofA = det(A) * inv(A')
   @test isapprox(cof(A), cofA)
-end
-
-
-@testset "IIsym" begin
-  A  = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0)
-  B  = TensorValue(1.0, 4.0, 2.0, 5.0, 3.0, 6.0, 8.0, 7.0, 9.0)
-
-  # 1. IIsym(I3D) : B yields the symmetric part 0.5 * (B + Bᵀ)
-  @test IIsym(I3D) ⊙ B == 0.5 * (B + B')
-
-  # 2. IIsym(A) : B yields 0.5 * (A * B * Aᵀ + A * Bᵀ * Aᵀ)
-  @test IIsym(A) ⊙ B ≈ 0.5 * (A · B · A' + A · B' · A')
-
-  # 3. IIsym(I3D) == 1/2 (δᵢₖδⱼₗ + δᵢₗδⱼₖ)
-  @test IIsym(I3D) == 0.5 * (I3D ⊗ᵢₖʲˡ I3D + I3D ⊗ᵢₗʲᵏ I3D)
-  @test I3D ⊗ᵢₖʲˡ I3D == 𝕀3D
-end
-
-@testset "push_forward_C_to_F" begin
-  H = TensorValue(rand(81)...)
-  H = H'·H
-  F = TensorValue(rand(9)...) * 1e-2 + I3D
-
-  DCDF = F' ⊗ᵢₖʲˡ I3D + I3D ⊗ᵢₗʲᵏ F'
-  S_ref = 0.5 * DCDF' · H · DCDF
-  @test push_forward_C_to_F(F, H) ≈ S_ref
 end
 
 
@@ -363,5 +279,16 @@ end
     regularize_hessian(Cpd, 1e-6); regularize_hessian(Cind, 1e-6)
     @test allocs(Cpd, 1e-6) == 0 skip = forced_boundscheck
     @test allocs(Cind, 1e-6) == 0 skip = forced_boundscheck
+  end
+end
+
+
+@testset "regularize_hessian of fourth-order tensors" begin
+  # same as the regularization of the D²×D² matrix
+  for D in (2, 3)
+    Q = Matrix(LinearAlgebra.qr(randn(D^2, D^2)).Q)
+    M = Q * LinearAlgebra.Diagonal(randn(D^2)) * Q'
+    H = FourthOrderTensorValue(Tuple((M + M') / 2))
+    @test regularize_hessian(H, 1e-6) == FourthOrderTensorValue(Tuple(regularize_hessian(TensorValue(Tuple(H)), 1e-6)))
   end
 end

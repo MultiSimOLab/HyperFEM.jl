@@ -16,9 +16,9 @@ const ∇un = TensorValue(1.0:9.0...) * 5e-4
   F1 = I3D + 0.1*TensorValue(rand(9)...)
   @test get_array(∂Ψ∂F(F1,E0))  ≈ ForwardDiff.gradient(Fi -> Ψ(Fi, get_array(E0)), get_array(F1))
   @test get_array(∂Ψ∂E(F1,E0))  ≈ ForwardDiff.gradient(Ei -> Ψ(get_array(F1), Ei), get_array(E0))
-  @test get_array(∂Ψ∂FF(F1,E0)) ≈ ForwardDiff.jacobian(Fi -> ∂Ψ∂F(Fi, get_array(E0)), get_array(F1))
-  @test get_array(∂Ψ∂EF(F1,E0)) ≈ ForwardDiff.jacobian(Fi -> ∂Ψ∂E(Fi, get_array(E0)), get_array(F1))
-  @test get_array(∂Ψ∂EF(F1,E0)) ≈ ForwardDiff.jacobian(Ei -> ∂Ψ∂F(get_array(F1), Ei), get_array(E0))'
+  @test get_array(TensorValue(Tuple(∂Ψ∂FF(F1,E0)))) ≈ ForwardDiff.jacobian(Fi -> ∂Ψ∂F(Fi, get_array(E0)), get_array(F1))
+  @test ∂Ψ∂EF(F1,E0) ≈ ThirdOrderTensorValue(Tuple(ForwardDiff.jacobian(Fi -> ∂Ψ∂E(Fi, get_array(E0)), get_array(F1))))
+  @test ∂Ψ∂EF(F1,E0) ≈ ThirdOrderTensorValue(Tuple(ForwardDiff.jacobian(Ei -> ∂Ψ∂F(get_array(F1), Ei), get_array(E0))'))
   @test get_array(∂Ψ∂EE(F1,E0)) ≈ ForwardDiff.jacobian(Ei -> ∂Ψ∂E(get_array(F1), Ei), get_array(E0))
 end
 
@@ -85,7 +85,7 @@ end
   ∇umacro = TensorValue(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0) * 1e-2
   ∇u1 = 1e-1 * TensorValue(1, 2, 3, 4, 5, 6, 7, 8, 9)
   Emacro = VectorValue(0.0, 0.0, sqrt((1.0 + 5.0) / (1.0 + 5.0)) * 0.1)
-  A = TensorValue{3,9,Float64,27}(0.0013981268088158305, 0.0008195783555664171,
+  A = ThirdOrderTensorValue{3,3,3,Float64,27}(0.0013981268088158305, 0.0008195783555664171,
     0.0016562357569609649, 0.0008406006468943406, 0.0009224862278332126, 0.001155322042969417,
     0.0005129360612093835, 0.0012909164959851265, 0.001152698427032676, 0.0008406006468943406,
     0.0009224862278332126, 0.001155322042969417, 0.00034502469077903774, 0.00021859521770246592,

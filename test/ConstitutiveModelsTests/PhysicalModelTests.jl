@@ -31,7 +31,7 @@ const μParams = [6456.9137547089595, 896.4633794151492,
 function test_derivatives__(model::PhysicalModel, K::KinematicModel, ∇u; rtol, kwargs...)
   Ψ, ∂Ψu, ∂Ψuu = model()
   ∂Ψu_(F) = TensorValue(ForwardDiff.gradient(Ψ, get_array(F)))
-  ∂Ψuu_(F) = TensorValue(ForwardDiff.hessian(Ψ, get_array(F)))
+  ∂Ψuu_(F) = FourthOrderTensorValue(Tuple(ForwardDiff.hessian(Ψ, get_array(F))))
 
   K = Kinematics(Mechano, Solid)
   F, _, _ = get_Kinematics(K)
@@ -63,7 +63,7 @@ function test_second_piola_3D_(model::PhysicalModel; rtol=1e-12, kwargs...)
   C = F'·F
   Ψ, S, ∂S∂C = SecondPiola(model)
   @test isapprox(S(C),  2*TensorValue(ForwardDiff.gradient(Ψ, get_array(C))), rtol=rtol, kwargs...)
-  @test isapprox(∂S∂C(C), TensorValue(ForwardDiff.jacobian(S, get_array(C))), rtol=rtol, kwargs...)
+  @test isapprox(∂S∂C(C), FourthOrderTensorValue(Tuple(ForwardDiff.jacobian(S, get_array(C)))), rtol=rtol, kwargs...)
 end
 
 
@@ -136,7 +136,7 @@ end
 
   Ψ, ∂Ψ∂F, ∂Ψ∂F∂F = model()
   ∂Ψ∂F_(F, M1, M2, M3, M4) = TensorValue(ForwardDiff.gradient(F -> Ψ(F, (get_array(M1), get_array(M2), get_array(M3), get_array(M4))), get_array(F)))
-  ∂Ψ∂F∂F_(F, M1, M2, M3, M4) = TensorValue(ForwardDiff.hessian(F -> Ψ(F, (get_array(M1), get_array(M2), get_array(M3), get_array(M4))), get_array(F)))
+  ∂Ψ∂F∂F_(F, M1, M2, M3, M4) = FourthOrderTensorValue(Tuple(ForwardDiff.hessian(F -> Ψ(F, (get_array(M1), get_array(M2), get_array(M3), get_array(M4))), get_array(F))))
 
   K = Kinematics(Mechano, Solid)
   F, _, _ = get_Kinematics(K)
@@ -160,7 +160,7 @@ end
   model = HGO_4Fibers(c1=c1, c2=c2)
   Ψ, ∂Ψ∂F, ∂Ψ∂F∂F = model()
   ∂Ψ∂F_(F, M1, M2, M3, M4) = TensorValue(ForwardDiff.gradient(F -> Ψ(F, get_array(M1), get_array(M2), get_array(M3), get_array(M4)), get_array(F)))
-  ∂Ψ∂F∂F_(F, M1, M2, M3, M4) = TensorValue(ForwardDiff.hessian(F -> Ψ(F, get_array(M1), get_array(M2), get_array(M3), get_array(M4)), get_array(F)))
+  ∂Ψ∂F∂F_(F, M1, M2, M3, M4) = FourthOrderTensorValue(Tuple(ForwardDiff.hessian(F -> Ψ(F, get_array(M1), get_array(M2), get_array(M3), get_array(M4)), get_array(F))))
 
 
   K = Kinematics(Mechano, Solid)
@@ -192,7 +192,7 @@ end
 
   Ψ, ∂Ψ∂F, ∂Ψ∂F∂F = model()
   ∂Ψ∂F_(F, M1, M2, M3, M4) = TensorValue(ForwardDiff.gradient(F -> Ψ(F, get_array(M1), get_array(M2), get_array(M3), get_array(M4)), get_array(F)))
-  ∂Ψ∂F∂F_(F, M1, M2, M3, M4) = TensorValue(ForwardDiff.hessian(F -> Ψ(F, get_array(M1), get_array(M2), get_array(M3), get_array(M4)), get_array(F)))
+  ∂Ψ∂F∂F_(F, M1, M2, M3, M4) = FourthOrderTensorValue(Tuple(ForwardDiff.hessian(F -> Ψ(F, get_array(M1), get_array(M2), get_array(M3), get_array(M4)), get_array(F))))
 
 
   K = Kinematics(Mechano, Solid)
@@ -307,7 +307,7 @@ end
   #  Memory estimate: 0 bytes, allocs estimate: 0.
   model = PlaneStressIncompressible_I1PD(μ=1.0)
   Ψ, ∂Ψu , ∂Ψuu = model()
-  ∂Ψuu_(F) = TensorValue(ForwardDiff.jacobian(∂Ψu, get_array(F)))
+  ∂Ψuu_(F) = FourthOrderTensorValue(Tuple(ForwardDiff.jacobian(∂Ψu, get_array(F))))
   K = Kinematics(Mechano, Solid)
   F, _, _ = get_Kinematics(K)
   @test isapprox(∂Ψuu(F(∇u2)), ∂Ψuu_(F(∇u2)),rtol=1e-14)
@@ -552,9 +552,9 @@ end
   ∂2Ψ_∂2E(F, E, θ) = TensorValue(ForwardDiff.hessian(E -> Ψ(get_array(F), E, θ), get_array(E)))
   ∂2Ψ∂2θ(F, E, θ) = ForwardDiff.derivative(θ -> ∂Ψ_∂θ(get_array(F), get_array(E), θ), θ)
   ∂2Ψ_∂2Eθ(F, E, θ) = VectorValue(ForwardDiff.derivative(θ -> get_array(∂Ψ_∂E(get_array(F), get_array(E), θ)), θ))
-  ∂2Ψ_∂2F(F, E, θ) = TensorValue(ForwardDiff.hessian(F -> Ψ(F, get_array(E), θ), get_array(F)))
+  ∂2Ψ_∂2F(F, E, θ) = FourthOrderTensorValue(Tuple(ForwardDiff.hessian(F -> Ψ(F, get_array(E), θ), get_array(F))))
   ∂2Ψ_∂2Fθ(F, E, θ) = TensorValue(ForwardDiff.derivative(θ -> get_array(∂Ψ_∂F(get_array(F), get_array(E), θ)), θ))
-  ∂2Ψ_∂EF(F, E, θ) = TensorValue(ForwardDiff.jacobian(F -> get_array(∂Ψ_∂E(F, get_array(E), θ)), get_array(F)))
+  ∂2Ψ_∂EF(F, E, θ) = ThirdOrderTensorValue(Tuple(ForwardDiff.jacobian(F -> get_array(∂Ψ_∂E(F, get_array(E), θ)), get_array(F))))
 
 
   @test isapprox(∂Ψu(F(∇u), E(∇φ), θt), ∂Ψ_∂F(F(∇u), E(∇φ), θt); rtol=1e-14)

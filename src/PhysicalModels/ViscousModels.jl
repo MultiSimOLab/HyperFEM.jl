@@ -94,7 +94,7 @@ function (obj::NVisco)()
   ∂ΨαFF = map(d -> d[3], DΨv)
   Ψ(F, Fn, A::Vararg{Any,N})     where N = _sum_branches((Ψi, Ai) -> Ψi(F, Fn, Ai), Ψα, A, 0.0)
   zero2 = zero(TensorValue{3,3,Float64,9})
-  zero4 = zero(TensorValue{9,9,Float64,81})
+  zero4 = zero(FourthOrderTensorValue{3,Float64,81})
   ∂Ψ∂F(F, Fn, A::Vararg{Any,N})  where N = _sum_branches((∂ΨiF, Ai) -> ∂ΨiF(F, Fn, Ai), ∂ΨαF, A, zero2)
   ∂Ψ∂FF(F, Fn, A::Vararg{Any,N}) where N = _sum_branches((∂ΨiFF, Ai) -> ∂ΨiFF(F, Fn, Ai), ∂ΨαFF, A, zero4)
   (Ψ, ∂Ψ∂F, ∂Ψ∂FF)
@@ -305,7 +305,7 @@ function JacobianReturnMapping(γα, Ce, Se, Se_trial, ∂Se∂Ce, C, λα)
   ∂res2_∂Ce = Ge
   res = [get_array(res1)[:]; res2]
   ∂res = MMatrix{10,10}(zeros(10, 10))  # TODO: It'd be nice to use hvcat: ∂res = [∂res1_Ce ∂res1_∂λα; ∂res2_∂Ce 0.0]
-  ∂res[1:9, 1:9] = get_array(∂res1_∂Ce)
+  ∂res[1:9, 1:9] = get_array(TensorValue(Tuple(∂res1_∂Ce)))
   ∂res[1:9, 10] = get_array(∂res1_∂λα)[:]
   ∂res[10, 1:9] = (get_array(∂res2_∂Ce)[:])'
   return res, ∂res
@@ -368,13 +368,13 @@ function ∂Ce_∂C(::ViscousIncompressible, γα, ∂Se∂Ce_, invUvn, Ce, Ce_t
   # Derivative of {Ce,λα} with respect to C
   #------------------------------------------   
   K = MMatrix{10,10}(zeros(10, 10))
-  K[1:9, 1:9] = get_array(K11)    # TODO: Check the TensorValue interface
+  K[1:9, 1:9] = get_array(TensorValue(Tuple(K11)))
   K[1:9, 10] = get_array(K12)[:]
   K[10, 1:9] = get_array(K21)[:]  # There is no need to transpose the vector
-  F = [get_array(F1); (get_array(F2)[:])']
+  F = [get_array(TensorValue(Tuple(F1))); (get_array(F2)[:])']
   ∂u∂C = K \ F
   ∂Ce∂C = ∂u∂C[SOneTo(9), SOneTo(9)]  # Static slice (SMatrix), not a Matrix
-  return TensorValue(∂Ce∂C)
+  return FourthOrderTensorValue(Tuple(∂Ce∂C))
 end
 
 
@@ -412,7 +412,7 @@ Tangent operator for the incompressible case
 - `λα`
 
 # Return
-- `Cv::TensorValue{9,9}`: A fourth-order tensor in flattened notation
+- `Cv::FourthOrderTensorValue{3}`: fourth-order tangent
 """
 function ViscousTangentOperator(obj::ViscousIncompressible,
                   Se_::Function, ∂Se∂Ce_::Function,
@@ -428,18 +428,18 @@ function ViscousTangentOperator(obj::ViscousIncompressible,
   DCe_DC = ∂Ce_∂C(obj, γα, ∂Se∂Ce_, invUvn, Ce, Ce_trial, λα, F)
   DCe_DC_Uvfixed = ∂Ce_∂C_Uvfixed(invUv)
   DCe_DinvUv = ∂Ce_∂invUv(C, invUv)
-  DinvUv_DC = inv(DCe_DinvUv) * (DCe_DC - DCe_DC_Uvfixed)
+  DinvUv_DC = FourthOrderTensorValue(Tuple(inv(TensorValue(Tuple(DCe_DinvUv))))) ⋅² (DCe_DC - DCe_DC_Uvfixed)
   DCDF = F' ⊗ᵢₖʲˡ I3D + I3D ⊗ᵢₗʲᵏ F'
   #------------------------------------------
   # 0.5*δC_{Uvfixed}:DSe[ΔC]
   #------------------------------------------
-  C1 = 0.5 * DCe_DC_Uvfixed' * ∂Se∂Ce_(Ce) * DCe_DC
+  C1 = 0.5 * DCe_DC_Uvfixed' ⋅² ∂Se∂Ce_(Ce) ⋅² DCe_DC
   #------------------------------------------
   # Se:0.5*(DUv^{-1}[ΔC]*δC*Uv^{-1} + Uv^{-1}*δC*DUv^{-1}[ΔC])
   #------------------------------------------
   invUv_Se = invUv * Se_(Ce)
   C2 = 0.5 * ((invUv_Se ⊗ᵢₘʲᵐᵏˡ DinvUv_DC) +
-              (invUv_Se ⊗ᵢₘᵐʲᵏˡ DinvUv_DC))
+              (invUv_Se ⋅ DinvUv_DC))
   #------------------------------------------
   # Sv:(D(δC_{Uvfixed})[ΔC])
   #------------------------------------------
@@ -448,7 +448,7 @@ function ViscousTangentOperator(obj::ViscousIncompressible,
   #------------------------------------------
   # Total Contribution
   #------------------------------------------
-  Cv = DCDF' * (C1 + C2) * DCDF + C3
+  Cv = DCDF' ⋅² (C1 + C2) ⋅² DCDF + C3
   Cv
 end
 
@@ -624,8 +624,8 @@ function ViscousDissipation(obj::ViscousIncompressible,
   Se = Se_(Ce)
   Ge = cof(Ce)
   ∂Se∂Ce = ∂Se∂Ce_(Ce)
-  α = 1.e3abs(tr(∂Se∂Ce))  # Ensure invertibility of the elasticity tensor.
-  invCCe = inv(2*∂Se∂Ce + α*Ge⊗Ge)
+  α = 1.e3abs(tr(TensorValue(Tuple(∂Se∂Ce))))  # Ensure invertibility of the elasticity tensor.
+  invCCe = FourthOrderTensorValue(Tuple(inv(TensorValue(Tuple(2*∂Se∂Ce + α*Ge⊗Ge)))))
   ∂Se = -1/τ * (Se - λα*Ge)
   Dvis = -Se ⊙ (invCCe ⊙ ∂Se)
   Dvis

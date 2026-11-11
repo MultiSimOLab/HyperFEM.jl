@@ -60,7 +60,7 @@ function numerical_tangent(Ψ, F, ϵ=1e-5)
       end
     end
   end
-  return TensorValue(H)
+  return FourthOrderTensorValue(Tuple(H))
 end
 
 
@@ -194,12 +194,12 @@ end
   Ge = cof(Ce)
   ∂Se∂Ce = ∂S∂C(Ce)
   ∂Se = -1/τ * (Se - λ*Ge)
-  α = abs(tr(∂Se∂Ce))
-  Dvis_ref = -Se ⊙ (inv(2*∂Se∂Ce + 1e8α*Ge⊗Ge) ⊙ ∂Se)
+  α = abs(tr(TensorValue(Tuple(∂Se∂Ce))))
+  Dvis_ref = -Se ⊙ (FourthOrderTensorValue(Tuple(inv(TensorValue(Tuple(2*∂Se∂Ce + 1e8α*Ge⊗Ge))))) ⊙ ∂Se)
   e_rel = Float64[]
   m_values = [10^m for m = 3:7]
   for m ∈ m_values
-    Dvis = -Se ⊙ (inv(2*∂Se∂Ce + m*α*Ge⊗Ge) ⊙ ∂Se)
+    Dvis = -Se ⊙ (FourthOrderTensorValue(Tuple(inv(TensorValue(Tuple(2*∂Se∂Ce + m*α*Ge⊗Ge))))) ⊙ ∂Se)
     e = abs(Dvis - Dvis_ref) / Dvis_ref
     push!(e_rel, e)
     @test e < 1e-6
@@ -247,7 +247,7 @@ end
   ∂Sv∂C_Cᵥfix = HyperFEM.PhysicalModels.∂Sv∂C_Cᵥfix
 
   Sv_ref = 2*TensorValue(ForwardDiff.gradient(C -> Ψv(model, TensorValue(C), inv(Cv)), get_array(C1)))
-  ∂Sv_ref = 2*TensorValue(ForwardDiff.hessian(C -> Ψv(model, TensorValue(C), inv(Cv)), get_array(C1)))
+  ∂Sv_ref = 2*FourthOrderTensorValue(Tuple(ForwardDiff.hessian(C -> Ψv(model, TensorValue(C), inv(Cv)), get_array(C1))))
 
   @test isapprox(Sv(model, C1, inv(Cv)), Sv_ref, rtol=1e-8)
   @test isapprox(∂Sv∂C_Cᵥfix(model, C1, inv(Cv)), ∂Sv_ref, rtol=1e-8)
@@ -256,12 +256,12 @@ end
   Cv⁻¹    = HyperFEM.PhysicalModels.Cv⁻¹
   ∂Cv⁻¹∂C = HyperFEM.PhysicalModels.∂Cv⁻¹∂C
 
-  ∂invCv_ref = TensorValue(ForwardDiff.jacobian(C -> get_array(Cv⁻¹(model, 0.5*TensorValue(C+C'), Cn, Cv)), get_array(C1)))  # Enforce symmetry of C within ForwardDiff
+  ∂invCv_ref = FourthOrderTensorValue(Tuple(ForwardDiff.jacobian(C -> get_array(Cv⁻¹(model, 0.5*TensorValue(C+C'), Cn, Cv)), get_array(C1))))  # Enforce symmetry of C within ForwardDiff
   @test isapprox(∂Cv⁻¹∂C(model, C1, Cn, Cv)[2], ∂invCv_ref, rtol=1e-8)
 
   # --- Test full model tangent operator ---
   Ψ, ∂Ψ∂F, ∂∂Ψ∂FF = model()
-  ∂∂Ψ∂FF_ref = TensorValue(ForwardDiff.jacobian(F -> get_array(∂Ψ∂F(TensorValue(F), Fn, Cv)), get_array(F1)))
+  ∂∂Ψ∂FF_ref = FourthOrderTensorValue(Tuple(ForwardDiff.jacobian(F -> get_array(∂Ψ∂F(TensorValue(F), Fn, Cv)), get_array(F1))))
   @test isapprox(∂∂Ψ∂FF(F1, Fn, Cv), ∂∂Ψ∂FF_ref, rtol=1e-8)
 end
 
