@@ -79,6 +79,8 @@ errors(s, ref) = (relerr(get_free_dof_values(s.uh⁺), ref.u), relerr(get_free_d
   @test s.Δτmax == 0.25 && StaggeredStepping().Δτmax == 1 / 20
   @test StaggeredStepping(; nsteps=10, coupling_tol=1e-6, grow=2.0, Δτmax=0.4).Δτmax == 0.4
   @test_throws ErrorException StaggeredStepping(; nsteps=10, Δτmax=0.05)
+  @test s.neasy == 1 && StaggeredStepping(; neasy=2).neasy == 2
+  @test_throws ErrorException StaggeredStepping(; neasy=0)
   @test as_relaxation(:none) isa NoRelaxation && as_relaxation(0.5) isa FixedRelaxation && as_relaxation(:aitken) isa Aitken
   @test_throws ErrorException StaggeredStepping(; relaxation=:foo)
   @test_throws ErrorException StaggeredStepping(; coupling_tol=0.0)
@@ -261,6 +263,9 @@ end
   @test flag0 == 1 && Δτ0s ≈ fill(0.125, 8)
   @test flag1 == 1 && Δτ1s ≈ [0.125, 0.25, 0.5, 0.125] && sum(Δτ1s) ≈ 1.0
   @test maximum(e0) ≤ 1e-6 && maximum(e1) ≤ 1e-6
+  # two consecutive easy steps before every growth: 1/8, 1/8 → 1/4, 1/4 → 1/2, cut at τ = 1
+  flag3, Δτ3s, e3 = nsteps_of(StaggeredStepping(; nsteps=8, max_substeps=60, coupling_tol=1e-8, grow=2.0, easy=60, Δτmax=0.5, neasy=2))
+  @test flag3 == 1 && Δτ3s ≈ [0.125, 0.125, 0.25, 0.25, 0.25] && maximum(e3) ≤ 1e-6
   # the fixed loop does not use it
   flag2, Δτ2s, _ = nsteps_of(StaggeredStepping(; nsteps=4, max_substeps=2, Δτmax=1.0))
   @test Δτ2s ≈ fill(0.25, 4)

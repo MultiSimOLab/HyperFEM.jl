@@ -20,6 +20,9 @@ using Test
   @test LoadStepping(nsteps=10, ΔΛmax=0.3).ΔΛmax == 0.3 && LoadStepping(nsteps=10, ΔΛmax=1).ΔΛmax == 1.0
   @test as_stepping((nsteps=10, grow=2.0, ΔΛmax=0.3)) === LoadStepping(nsteps=10, grow=2.0, ΔΛmax=0.3)
   @test_throws ErrorException LoadStepping(nsteps=10, ΔΛmax=0.05)
+  # consecutive easy increments before a growth: one by default
+  @test s.neasy == 1 && LoadStepping(neasy=2).neasy == 2
+  @test_throws ErrorException LoadStepping(neasy=0)
 
   # the NamedTuple and the LoadStepping give the same run; step! driven by hand gives the same run
   nls() = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-12, rtol=1e-12, verbose=0)
@@ -36,7 +39,7 @@ using Test
   m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=nls())
   stepping = LoadStepping(nsteps=4, maxbisec=0)
   st = LoadStep(stepping)
-  @test (st.Λ, st.ΔΛ, st.ΔΛ0, st.nsteps, st.nbisect, st.nbisect_total) == (0.0, 0.25, 0.25, 0, 0, 0)
+  @test (st.Λ, st.ΔΛ, st.ΔΛ0, st.nsteps, st.nbisect, st.nbisect_total, st.neasy) == (0.0, 0.25, 0.25, 0, 0, 0, 0)
   Λs = Float64[]
   while !finished(st)
     @test step!(m, st, stepping; ProjectDirichlet=true)
@@ -103,6 +106,16 @@ HyperFEM.ComputationalModels.nls_iterations(s::FailAt) = HyperFEM.ComputationalM
   # a failed attempt with a grown increment is bisected from that increment: 0.1, 0.2 (fails: 0.1), then growth again
   Λs, flag = runcase(LoadStepping(nsteps=10, maxbisec=1, grow=2.0, easy=50, ΔΛmax=0.4), [2])
   @test flag == 1 && Λs ≈ [0.1, 0.2, 0.4, 0.8, 1.0]
+  # two consecutive easy increments before every growth (Abaqus): 0.1, 0.1 → 0.2, 0.2 → 0.4, cut at Λ = 1
+  Λs, flag = runcase(LoadStepping(nsteps=10, grow=2.0, easy=50, ΔΛmax=0.4, neasy=2), Int[])
+  @test flag == 1 && Λs ≈ [0.1, 0.2, 0.4, 0.6, 1.0]
+  # a failed attempt restarts the count: 0.1 (1), fails (0, ΔΛ = 0.05), 0.05 (1), 0.05 (2 → 0.1), …
+  Λs, flag = runcase(LoadStepping(nsteps=10, maxbisec=1, grow=2.0, easy=50, ΔΛmax=0.4, neasy=2), [2])
+  @test flag == 1 && Λs ≈ [0.1, 0.15, 0.2, 0.3, 0.4, 0.6, 0.8, 1.0]
+  # neasy = 1 is the rule of every easy increment (the same run as without the keyword)
+  Λs1, _ = runcase(LoadStepping(nsteps=10, maxbisec=1, grow=2.0, easy=50, ΔΛmax=0.4, neasy=1), [2])
+  Λs0, _ = runcase(LoadStepping(nsteps=10, maxbisec=1, grow=2.0, easy=50, ΔΛmax=0.4), [2])
+  @test Λs1 == Λs0
   # bisections are counted consecutively: failures at attempts 1 and 3 (one bisection each, a converged
   # step in between) pass with maxbisec = 1; two failures in a row do not
   Λs, flag = runcase(LoadStepping(nsteps=4, maxbisec=1), [1, 3])

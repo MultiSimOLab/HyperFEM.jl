@@ -3,18 +3,20 @@
 #*******************************************************************************
 
 """
-    LoadStepping(; nsteps=20, maxbisec=15, grow=1.0, easy=10, ΔΛmax=1/nsteps)
+    LoadStepping(; nsteps=20, maxbisec=15, grow=1.0, easy=10, ΔΛmax=1/nsteps, neasy=1)
 
 Control of the incremental loop of [`solve!`](@ref) for a [`StaticNonlinearModel`](@ref): the stage
 parameter Λ runs from 0 to 1 in increments ΔΛ, starting at `ΔΛ0 = 1/nsteps` (an increment may be cut by
 the safe load factor of the Dirichlet projection). A failed increment is bisected (ΔΛ/2 from the last
 converged state); `maxbisec` is the maximum number of **consecutive** bisections, the count restarts at
-every converged increment. After an increment converged in at most `easy` Newton iterations the next one
-grows, `ΔΛ ← min(grow ΔΛ, ΔΛmax)`; with `grow = 1` (the default) the increment is never grown again after a
+every converged increment. After `neasy` consecutive increments converged in at most `easy` Newton iterations
+each (one, by default; Abaqus waits for two) the next one grows, `ΔΛ ← min(grow ΔΛ, ΔΛmax)`, and the count
+restarts; with `grow = 1` (the default) the increment is never grown again after a
 bisection or a cut. `ΔΛmax` is the largest increment the growth may reach, an absolute value of ΔΛ (as `Δtmax`
 of [`TimeStepping`](@ref)): by default the initial one, so that the growth only recovers from bisections and
 cuts; a larger value lets a run that starts with a small increment (to get through a hard start) speed up where
-the problem allows it. A `NamedTuple` `(nsteps = …, maxbisec = …)` is accepted wherever a `LoadStepping` is.
+the problem allows it; `neasy = 2` makes a large `ΔΛmax` safer (fewer rejected attempts, and in problems with
+snaps a path that does not jump to another state). A `NamedTuple` `(nsteps = …, maxbisec = …)` is accepted wherever a `LoadStepping` is.
 """
 struct LoadStepping
     nsteps::Int
@@ -22,13 +24,16 @@ struct LoadStepping
     grow::Float64
     easy::Int
     ΔΛmax::Float64
-    function LoadStepping(; nsteps::Int=20, maxbisec::Int=15, grow::Real=1.0, easy::Int=10, ΔΛmax::Union{Nothing,Real}=nothing)
+    neasy::Int
+    function LoadStepping(; nsteps::Int=20, maxbisec::Int=15, grow::Real=1.0, easy::Int=10, ΔΛmax::Union{Nothing,Real}=nothing,
+                          neasy::Int=1)
         nsteps >= 1 || error("HyperFEM: LoadStepping needs nsteps ≥ 1 (got $nsteps)")
         maxbisec >= 0 || error("HyperFEM: LoadStepping needs maxbisec ≥ 0 (got $maxbisec)")
         grow >= 1 || error("HyperFEM: LoadStepping needs grow ≥ 1 (got $grow)")
         ΔΛ0 = 1.0 / nsteps
         ΔΛmax === nothing || ΔΛmax >= ΔΛ0 || error("HyperFEM: LoadStepping needs ΔΛmax ≥ 1/nsteps (got ΔΛmax = $ΔΛmax, 1/nsteps = $ΔΛ0)")
-        new(nsteps, maxbisec, Float64(grow), easy, ΔΛmax === nothing ? ΔΛ0 : Float64(ΔΛmax))
+        neasy >= 1 || error("HyperFEM: LoadStepping needs neasy ≥ 1 (got $neasy)")
+        new(nsteps, maxbisec, Float64(grow), easy, ΔΛmax === nothing ? ΔΛ0 : Float64(ΔΛmax), neasy)
     end
 end
 
@@ -41,7 +46,8 @@ as_stepping(s) = error("HyperFEM: `stepping` must be a LoadStepping or a NamedTu
 
 State of the incremental loop: the stage `Λ` of the last converged increment (the target of the attempt
 while one is running), the current increment `ΔΛ` and the initial one `ΔΛ0`, the converged increments
-`nsteps`, the consecutive bisections `nbisect` and the total ones `nbisect_total`.
+`nsteps`, the consecutive bisections `nbisect` and the total ones `nbisect_total`, and the consecutive easy
+increments `neasy` since the last growth (see `LoadStepping`).
 """
 mutable struct LoadStep
     Λ::Float64
@@ -50,8 +56,9 @@ mutable struct LoadStep
     nsteps::Int
     nbisect::Int
     nbisect_total::Int
+    neasy::Int
 end
-LoadStep(stepping::LoadStepping) = LoadStep(0.0, 1.0 / stepping.nsteps, 1.0 / stepping.nsteps, 0, 0, 0)
+LoadStep(stepping::LoadStepping) = LoadStep(0.0, 1.0 / stepping.nsteps, 1.0 / stepping.nsteps, 0, 0, 0, 0)
 
 finished(st::LoadStep) = isapprox(st.Λ, 1.0; atol=1e-12)
 
@@ -104,7 +111,8 @@ function step!(m::StaticNonlinearModel, st::LoadStep, stepping::LoadStepping;
     Algebra.solve!(x, nls, model_operator(m, op, Λ, load(Λ)), nls_cache)
     ok = nls_converged(nls)
     # growth of the increment after an easy step (grow = 1: never; shared with the time stepping)
-    ∆Λnext = grown_increment(stepping.grow, stepping.easy, ∆Λ, stepping.ΔΛmax, ok, nls_iterations(nls))
+    ∆Λnext, neasy = counted_growth(stepping.grow, stepping.easy, stepping.neasy, st.neasy, ∆Λ, stepping.ΔΛmax, ok, nls_iterations(nls))
+    st.neasy = neasy
     step_line(verbose, nls, st.nsteps + 1, Λ, ∆Λ, ok, time() - t_step, ∆Λnext > ∆Λ)
     if ok
         st.nsteps += 1
