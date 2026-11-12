@@ -15,6 +15,11 @@ using Test
   @test_throws ErrorException as_stepping(4)
   @test_throws ErrorException LoadStepping(nsteps=0)
   @test_throws ErrorException LoadStepping(grow=0.5)
+  # the largest increment: the initial one by default, an absolute value otherwise, never below the initial one
+  @test s.ΔΛmax == 1 / 20 && LoadStepping(nsteps=8).ΔΛmax == 0.125
+  @test LoadStepping(nsteps=10, ΔΛmax=0.3).ΔΛmax == 0.3 && LoadStepping(nsteps=10, ΔΛmax=1).ΔΛmax == 1.0
+  @test as_stepping((nsteps=10, grow=2.0, ΔΛmax=0.3)) === LoadStepping(nsteps=10, grow=2.0, ΔΛmax=0.3)
+  @test_throws ErrorException LoadStepping(nsteps=10, ΔΛmax=0.05)
 
   # the NamedTuple and the LoadStepping give the same run; step! driven by hand gives the same run
   nls() = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-12, rtol=1e-12, verbose=0)
@@ -84,6 +89,20 @@ HyperFEM.ComputationalModels.nls_iterations(s::FailAt) = HyperFEM.ComputationalM
   # growth by 1.5 is capped at ΔΛ0: 0.05 → 0.075 → 0.1
   Λs, flag = runcase(LoadStepping(nsteps=10, maxbisec=1, grow=1.5, easy=50), [1])
   @test flag == 1 && Λs[1:3] ≈ [0.05, 0.125, 0.225] && all(diff(Λs[3:end-1]) .≈ 0.1)
+  # ΔΛmax above the initial increment: the growth goes on up to it, 0.1 → 0.2 → 0.4 → 0.4 → cut at Λ = 1
+  Λs, flag = runcase(LoadStepping(nsteps=10, grow=2.0, easy=50, ΔΛmax=0.4), Int[])
+  @test flag == 1 && Λs ≈ [0.1, 0.3, 0.7, 1.0]
+  # … by 1.5 up to an absolute value that is not a multiple: 0.1, 0.15, 0.225, 0.25, 0.25, cut
+  Λs, flag = runcase(LoadStepping(nsteps=10, grow=1.5, easy=50, ΔΛmax=0.25), Int[])
+  @test flag == 1 && Λs ≈ [0.1, 0.25, 0.475, 0.725, 0.975, 1.0]
+  # without growth, or with steps that are not easy, ΔΛmax changes nothing
+  Λs, flag = runcase(LoadStepping(nsteps=4, ΔΛmax=1.0), Int[])
+  @test flag == 1 && Λs == [0.25, 0.5, 0.75, 1.0]
+  Λs, flag = runcase(LoadStepping(nsteps=4, grow=2.0, easy=0, ΔΛmax=1.0), Int[])
+  @test flag == 1 && Λs == [0.25, 0.5, 0.75, 1.0]
+  # a failed attempt with a grown increment is bisected from that increment: 0.1, 0.2 (fails: 0.1), then growth again
+  Λs, flag = runcase(LoadStepping(nsteps=10, maxbisec=1, grow=2.0, easy=50, ΔΛmax=0.4), [2])
+  @test flag == 1 && Λs ≈ [0.1, 0.2, 0.4, 0.8, 1.0]
   # bisections are counted consecutively: failures at attempts 1 and 3 (one bisection each, a converged
   # step in between) pass with maxbisec = 1; two failures in a row do not
   Λs, flag = runcase(LoadStepping(nsteps=4, maxbisec=1), [1, 3])

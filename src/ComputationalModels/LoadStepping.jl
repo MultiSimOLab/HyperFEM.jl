@@ -3,26 +3,32 @@
 #*******************************************************************************
 
 """
-    LoadStepping(; nsteps=20, maxbisec=15, grow=1.0, easy=10)
+    LoadStepping(; nsteps=20, maxbisec=15, grow=1.0, easy=10, ΔΛmax=1/nsteps)
 
 Control of the incremental loop of [`solve!`](@ref) for a [`StaticNonlinearModel`](@ref): the stage
 parameter Λ runs from 0 to 1 in increments ΔΛ, starting at `ΔΛ0 = 1/nsteps` (an increment may be cut by
 the safe load factor of the Dirichlet projection). A failed increment is bisected (ΔΛ/2 from the last
 converged state); `maxbisec` is the maximum number of **consecutive** bisections, the count restarts at
 every converged increment. After an increment converged in at most `easy` Newton iterations the next one
-grows, `ΔΛ ← min(grow ΔΛ, ΔΛ0)`; with `grow = 1` (the default) the increment is never grown again after a
-bisection or a cut. A `NamedTuple` `(nsteps = …, maxbisec = …)` is accepted wherever a `LoadStepping` is.
+grows, `ΔΛ ← min(grow ΔΛ, ΔΛmax)`; with `grow = 1` (the default) the increment is never grown again after a
+bisection or a cut. `ΔΛmax` is the largest increment the growth may reach, an absolute value of ΔΛ (as `Δtmax`
+of [`TimeStepping`](@ref)): by default the initial one, so that the growth only recovers from bisections and
+cuts; a larger value lets a run that starts with a small increment (to get through a hard start) speed up where
+the problem allows it. A `NamedTuple` `(nsteps = …, maxbisec = …)` is accepted wherever a `LoadStepping` is.
 """
 struct LoadStepping
     nsteps::Int
     maxbisec::Int
     grow::Float64
     easy::Int
-    function LoadStepping(; nsteps::Int=20, maxbisec::Int=15, grow::Real=1.0, easy::Int=10)
+    ΔΛmax::Float64
+    function LoadStepping(; nsteps::Int=20, maxbisec::Int=15, grow::Real=1.0, easy::Int=10, ΔΛmax::Union{Nothing,Real}=nothing)
         nsteps >= 1 || error("HyperFEM: LoadStepping needs nsteps ≥ 1 (got $nsteps)")
         maxbisec >= 0 || error("HyperFEM: LoadStepping needs maxbisec ≥ 0 (got $maxbisec)")
         grow >= 1 || error("HyperFEM: LoadStepping needs grow ≥ 1 (got $grow)")
-        new(nsteps, maxbisec, Float64(grow), easy)
+        ΔΛ0 = 1.0 / nsteps
+        ΔΛmax === nothing || ΔΛmax >= ΔΛ0 || error("HyperFEM: LoadStepping needs ΔΛmax ≥ 1/nsteps (got ΔΛmax = $ΔΛmax, 1/nsteps = $ΔΛ0)")
+        new(nsteps, maxbisec, Float64(grow), easy, ΔΛmax === nothing ? ΔΛ0 : Float64(ΔΛmax))
     end
 end
 
@@ -98,7 +104,7 @@ function step!(m::StaticNonlinearModel, st::LoadStep, stepping::LoadStepping;
     Algebra.solve!(x, nls, model_operator(m, op, Λ, load(Λ)), nls_cache)
     ok = nls_converged(nls)
     # growth of the increment after an easy step (grow = 1: never; shared with the time stepping)
-    ∆Λnext = grown_increment(stepping.grow, stepping.easy, ∆Λ, st.ΔΛ0, ok, nls_iterations(nls))
+    ∆Λnext = grown_increment(stepping.grow, stepping.easy, ∆Λ, stepping.ΔΛmax, ok, nls_iterations(nls))
     step_line(verbose, nls, st.nsteps + 1, Λ, ∆Λ, ok, time() - t_step, ∆Λnext > ∆Λ)
     if ok
         st.nsteps += 1
