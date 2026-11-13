@@ -43,6 +43,8 @@ end
   :(HighOrderTensorValue{S,T,N,L}(($(components...),)))
 end
 
+@inline (+)(A::HighOrderTensorValue) = A
+
 # Scaling and outer product of second-order tensors: Gridap's are 2× slower for 81 components.
 
 @inline @generated function (*)(α::Real, A::HighOrderTensorValue{S,T,N,L}) where {S,T,N,L}
@@ -52,10 +54,9 @@ end
 
 @inline (*)(A::HighOrderTensorValue, α::Real) = α * A
 
-@inline @generated function Base.:(/)(A::HighOrderTensorValue{S,T,N,L}, α::Real) where {S,T,N,L}
-  components = [:(A.data[$i] / α) for i in 1:L]
-  :(HighOrderTensorValue{S,$(Base.promote_op(/, T, α)),N,L}(($(components...),)))
-end
+# Multiplication by the reciprocal: one division instead of 81, but not bitwise identical to dividing
+# each component (the reciprocal is rounded).
+@inline Base.:(/)(A::HighOrderTensorValue, α::Real) = inv(α) * A
 
 @inline Gridap.TensorValues.outer(A::TensorValue{D,D}, B::TensorValue{D,D}) where {D} =
   einstein_sum(Val((:i, :j)), Val((:k, :l)), A, B)
