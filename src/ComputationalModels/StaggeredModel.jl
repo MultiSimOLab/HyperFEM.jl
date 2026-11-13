@@ -234,7 +234,7 @@ _relative(a::Float64, ref::Float64) = ref > 0 ? a / ref : (a > 0 ? Inf : 0.0)
 
 """
     StaggeredStepping(; nsteps=20, max_substeps=1, coupling_tol=nothing, norm=:increment,
-                      relaxation=:none, maxbisec=15, grow=1.0, easy=3)
+                      relaxation=:none, maxbisec=15, grow=1.0, easy=3, Δτmax=1/nsteps, neasy=1)
 
 Control of the loop of [`solve!`](@ref) for a [`StaggeredModel`](@ref): the stage τ runs from 0 to 1
 in increments Δτ, starting at `Δτ0 = 1/nsteps`; inside every step the fields are solved one after
@@ -248,8 +248,12 @@ another (a *pass*), at most `max_substeps` times.
   step is accepted; a step whose passes reach `max_substeps` without convergence, or in which an inner
   solve fails, is rejected: the state, the lagged state and the Dirichlet values return to the last
   accepted step and the increment is bisected (`maxbisec` consecutive bisections at most, the count
-  restarts at every accepted step). After a step accepted in at most `easy` passes the next increment
-  grows, `Δτ ← min(grow Δτ, Δτ0)` (`grow = 1`, the default: never). The first pass of a step counts
+  restarts at every accepted step). After `neasy` consecutive steps accepted in at most `easy` passes each
+  (one, by default) the next increment grows, `Δτ ← min(grow Δτ, Δτmax)`, and the count restarts (`grow = 1`,
+  the default: never). `Δτmax` is the largest increment the
+  growth may reach, an absolute value of Δτ (as `ΔΛmax` of [`LoadStepping`](@ref)); by default the initial one,
+  `1/nsteps`. It is the increment of the staggered loop, one for all the fields; the inner solve of every field
+  keeps its own `LoadStepping` (`kargsolve`). The fixed loop does not use it. The first pass of a step counts
   for convergence: a field whose solve did not change it is converged.
 - `norm = :increment`: `err_i = ‖x⁺_i(k) − x⁺_i(k−1)‖ / ‖x⁺_i(k)‖`, the relative increment of the free
   values of the field in the pass (the solved increment, before relaxation; a field of zero norm is
@@ -269,9 +273,11 @@ struct StaggeredStepping{R}
     maxbisec::Int
     grow::Float64
     easy::Int
+    Δτmax::Float64
+    neasy::Int
     function StaggeredStepping(; nsteps::Int=20, max_substeps::Int=1, nsubsteps::Union{Nothing,Int}=nothing,
         coupling_tol::Union{Nothing,Real}=nothing, norm::Symbol=:increment, relaxation=:none,
-        maxbisec::Int=15, grow::Real=1.0, easy::Int=3)
+        maxbisec::Int=15, grow::Real=1.0, easy::Int=3, Δτmax::Union{Nothing,Real}=nothing, neasy::Int=1)
         nsubsteps === nothing || (max_substeps = nsubsteps)       # the name of the NamedTuple of earlier versions
         nsteps >= 1 || error("HyperFEM: StaggeredStepping needs nsteps ≥ 1 (got $nsteps)")
         max_substeps >= 1 || error("HyperFEM: StaggeredStepping needs max_substeps ≥ 1 (got $max_substeps)")
@@ -282,7 +288,11 @@ struct StaggeredStepping{R}
         easy >= 1 || error("HyperFEM: StaggeredStepping needs easy ≥ 1 (got $easy)")
         relaxation isa Tuple ? map(as_relaxation, relaxation) : as_relaxation(relaxation)   # validated here; a tuple is matched to the fields in solve!
         tol = coupling_tol === nothing ? nothing : Float64(coupling_tol)
-        new{typeof(relaxation)}(nsteps, max_substeps, tol, norm, relaxation, maxbisec, Float64(grow), easy)
+        Δτ0 = 1.0 / nsteps
+        Δτmax === nothing || Δτmax >= Δτ0 || error("HyperFEM: StaggeredStepping needs Δτmax ≥ 1/nsteps (got Δτmax = $Δτmax, 1/nsteps = $Δτ0)")
+        neasy >= 1 || error("HyperFEM: StaggeredStepping needs neasy ≥ 1 (got $neasy)")
+        new{typeof(relaxation)}(nsteps, max_substeps, tol, norm, relaxation, maxbisec, Float64(grow), easy,
+                                Δτmax === nothing ? Δτ0 : Float64(Δτmax), neasy)
     end
 end
 
@@ -298,7 +308,8 @@ fixed_loop(s::StaggeredStepping) = s.coupling_tol === nothing
 
 State of the staggered loop: the stage `τ` of the last accepted step (the start of the attempt while
 one is running), the current increment `Δτ` and the initial one `Δτ0`, the accepted steps `nsteps`, the
-consecutive bisections `nbisect` and the total ones `nbisect_total`.
+consecutive bisections `nbisect` and the total ones `nbisect_total`, and the consecutive easy steps `neasy`
+since the last growth (see `StaggeredStepping`).
 """
 mutable struct StaggeredStep
     τ::Float64
@@ -307,8 +318,9 @@ mutable struct StaggeredStep
     nsteps::Int
     nbisect::Int
     nbisect_total::Int
+    neasy::Int
 end
-StaggeredStep(s::StaggeredStepping) = StaggeredStep(0.0, 1.0 / s.nsteps, 1.0 / s.nsteps, 0, 0, 0)
+StaggeredStep(s::StaggeredStepping) = StaggeredStep(0.0, 1.0 / s.nsteps, 1.0 / s.nsteps, 0, 0, 0, 0)
 
 finished(st::StaggeredStep, s::StaggeredStepping) =
     fixed_loop(s) ? st.nsteps >= s.nsteps : isapprox(st.τ, 1.0; atol=1e-12)
@@ -590,7 +602,8 @@ function step!(m::StaggeredModel, st::StaggeredStep, s::StaggeredStepping, relax
     t = time() - t_step
 
     if fixed || ok
-        Δτnext = fixed ? Δτ : grown_increment(s.grow, s.easy, Δτ, st.Δτ0, true, nsub)
+        Δτnext, neasy = fixed ? (Δτ, 0) : counted_growth(s.grow, s.easy, s.neasy, st.neasy, Δτ, s.Δτmax, true, nsub)
+        st.neasy = neasy
         staggered_row(verbose, st.nsteps + 1, τ⁺raw, Δτ, nsub, w.err, w.ω, ok, Δτnext > Δτ, t)
         record!(log, τ⁺raw, Δτ, nsub, st.nbisect, w.err, w.ω, w.t)
         st.nsteps += 1
@@ -609,6 +622,7 @@ function step!(m::StaggeredModel, st::StaggeredStep, s::StaggeredStepping, relax
         foreach(copyto!, c.x⁻, c.xₙ)
         set_dirichlet!(m, τ⁻)
         st.Δτ = Δτ / 2
+        st.neasy = 0
         st.nbisect += 1
         st.nbisect_total += 1
         log.nbisect_total += 1
