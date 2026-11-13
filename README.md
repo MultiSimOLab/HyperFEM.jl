@@ -117,6 +117,14 @@ post_model = PostProcessor(comp_model, driverpost; is_vtk=true, filepath=simdir)
 x = solve!(comp_model; stepping=(nsteps=5, maxbisec=5), post=post_model)
 ```
 
+`stepping` controls the load increments: the stage Λ goes from 0 to 1 starting with `ΔΛ = 1/nsteps`; a failed
+increment is bisected (`maxbisec` consecutive bisections at most). With `LoadStepping` the increment can also grow
+after easy increments: `LoadStepping(nsteps=1000, maxbisec=5, grow=1.5, easy=4, ΔΛmax=0.016, neasy=2)` starts with
+ΔΛ = 0.001 and multiplies it by 1.5 after every two consecutive increments converged in at most 4 Newton iterations,
+up to ΔΛ = 0.016. By default (`grow = 1`, `ΔΛmax = 1/nsteps`, `neasy = 1`) the increment never exceeds the initial one.
+A small initial increment with a larger `ΔΛmax` gets through a hard start and speeds up where the problem allows it;
+`neasy = 2` (Abaqus' rule) makes a large `ΔΛmax` safer.
+
 ## Solvers for large problems
 
 `NewtonRaphson` accepts any Gridap `LinearSolver`. Beyond ~100k degrees of freedom in 3D the LU factorisation
@@ -247,8 +255,9 @@ is still accepted and selects it). With a tolerance, the passes of a step stop w
 the residual of the field at the new state of the others relative to the one of the first pass); a step whose
 passes reach `max_substeps` without convergence, or in which an inner solve fails, is rejected: the states, the
 lagged states and the Dirichlet values return to the last accepted step and the increment is bisected
-(`maxbisec` consecutive bisections at most); after a step accepted in at most `easy` passes the increment grows
-by `grow`, never beyond the initial one. `relaxation` is `:none`, a factor, `:aitken`/`Aitken(; ω0, ωmin, ωmax)`
+(`maxbisec` consecutive bisections at most); after `neasy` consecutive steps accepted in at most `easy` passes
+each (one, by default) the increment grows by `grow`, up to `Δτmax` (the initial increment by default).
+`relaxation` is `:none`, a factor, `:aitken`/`Aitken(; ω0, ωmin, ωmax)`
 (`ωmax > 1` allows over-relaxation, which a monotonically converging iteration needs to gain anything),
 `:iqnils`/`IQNILS()` (a quasi-Newton update of the coupling built from the passes of the step: the choice when
 the coupling is stiffer than a field's own stiffness, where the passes oscillate and no scalar factor converges),
