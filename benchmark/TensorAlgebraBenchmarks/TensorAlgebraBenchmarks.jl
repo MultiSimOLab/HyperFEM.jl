@@ -24,11 +24,10 @@ C2_def = B2 ⋅² B2' / 100 + 𝕀2D
 C2_ind = B2 + B2'
 C3_def = B3 ⋅² B3' / 10000 + 𝕀3D
 C3_ind = B3 + B3'
-SUITE["Tensor algebra"]["regularize_hessian 2D definite"] = @benchmarkable regularize_hessian($(Ref(C2_def))[], 1e-6)
-SUITE["Tensor algebra"]["regularize_hessian 2D indefinite"] = @benchmarkable regularize_hessian($(Ref(C2_ind))[], 1e-6)
-SUITE["Tensor algebra"]["regularize_hessian 3D definite"] = @benchmarkable regularize_hessian($(Ref(C3_def))[], 1e-6)
-SUITE["Tensor algebra"]["regularize_hessian 3D indefinite"] = @benchmarkable regularize_hessian($(Ref(C3_ind))[], 1e-6)
-
+SUITE["Tensor algebra"]["Regularize hessian"]["2D"]["definite"] = @benchmarkable regularize_hessian($(Ref(C2_def))[], 1e-6)
+SUITE["Tensor algebra"]["Regularize hessian"]["2D"]["indefinite"] = @benchmarkable regularize_hessian($(Ref(C2_ind))[], 1e-6)
+SUITE["Tensor algebra"]["Regularize hessian"]["3D"]["definite"] = @benchmarkable regularize_hessian($(Ref(C3_def))[], 1e-6)
+SUITE["Tensor algebra"]["Regularize hessian"]["3D"]["indefinite"] = @benchmarkable regularize_hessian($(Ref(C3_ind))[], 1e-6)
 
 
 # Tensor operations, grouped by operation and dimension. The labels give the order of the operands.
