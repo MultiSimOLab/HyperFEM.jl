@@ -17,6 +17,10 @@ using Test
   end
 
   @time begin
+    include("CouplingTransferTests.jl")
+  end
+
+  @time begin
     include("DriversTests.jl")
   end
 

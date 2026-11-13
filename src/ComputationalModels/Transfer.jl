@@ -185,6 +185,37 @@ end
 _polish(φ, ξ, x, scale) = ξ
 
 """
+    _locate_in_cells(trian, points, todo, scale) -> cells, ξs
+
+Cell of `trian` and reference coordinates in it of `points[todo]`: Gridap's KD-tree point search (used once, here;
+nothing of it is kept), its inverse map, Newton iterations on top and the check that the point mapped back is the
+point (a point off the mesh is an error, it is never projected or extrapolated).
+"""
+function _locate_in_cells(trian, points, todo, scale)
+  cmap = get_cell_map(trian)
+  cmap_cache = array_cache(cmap)
+  search = Gridap.CellData._point_to_cell_cache(Gridap.CellData.KDTreeSearch(), trian)
+  cells = Vector{Int32}(undef, length(todo))
+  ξs = Vector{VectorValue{num_cell_dims(trian),Float64}}(undef, length(todo))
+  for (k, p) in enumerate(todo)
+    x = points[p]
+    cell = try
+      Gridap.CellData._point_to_cell!(search, x)
+    catch
+      error("HyperFEM: transfer: the destination node $x is not in any cell of the source mesh")
+    end
+    φ = getindex!(cmap_cache, cmap, cell)
+    ξ = _polish(φ, evaluate(inverse_map(φ), x), x, scale)
+    norm(evaluate(φ, ξ) - x) ≤ 1e-8 * scale ||
+      error("HyperFEM: transfer: the destination node $x is not on the source mesh (it is at a distance $(norm(evaluate(φ, ξ) - x)) of its closest cell)")
+    cells[k] = cell; ξs[k] = ξ
+  end
+  cells, ξs
+end
+
+_coordinate_scale(points) = max(maximum(x -> maximum(abs, Tuple(x)), points; init=0.0), 1.0)
+
+"""
     PointLocation(V, points, node, comp; ncomp=…, match=:auto, tol=1e-10)
 
 Locate the destination dofs in the source space `V` (Lagrangian, scalar or vector valued; free and Dirichlet dofs).
@@ -236,21 +267,11 @@ function PointLocation(V::SingleFieldFESpace, points::AbstractVector{<:Point}, n
       end
     end
     if nmatched_pts < npts
-      search = Gridap.CellData._point_to_cell_cache(Gridap.CellData.KDTreeSearch(), trian)
-      cmap_cache = array_cache(cmap)
-      for (p, x) in enumerate(points)
-        plnode[p] > 0 && continue
-        cell = try
-          Gridap.CellData._point_to_cell!(search, x)
-        catch
-          error("HyperFEM: PointLocation: the destination node $x is not in any cell of the source mesh")
-        end
-        φ = getindex!(cmap_cache, cmap, cell)
-        ξ = _polish(φ, evaluate(inverse_map(φ), x), x, scale)
-        norm(evaluate(φ, ξ) - x) ≤ 1e-8 * scale ||
-          error("HyperFEM: PointLocation: the destination node $x is not on the source mesh (it is at a distance $(norm(evaluate(φ, ξ) - x)) of its closest cell)")
-        pcell[p] = cell
-        pw[p] = vec(_scalar_shapefuns(V, [ξ], ldof))
+      todo = findall(==(0), plnode)
+      cells, ξs = _locate_in_cells(trian, points, todo, scale)
+      for (k, p) in enumerate(todo)
+        pcell[p] = cells[k]
+        pw[p] = vec(_scalar_shapefuns(V, [ξs[k]], ldof))
       end
     end
   end
@@ -350,3 +371,133 @@ transfer!(y::AbstractVector, T::Transfer, xf::AbstractVector, xd::AbstractVector
 transfer!(y::AbstractVector, T::Union{Transfer,PointLocation}, uh::FEFunction) =
   transfer!(y, T, get_free_dof_values(uh), uh.dirichlet_values)
 transfer_transpose!(ff::AbstractVector, T::Transfer, g::AbstractVector) = transfer_transpose!(ff, T.location, g)
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Fields prescribed by a Coupling on the Dirichlet dofs of a tag (DirichletApplicator)
+#
+# The nodes of the tag are located once per (tag, source) and the location is kept in the applicator:
+#   - algebraic path, a finite-element function of a Lagrangian space (also inside an Interpolable) or a
+#     StageBlend of two: a PointLocation on the dof vectors (gather or CSR product);
+#   - general path, any other CellField (e.g. `uh⁻ + (uh⁺ - uh⁻) * τ`, a new object at every call): the cell and the
+#     reference coordinates of every node are kept and the field is evaluated there by Gridap. No point search.
+# The location is rebuilt only if the source (space or triangulation) changes.
+
+_is_field(v) = v isa CellField || v isa Gridap.CellData.Interpolable
+_field(f) = f
+_field(f::Gridap.CellData.Interpolable) = f.uh
+
+_base_space(U::TrialFESpace) = U.space
+_base_space(V) = V
+
+"Whether the dof values of the finite-element function give its values at points through a PointLocation."
+function _is_nodal_function(f)
+  f isa Gridap.FESpaces.SingleFieldFEFunction || return false
+  V = _base_space(f.fe_space)
+  V isa Gridap.FESpaces.UnconstrainedFESpace || return false
+  Gridap.Arrays.testitem(get_data(get_fe_dof_basis(V))) isa Gridap.ReferenceFEs.LagrangianDofBasis
+end
+
+"The same, skipping the inspection of the space when the tag is already located in it."
+_is_nodal_function(app, i::Int, f) = f isa Gridap.FESpaces.SingleFieldFEFunction &&
+  ((app.cache[i] isa _TagTransfer && app.field[i] === _base_space(f.fe_space)) || _is_nodal_function(f))
+
+"Algebraic location of a tag: PointLocation in the source space and the buffers of the values."
+struct _TagTransfer{L<:PointLocation}
+  location::L
+  y::Vector{Float64}
+  y2::Vector{Float64}
+end
+
+"General location of a tag: cell and reference coordinates of its nodes in the triangulation of the field."
+struct _TagCells{P}
+  cells::Vector{Int32}
+  ξs::Vector{P}
+  nodeptr::Vector{Int32}        # CSR node → positions of its dofs in the tag
+  nodedofs::Vector{Int32}
+  y::Vector{Float64}
+end
+
+_options(p::Coupling) = (p.match, p.tol)
+_options(p) = (:auto, 1e-10)
+
+function _tag_transfer!(app::DirichletApplicator, i::Int, V, t::DirichletTagDofs, p)
+  if app.field[i] !== V || !(app.cache[i] isa _TagTransfer)
+    match, tol = _options(p)
+    ncomp = _nodal_layout(V, "source")[3]
+    L = PointLocation(V, [x for x in t.coords], t.nodes, t.comps; ncomp, match, tol)
+    app.cache[i] = _TagTransfer(L, zeros(length(t.dofs)), zeros(length(t.dofs)))
+    app.field[i] = V
+  end
+  app.cache[i]::_TagTransfer
+end
+
+function _tag_cells!(app::DirichletApplicator, i::Int, trian, t::DirichletTagDofs)
+  if app.field[i] !== trian || !(app.cache[i] isa _TagCells)
+    points = [x for x in t.coords]
+    cells, ξs = _locate_in_cells(trian, points, eachindex(points), _coordinate_scale(points))
+    nn = length(points)
+    count = zeros(Int32, nn + 1)
+    for n in t.nodes
+      count[n+1] += 1
+    end
+    nodeptr = Int32.(cumsum(count) .+ 1)
+    nodedofs = Vector{Int32}(undef, length(t.nodes)); fillptr = copy(nodeptr)
+    for (j, n) in enumerate(t.nodes)
+      nodedofs[fillptr[n]] = j; fillptr[n] += 1
+    end
+    app.cache[i] = _TagCells(cells, ξs, nodeptr, nodedofs, zeros(length(t.dofs)))
+    app.field[i] = trian
+  end
+  app.cache[i]::_TagCells
+end
+
+# function barrier: specialised on the type of the cell data of the field
+function _evaluate_in_cells!(y, data, reference::Bool, c::_TagCells, t::DirichletTagDofs)
+  ac = array_cache(data)
+  ec = nothing; ectype = Nothing
+  for n in eachindex(c.cells)
+    cf = getindex!(ac, data, c.cells[n])
+    x = reference ? c.ξs[n] : t.coords[n]
+    if typeof(cf) !== ectype
+      ec = Gridap.Arrays.return_cache(cf, x); ectype = typeof(cf)
+    end
+    v = Gridap.Arrays.evaluate!(ec, cf, x)
+    for k in c.nodeptr[n]:c.nodeptr[n+1]-1
+      j = c.nodedofs[k]
+      y[j] = _comp(v, t.comps[j])
+    end
+  end
+  y
+end
+
+"Values at the dofs of a tag of a field returned by a prescription."
+function _field_values!(app::DirichletApplicator, i::Int, v, t::DirichletTagDofs, p)
+  f = _field(v)
+  if _is_nodal_function(app, i, f)
+    c = _tag_transfer!(app, i, _base_space(f.fe_space), t, p)
+    transfer!(c.y, c.location, get_free_dof_values(f), f.dirichlet_values)
+  else
+    c = _tag_cells!(app, i, get_triangulation(f), t)
+    _evaluate_in_cells!(c.y, get_data(f), DomainStyle(f) isa ReferenceDomain, c, t)
+  end
+end
+
+"Values at the dofs of the tag `i` of the prescription `p` at `(Λ, τ)`; fields use the buffer of the tag."
+function _prescribed!(app::DirichletApplicator, i::Int, p, Λ, τ, t::DirichletTagDofs)
+  v = p(Λ, τ)
+  _is_field(v) ? _field_values!(app, i, v, t, p) : _values_at_nodes(v, t)
+end
+
+function _prescribed!(app::DirichletApplicator, i::Int, p::Coupling{<:StageBlend}, Λ, τ, t::DirichletTagDofs)
+  b = p.g
+  (_is_nodal_function(app, i, b.uh⁻) && _is_nodal_function(app, i, b.uh⁺) && _base_space(b.uh⁻.fe_space) === _base_space(b.uh⁺.fe_space)) ||
+    return _field_values!(app, i, b(τ), t, p)                  # not two functions of one nodal space: general path
+  c = _tag_transfer!(app, i, _base_space(b.uh⁺.fe_space), t, p)
+  transfer!(c.y, c.location, get_free_dof_values(b.uh⁻), b.uh⁻.dirichlet_values)
+  transfer!(c.y2, c.location, get_free_dof_values(b.uh⁺), b.uh⁺.dirichlet_values)
+  y, y2 = c.y, c.y2
+  @inbounds for j in eachindex(y)
+    y[j] = y[j] + (y2[j] - y[j]) * τ
+  end
+  y
+end

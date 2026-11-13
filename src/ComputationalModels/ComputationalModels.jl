@@ -33,6 +33,7 @@ export Prescription
 export Separable
 export NonSeparable
 export Coupling
+export StageBlend
 export BoundaryCondition
 export BoundaryConditions
 export MultiFieldBoundaryConditions
