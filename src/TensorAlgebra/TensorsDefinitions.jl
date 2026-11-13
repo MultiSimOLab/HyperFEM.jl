@@ -40,3 +40,7 @@ const 𝕀3D = _identity4(3)
 """Second-order identity tensor in the dimension of the vector."""
 @generated Id(::VectorValue{D,Float64}) where {D} = _identity2(D)
 
+# Former names, used by the benchmark scripts of `main` (temporary, see the end of Operations.jl)
+Base.@deprecate_binding I3 I3D
+Base.@deprecate_binding I4 TensorValue(Tuple(𝕀2D))   # the D²×D² identity matrix, as the former I4
+Base.@deprecate_binding I9 TensorValue(Tuple(𝕀3D))   # the D²×D² identity matrix, as the former I9

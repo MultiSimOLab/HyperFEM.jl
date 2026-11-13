@@ -22,6 +22,7 @@ end
 @publish TensorAlgebra Ellipsoid
 @publish TensorAlgebra I2D
 @publish TensorAlgebra I3D
+@publish TensorAlgebra I3  # temporary, ensure Benchmarks compat. To be removed
 @publish TensorAlgebra 𝕀2D
 @publish TensorAlgebra 𝕀3D
 @publish TensorAlgebra Tensorize

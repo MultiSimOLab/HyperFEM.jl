@@ -192,6 +192,15 @@ computing the 4th order tensor `DCDF`:
   :($(tensor_type(4, D, promote_type(eltype(F), eltype(H))))(($(components...),)))
 end
 
+# Former names and methods (temporary). The benchmark job of a pull request runs the benchmark scripts
+# of `main` against the pull request (AirspeedVelocity freezes the script at the default branch); these
+# keep them running. Remove them, with I3, I4, I9 (TensorsDefinitions.jl) and `I3` in Exports.jl, once
+# `main` has the new benchmark scripts.
+Base.@deprecate_binding δᵢₖδⱼₗ2D (I2D ⊗ᵢₖʲˡ I2D)
+Base.@deprecate_binding δᵢₗδⱼₖ2D (I2D ⊗ᵢₗʲᵏ I2D)
+Base.@deprecate_binding δᵢⱼδₖₗ2D (I2D ⊗ I2D)
+@deprecate push_forward_C_to_F(F::TensorValue{D,D}, H::TensorValue{N,N}) where {D,N} push_forward_C_to_F(F, FourthOrderTensorValue(Tuple(H)))
+
 
 # =====================
 # Cross products (3D)
