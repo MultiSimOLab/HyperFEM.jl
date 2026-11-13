@@ -216,6 +216,11 @@ end
 @publish ComputationalModels level_glue
 @publish ComputationalModels prolongation
 @publish ComputationalModels prolongations
+@publish ComputationalModels PointLocation
+@publish ComputationalModels Transfer
+@publish ComputationalModels transfer!
+@publish ComputationalModels transfer_transpose!
+@publish ComputationalModels is_gather
 @publish ComputationalModels interpolate_L2_field
 @publish ComputationalModels L2_projection
 @publish ComputationalModels component_LInf

@@ -13,6 +13,10 @@ using Test
   end
 
   @time begin
+    include("TransferTests.jl")
+  end
+
+  @time begin
     include("DriversTests.jl")
   end
 
