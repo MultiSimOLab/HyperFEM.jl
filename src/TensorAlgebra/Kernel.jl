@@ -14,6 +14,16 @@ function tensor_type(o::Int, D::Int, T)
 end
 
 """
+Expression of the component `I` (a tuple of indices) of a tensor in dimension `D`, read from the tuple
+`t` of its components with the linear index (column-major).
+
+The generated functions read the components from the tuple, `t = Tuple(A)`. A tuple index which is a
+literal number is resolved at once, while `A[i,j,…]` adds a bounds check per access which the compiler has
+to remove: same runtime, but a much longer compilation (e.g. 20 s instead of 0.3 s for push_forward_C_to_F in 3D).
+"""
+component(t::Symbol, I::Tuple, D::Int) = :($t[$(LinearIndices(ntuple(_ -> D, length(I)))[I...])])
+
+"""
     einstein_sum(Val(a), Val(b), A, B)
 
 Product of `A` and `B` in Einstein notation. `a` and `b` are the index labels of `A` and `B`:
@@ -35,10 +45,13 @@ The components of the result and the summed indices run in column-major order (f
   components = map(CartesianIndices(ntuple(_ -> D, length(free)))) do I
     terms = map(CartesianIndices(ntuple(_ -> D, length(summed)))) do J
       index = Dict(zip([free; summed], [Tuple(I)...; Tuple(J)...]))
-      :(A[$(map(l -> index[l], a)...)] * B[$(map(l -> index[l], b)...)])
+      :($(component(:tA, map(l -> index[l], a), D)) * $(component(:tB, map(l -> index[l], b), D)))
     end
     Expr(:call, :+, terms...)
   end
   T = promote_type(eltype(A), eltype(B))
-  :($(tensor_type(length(free), D, T))(($(components...),)))
+  quote
+    tA, tB = Tuple(A), Tuple(B)
+    $(tensor_type(length(free), D, T))(($(components...),))
+  end
 end

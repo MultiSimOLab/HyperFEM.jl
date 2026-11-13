@@ -61,6 +61,10 @@ end
 @inline Gridap.TensorValues.outer(A::TensorValue{D,D}, B::TensorValue{D,D}) where {D} =
   einstein_sum(Val((:i, :j)), Val((:k, :l)), A, B)
 
+# Double contraction of fourth-order tensors: Gridap's is 1.6× slower and its first call takes 4 s in 3D (0.4 s here).
+@inline Gridap.TensorValues.double_contraction(H::FourthOrderTensorValue{D}, G::FourthOrderTensorValue{D}) where {D} =
+  einstein_sum(Val((:i, :j, :m, :n)), Val((:m, :n, :k, :l)), H, G)
+
 
 # =====================
 # Products in index notation
@@ -128,8 +132,11 @@ i.e. the cyclic index shift `Wᵀ[i,j,k] = W[k,i,j]`. Applied twice, it is not t
 Major transpose of a fourth-order tensor, `Hᵀ[i,j,k,l] = H[k,l,i,j]`, such that `A ⊙ Hᵀ ⊙ B = B ⊙ H ⊙ A`.
 """
 @inline @generated function Base.transpose(H::FourthOrderTensorValue{D}) where {D}
-  components = [:(H[$k,$l,$i,$j]) for l in 1:D for k in 1:D for j in 1:D for i in 1:D]
-  :($(tensor_type(4, D, eltype(H)))(($(components...),)))
+  components = [component(:tH, (k, l, i, j), D) for l in 1:D for k in 1:D for j in 1:D for i in 1:D]
+  quote
+    tH = Tuple(H)
+    $(tensor_type(4, D, eltype(H)))(($(components...),))
+  end
 end
 
 @inline Base.adjoint(W::ThirdOrderTensorValue{D,D,D,<:Real}) where {D} = transpose(W)
@@ -171,8 +178,12 @@ end
 Symmetrised outer product `IIsym(A)[i,j,k,l] = ½ (A[i,k] A[j,l] + A[i,l] A[j,k])`.
 """
 @inline @generated function IIsym(A::TensorValue{D,D}) where {D}
-  components = [:(0.5 * (A[$i,$k] * A[$j,$l] + A[$i,$l] * A[$j,$k])) for l in 1:D for k in 1:D for j in 1:D for i in 1:D]
-  :($(tensor_type(4, D, eltype(A)))(($(components...),)))
+  a(I...) = component(:tA, I, D)
+  components = [:(0.5 * ($(a(i, k)) * $(a(j, l)) + $(a(i, l)) * $(a(j, k)))) for l in 1:D for k in 1:D for j in 1:D for i in 1:D]
+  quote
+    tA = Tuple(A)
+    $(tensor_type(4, D, eltype(A)))(($(components...),))
+  end
 end
 
 """
@@ -184,12 +195,17 @@ computing the 4th order tensor `DCDF`:
     R[i,j,k,l] = Σmn ½ F[i,m] F[k,n] (H[m,j,n,l] + H[m,j,l,n] + H[j,m,n,l] + H[j,m,l,n])
 """
 @inline @generated function push_forward_C_to_F(F::TensorValue{D,D}, H::FourthOrderTensorValue{D}) where {D}
+  f(I...) = component(:tF, I, D)
+  h(I...) = component(:tH, I, D)
   components = map(Iterators.product(1:D, 1:D, 1:D, 1:D)) do (i, j, k, l)
-    terms = [:(0.5 * F[$i,$m] * F[$k,$n] * (H[$m,$j,$n,$l] + H[$m,$j,$l,$n] + H[$j,$m,$n,$l] + H[$j,$m,$l,$n]))
+    terms = [:(0.5 * $(f(i, m)) * $(f(k, n)) * ($(h(m, j, n, l)) + $(h(m, j, l, n)) + $(h(j, m, n, l)) + $(h(j, m, l, n))))
              for n in 1:D for m in 1:D]
     Expr(:call, :+, terms...)
   end
-  :($(tensor_type(4, D, promote_type(eltype(F), eltype(H))))(($(components...),)))
+  quote
+    tF, tH = Tuple(F), Tuple(H)
+    $(tensor_type(4, D, promote_type(eltype(F), eltype(H))))(($(components...),))
+  end
 end
 
 # Former names and methods (temporary). The benchmark job of a pull request runs the benchmark scripts
