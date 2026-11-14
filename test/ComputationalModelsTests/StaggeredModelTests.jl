@@ -304,12 +304,11 @@ end
   empty!(stages)
   solve!(s.sm; stepping=StaggeredStepping(; nsteps=4), kargsolve=s.args, verbose=false, presolver=(τ, Δτ) -> push!(stages, (τ, Δτ)))
   @test stages == [(0.0, 0.25), (0.25, 0.25), (0.5, 0.25), (0.75, 0.25)]
-  # the NamedTuple of earlier versions passes the index of the step (deprecated)
+  # and so does the NamedTuple of the fixed loop
   s = em_staggered(p)
-  idx = Any[]
-  @test_deprecated solve!(s.sm; stepping=(nsteps=4, nsubsteps=1, maxbisec=1), kargsolve=s.args, verbose=false,
-                          presolver=(τ, Δτ) -> push!(idx, (τ, Δτ)))
-  Base.JLOptions().depwarn == 2 || @test idx == [(0, 0.25), (1, 0.25), (2, 0.25), (3, 0.25)]   # (with --depwarn=error the call throws)
+  empty!(stages)
+  solve!(s.sm; stepping=(nsteps=4, nsubsteps=1, maxbisec=1), kargsolve=s.args, verbose=false, presolver=(τ, Δτ) -> push!(stages, (τ, Δτ)))
+  @test stages == [(0.0, 0.25), (0.25, 0.25), (0.5, 0.25), (0.75, 0.25)]
   # errors of the keywords
   @test_throws ErrorException solve!(s.sm; stepping=StaggeredStepping(; relaxation=(:none, :none, :none)), kargsolve=s.args, verbose=false)
   @test_throws ErrorException solve!(s.sm; stepping=(nsteps=1, nsubsteps=1, maxbisec=1), kargsolve=(s.args[1],), verbose=false)

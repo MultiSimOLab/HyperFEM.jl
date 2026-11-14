@@ -400,8 +400,6 @@ along the Newton direction ([`FullStepLS`](@ref), [`BacktrackingLS`](@ref), [`In
 ([`ConsistentTangent`](@ref): the solve fails and the driver bisects; [`HybridTangent`](@ref): switch
 to the projected tangent); `forcing` the relative tolerance of every linear solve (`nothing`: the
 linear solver's own; [`EisenstatWalker`](@ref): an inexact Newton); `verbose` as in [`NewtonLog`](@ref).
-
-The former name `Newton_RaphsonSolver` is deprecated and kept as an alias for one release.
 """
 struct NewtonRaphson{L<:Algebra.LinearSolver,S<:AbstractLineSearch,T<:TangentStrategy,F<:Union{Nothing,EisenstatWalker}} <: Algebra.NonlinearSolver
   ls::L

@@ -24,9 +24,7 @@ using WriteVTK
 using GridapGmsh 
 using GridapGmsh: GmshDiscreteModel
 
-# Deprecation exports
 using HyperFEM.DiscreteModeling
-Base.@deprecate_binding EvolutionFunctions DiscreteModeling.EvolutionFunctions
 
 include("BoundaryConditions.jl")
 export Prescription

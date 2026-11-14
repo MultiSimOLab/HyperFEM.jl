@@ -35,7 +35,7 @@ end
 """
     FullStepLS()
 
-Full Newton step (`α = 1`). Former name `LineSearch()`.
+Full Newton step (`α = 1`).
 """
 struct FullStepLS <: AbstractLineSearch end
 
@@ -112,7 +112,6 @@ and is then reduced by `ρ` until it is accepted:
 
 Exhausting the reductions, or (Armijo) a direction that is not of descent (`R·dx ≥ 0`), is a
 failure: `α = 0`, the residual left at `x`, and the Newton reacts according to its tangent strategy.
-Replaces `Injectivity_Preserving_LS` (secant estimate of the step).
 """
 struct InjectivityLS <: AbstractLineSearch
   jmin::Float64
@@ -186,81 +185,4 @@ injectivity_limit(obj::InjectivityLS) = obj.last[][1]
 function linesearch_info(obj::InjectivityLS)
   αinj, m, ok = obj.last[]
   "injectivity step $(@sprintf("%.4f", αinj)), $(m) reductions" * (ok ? "" : ", rejected") * (obj.armijo ? " (Armijo)" : "")
-end
-
-
-# Former name, deprecated for one release (still used by scripts outside HyperFEM)
-Base.@deprecate_binding LineSearch FullStepLS
-
-"""
-    Injectivity_Preserving_LS(α::CellState, U, V; maxiter=50, αmin=1e-16, ρ=0.5, c=0.95, β=0.95, maskphys=0)
-
-Deprecated: use [`InjectivityLS`](@ref) with `injectivity = …` in the driver (exact root of
-`det(F + α ∇δu)` instead of a secant estimate). Kept with its behaviour for one release:
-backtracking on `|R·dx|` (per field when `maskphys ≠ 0`) from the secant estimate of the
-injectivity-preserving step at the quadrature points of the state `α`.
-"""
-struct Injectivity_Preserving_LS{A} <: AbstractLineSearch
-  α::CellState
-  maxiter::Int
-  αmin::Float64
-  ρ::Float64
-  c::Float64
-  β::CellField
-  maskphys::Int64
-  caches::A
-  function Injectivity_Preserving_LS(α::CellState, U, V; maxiter::Int64=50, αmin::Float64=1e-16, ρ::Float64=0.5, c::Float64=0.95, β::Float64=0.95, maskphys::Int64=0)
-    # extract parent indices
-    ranges = if maskphys == 0
-      (1:U.space.nfree,)
-    else
-      nfree = ntuple(i -> U[i].space.nfree, length(U))
-      offsets = cumsum((0, nfree...))
-      ntuple(i -> offsets[i]+1:offsets[i+1], length(U))
-    end
-    caches = (U, V, ranges)
-    new{typeof(caches)}(α, maxiter, αmin, ρ, c, CellField(β, α.points.trian), maskphys, caches)
-  end
-end
-
-@inline _directional(b, dx, ranges) = sum(abs(dot(view(b, r), view(dx, r))) for r in ranges)
-
-function search!(obj::Injectivity_Preserving_LS, w, op, x, dx, b)
-  maxiter, αmin, ρ, c = obj.maxiter, obj.αmin, obj.ρ, obj.c
-  U, V, ranges = obj.caches
-  xh = FEFunction(U, x)
-  dxh = FEFunction(V, dx)
-  α = update_cellstate!(obj, xh, dxh)
-  m = 0
-  R₀ = _directional(b, dx, ranges)
-  while α > αmin && m < maxiter
-    _trial_residual!(b, w, op, x, dx, α)
-    R = _directional(b, dx, ranges)
-    if abs(R) <= abs(c * R₀)
-      break
-    end
-    α *= ρ
-    m += 1
-  end
-  x .+= α .* dx
-  return α
-end
-
-function (obj::Injectivity_Preserving_LS)(x::AbstractVector, dx::AbstractVector, b::AbstractVector, op::NonlinearOperator)
-  y = copy(x)
-  search!(obj, similar(x), op, y, dx, b)
-end
-
-function InjectivityCheck(α, ∇u, ∇du, β)
-  F = ∇u + one(∇u)
-  J = det(F)
-  H = J * inv(F)'
-  return true, min(β * abs((-J) / (det(∇du) + tr(H' * ∇du))), 1.0)
-end
-
-function update_cellstate!(obj::Injectivity_Preserving_LS, xh, dxh)
-  uh = obj.maskphys == 0 ? xh : xh[obj.maskphys]
-  duh = obj.maskphys == 0 ? dxh : dxh[obj.maskphys]
-  update_state!(InjectivityCheck, obj.α, ∇(uh)', ∇(duh)', obj.β)
-  return minimum(minimum((obj.α.values)))
 end

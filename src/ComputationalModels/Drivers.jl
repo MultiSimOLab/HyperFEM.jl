@@ -13,8 +13,7 @@ function solve!(::ComputationalModel, ::Float64)
 end
 
 # Convergence, verbosity and step messages of the nonlinear solver of a model. HyperFEM's `NewtonRaphson`
-# answers through its log; other solvers add their own methods (GridapSolvers' `NewtonSolver` through the
-# extension HyperFEMGridapSolversExt, deprecated).
+# answers through its log; other solvers add their own methods.
 nls_converged(nls::NewtonRaphson) = Solvers.converged(nls)
 nls_message(nls::NewtonRaphson, msg) = Solvers.verbosity(nls) >= 1 && print(msg)
 nls_verbosity(nls::NewtonRaphson) = Solvers.verbosity(nls)
@@ -178,7 +177,7 @@ end
 dirichlet_projection!(bk::AbstractBackend, A, b, res, jac, uh, ∆U, V, assem, previous) = Backends.not_available(bk, "the Dirichlet projection")
 
 # Tangent, residual and increment of a Newton cache for the projection, and its numerical setup
-# (HyperFEM's `NewtonCache`; Gridap's `NewtonRaphsonCache` and GridapSolvers' cache have the same fields)
+# (HyperFEM's `NewtonCache`; Gridap's `NewtonRaphsonCache` has the same fields)
 projection_system(c) = (c.A, c.b, c.dx)
 projection_setup!(c::NewtonCache, x) = numerical_setup!(c, x)
 projection_setup!(c, x) = numerical_setup!(c.ns, c.A)
