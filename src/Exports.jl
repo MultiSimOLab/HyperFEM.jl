@@ -236,7 +236,6 @@ end
 @publish Solvers NewtonTolerances
 @publish Solvers NewtonLog
 @publish Solvers NewtonCache
-@publish Solvers Newton_RaphsonSolver
 @publish Solvers converged
 @publish Solvers residual_history
 @publish Solvers step_history
@@ -262,7 +261,6 @@ end
 @publish Solvers FullStepLS
 @publish Solvers BacktrackingLS
 @publish Solvers InjectivityLS
-@publish Solvers Injectivity_Preserving_LS
 @publish Solvers update_cellstate!
 @publish Solvers injectivity_step
 @publish Solvers ModelOperator
