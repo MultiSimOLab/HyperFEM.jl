@@ -265,6 +265,33 @@ or a tuple with one of them per field; the factor of a field whose model has an 
 `InjectivityLS` is cut so that the relaxed state does not invert elements. The post-processors of the inner
 models run inside every pass; output per accepted step belongs in `on_step`.
 
+### Fields of other problems: `Coupling`, `StageBlend` and `Transfer`
+
+A `Coupling(g)` prescribes on a boundary the state of another problem, `g(τ)` at the stage τ of the solver. The
+field may live on another mesh, on the volume next to the boundary or only on the faces of the tag: the nodes of
+the tag are located in the mesh of the field once, when the model builds its Dirichlet applicator, and no point
+search is done afterwards. A finite-element function (or a `StageBlend` of two) is then transferred through its
+dof values — a copy when the nodes coincide, a sparse product otherwise — and any other field is evaluated in the
+located cells. Fields that are not Dirichlet data (loads, tractions) go between two spaces with a `Transfer`:
+
+```julia
+# the vacuum follows the solid on their interface (staggered: the solid between its two stages)
+uhsolid = StageBlend(uh_solid⁻, uh_solid⁺)       # uhsolid(τ) = uh_solid⁻ + (uh_solid⁺ - uh_solid⁻) * τ, also in the weak forms
+Du_vacuum = BoundaryConditions(BoundaryCondition("Fixed_Air", [0.0, 0.0]),
+                               BoundaryCondition("Interface", Coupling(uhsolid)))    # match = :auto, tol = 1e-10
+
+# nodal forces of the vacuum on the interface of the solid
+T = Transfer(V_maxwell, Usolid_int)              # built once
+transfer!(tmaxw_, T, Pmaxw)                      # values at the dofs of Usolid_int (a copy here: the nodes coincide)
+transfer_transpose!(f, T, g)                     # conservative transfer of loads (the resultant is kept)
+```
+
+`match = :auto` matches coincident nodes exactly and searches the others in the cells of the source mesh;
+`match = :search` always searches. A node that is not on the source mesh is an error, never an extrapolation.
+The application is linear algebra on flat arrays (no allocations, generic in the array type), the part that
+carries over to distributed and GPU arrays; a `Coupling` whose `g(τ)` is not a finite-element function or a
+`StageBlend` is evaluated by Gridap in the located cells. Gridap's `Interpolable` is still accepted.
+
 ## HyperFEM Gallery
 
 ![img](https://github.com/MultiSimOLab/HyperFEM.jl/raw/main/docs/img/sims.png)

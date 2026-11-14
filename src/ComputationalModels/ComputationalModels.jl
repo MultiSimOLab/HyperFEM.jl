@@ -33,6 +33,7 @@ export Prescription
 export Separable
 export NonSeparable
 export Coupling
+export StageBlend
 export BoundaryCondition
 export BoundaryConditions
 export MultiFieldBoundaryConditions
@@ -67,6 +68,12 @@ export fine_model
 export level_glue
 export prolongation
 export prolongations
+include("Transfer.jl")
+export PointLocation
+export Transfer
+export transfer!
+export transfer_transpose!
+export is_gather
 
 include("GridapExtras.jl")
 export GmshDiscreteModel
