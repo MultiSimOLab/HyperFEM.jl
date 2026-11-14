@@ -27,6 +27,7 @@ makedocs(
     "Home" => "index.md",           # Inject README.md (previously cloned into index.md)
     "Tutorials" => "tutorials.md",  # Point to the tutorials repository
     "Time integration" => "transient.md",
+    "Tensor algebra" => "tensor_algebra.md",
     "API reference" => "api.md"     # Inject the docstrings from the code
   ],
   format = Documenter.HTML(

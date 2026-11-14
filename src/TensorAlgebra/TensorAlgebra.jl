@@ -2,53 +2,59 @@ module TensorAlgebra
 
 using Gridap
 using Gridap.TensorValues
+using Gridap.TensorValues: MultiValue, ThirdOrderTensorValue, HighOrderTensorValue
 using StaticArrays
 using LinearAlgebra
 import Base: *
 import Base: +
 import Base: -
 
+"""
+    FourthOrderTensorValue{D,T,L}
+    FourthOrderTensorValue(data::Tuple)
+    FourthOrderTensorValue(data::Number...)
+    FourthOrderTensorValue{D}(data::Tuple)
+    FourthOrderTensorValue{D}(data::Number...)
+
+Fourth-order tensor in dimension `D`, with full indices `H[i,j,k,l]` (Gridap's `HighOrderTensorValue`).
+
+The components are stored in column-major order, as in its D²×D² matrix (rows `(i,j)`, columns `(k,l)`):
+
+    M = TensorValue(Tuple(H))              # D²×D² matrix, e.g. for `inv` or a linear system
+    H = FourthOrderTensorValue(Tuple(M))   # from a D²×D² TensorValue, SMatrix or Matrix
+
+Pass the components as a tuple: splatting 81 components is not type-stable.
+"""
+const FourthOrderTensorValue{D,T,L} = HighOrderTensorValue{Tuple{D,D,D,D},T,4,L}
+
+FourthOrderTensorValue(data::Tuple) = HighOrderTensorValue(Val(4), data)
+FourthOrderTensorValue(data::Number...) = HighOrderTensorValue(Val(4), data)
+FourthOrderTensorValue{D}(data::Tuple) where {D} = HighOrderTensorValue{Tuple{D,D,D,D}}(data)
+FourthOrderTensorValue{D}(data::Number...) where {D} = FourthOrderTensorValue{D}(data)
+
 export (*)
 export (+)
 export (-)
-export (⊗₁₂³)
-export (⊗₁₃²)
-export (⊗₁²³)
-export (⊗₁₂³⁴)
-export (⊗₁₃²⁴)
-export (⊗₁₄²³)
-export (⊗₁²)
-export (⊙₁₂₃₄²⁴)
+export (⋅²)  # Gridap's double contraction
+export ThirdOrderTensorValue
+export FourthOrderTensorValue
+
+# Products in index notation (see Operations.jl)
+export (⊗ᵢₖʲ), (⊗ᵢₖʲˡ), (⊗ᵢₗʲᵏ), (⊗ᵢₘʲᵐᵏˡ)
+
 export ×ᵢ⁴
 export IIsym
-export I3
-export I9
-export I2
-export I4
+export I2D
+export I3D
+export 𝕀2D
+export 𝕀3D
 export Id
-export zerotensor3
-export zerotensor9
-
-export _flat_idx
-export _ij
-export _ijk
-export _ijkl
 
 export logreg
 export ∂log∂J
 export ∂∂log∂JJ
 export Tensorize
-export δᵢⱼδₖₗ2D
-export δᵢₖδⱼₗ2D
-export δᵢₗδⱼₖ2D
-export δᵢⱼδₖₗ3D
-export δᵢₖδⱼₗ3D
-export δᵢₗδⱼₖ3D
-export δⱼₖδᵢₗ3D
 export cof
-export contraction_IP_JPKL
-export contraction_IP_PJKL
-export contraction_IJK_KLP
 export push_forward_C_to_F
 export regularize_hessian
 export hessian_nonaffine
@@ -56,13 +62,14 @@ export hessian_nonaffine
 export Box
 export Ellipsoid
 
-# outer ⊗ \otimes
-# inner ⊙ \odot
-# cross ×  \times
-# sum   +  +
-# dot   ⋅  * 
+# outer               ⊗   \otimes
+# single contraction  ⋅   \cdot
+# double contraction  ⋅²  \cdot\^2
+# full contraction    ⊙   \odot
+# cross               ×   \times
+# index notation      ⊗ᵢₖʲˡ  \otimes\_i\_k\^j\^l
 
-include("FlatIndexing.jl")
+include("Kernel.jl")
 
 include("FunctionalAlgebra.jl")
 

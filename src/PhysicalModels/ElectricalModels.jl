@@ -27,18 +27,18 @@ function (obj::IdealDielectric)()
   ∂Ψem∂E(F, E) = ∂Ψem_∂E(F, E)
 
   # Second Derivatives #
-  ∂Ψem_HH(F, E) = (-obj.ε / (J(F))) * (I3 ⊗₁₃²⁴ (E ⊗ E))
+  ∂Ψem_HH(F, E) = (-obj.ε / (J(F))) * (I3D ⊗ᵢₖʲˡ (E ⊗ E))
   ∂Ψem_HJ(F, E) = (+obj.ε / (J(F))^2.0) * (HE(F, E) ⊗ E)
   ∂Ψem_JJ(F, E) = (-obj.ε / (J(F))^3.0) * HEHE(F, E)
   ∂Ψem∂FF(F, E) = (F × (∂Ψem_HH(F, E) × F)) +
-                  H(F) ⊗₁₂³⁴ (∂Ψem_HJ(F, E) × F) +
-                  (∂Ψem_HJ(F, E) × F) ⊗₁₂³⁴ H(F) +
-                  ∂Ψem_JJ(F, E) * (H(F) ⊗₁₂³⁴ H(F)) +
+                  H(F) ⊗ (∂Ψem_HJ(F, E) × F) +
+                  (∂Ψem_HJ(F, E) × F) ⊗ H(F) +
+                  ∂Ψem_JJ(F, E) * (H(F) ⊗ H(F)) +
                   ×ᵢ⁴(∂Ψem_∂H(F, E) + ∂Ψem_∂J(F, E) * F)
 
-  ∂Ψem_EH(F, E) = (-obj.ε / (J(F))) * ((I3 ⊗₁₃² HE(F, E)) + (H(F)' ⊗₁₂³ E))
+  ∂Ψem_EH(F, E) = (-obj.ε / (J(F))) * ((I3D ⊗ᵢₖʲ HE(F, E)) + (H(F)' ⊗ E))
   ∂Ψem_EJ(F, E) = (+obj.ε / (J(F))^2.0) * (H(F)' * HE(F, E))
-  ∂Ψem∂EF(F, E) = (∂Ψem_EH(F, E) × F) + (∂Ψem_EJ(F, E) ⊗₁²³ H(F))
+  ∂Ψem∂EF(F, E) = (∂Ψem_EH(F, E) × F) + (∂Ψem_EJ(F, E) ⊗ H(F))
 
   ∂Ψem∂EE(F, E) = (-obj.ε / (J(F))) * (H(F)' * H(F))
 

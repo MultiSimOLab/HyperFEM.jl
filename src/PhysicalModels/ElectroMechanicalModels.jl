@@ -151,10 +151,10 @@ struct FlexoElectroModel{EM<:ElectroMechano} <: FlexoElectro{EM}
     e₁ = VectorValue(1.0, 0.0, 0.0)
     e₂ = VectorValue(0.0, 1.0, 0.0)
     e₃ = VectorValue(0.0, 0.0, 1.0)
-    # Φ(ϕ₁,ϕ₂,ϕ₃)=ϕ₁ ⊗₁² e₁+ϕ₂ ⊗₁² e₂+ϕ₃ ⊗₁² e₃
-    f1(δϕ) = δϕ ⊗₁² e₁
-    f2(δϕ) = δϕ ⊗₁² e₂
-    f3(δϕ) = δϕ ⊗₁² e₃
+    # Φ(ϕ₁,ϕ₂,ϕ₃)=ϕ₁ ⊗ e₁+ϕ₂ ⊗ e₂+ϕ₃ ⊗ e₃
+    f1(δϕ) = δϕ ⊗ e₁
+    f2(δϕ) = δϕ ⊗ e₂
+    f3(δϕ) = δϕ ⊗ e₃
     Φ(ϕ₁, ϕ₂, ϕ₃) = (f1 ∘ (ϕ₁) + f2 ∘ (ϕ₂) + f3 ∘ (ϕ₃))
 
     Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE = obj.electromechano(Λ)

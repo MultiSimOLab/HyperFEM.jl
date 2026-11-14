@@ -73,9 +73,9 @@ struct ThermoElectroMech_PINNs{A,B,C,D} <: ThermoElectroMechano{Thermo,Electro,M
     ∂ΨE(F, E, θ) = VectorValue(∂Ψ_∂E(F, E, θ))
     ∂Ψθ(F, E, θ) = ∂Ψ_∂θ(F, E, θ)
 
-    ∂ΨFF(F, E, θ) = TensorValue(∂2Ψ_∂2F(F, E, θ))
+    ∂ΨFF(F, E, θ) = FourthOrderTensorValue(Tuple(∂2Ψ_∂2F(F, E, θ)))
     ∂ΨEE(F, E, θ) = TensorValue(∂2Ψ_∂2E(F, E, θ))
-    ∂ΨEF(F, E, θ) = TensorValue(∂2Ψ_∂2EF(F, E, θ))
+    ∂ΨEF(F, E, θ) = ThirdOrderTensorValue(Tuple(∂2Ψ_∂2EF(F, E, θ)))
     ∂ΨFθ(F, E, θ) = TensorValue(∂2Ψ_∂2Fθ(F, E, θ))
     ∂ΨEθ(F, E, θ) = VectorValue(∂2Ψ_∂2Eθ(F, E, θ))
     ∂Ψθθ(F, E, θ) = ∂2Ψ_∂2∇θθ(F, E, θ)
