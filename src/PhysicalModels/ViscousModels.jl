@@ -15,7 +15,7 @@ struct ViscousIncompressible{E<:Elasto} <: Visco
   end
 end
 
-function (obj::ViscousIncompressible)()
+function (obj::ViscousIncompressible)(Λ::Float64=1.0)
   Ψe, Se, ∂Se∂Ce   = SecondPiola(obj.elasto)
   Ψ(F, Fn, A)      = Energy(obj, Ψe, Se, ∂Se∂Ce, F, Fn, A)
   ∂Ψ∂F(F, Fn, A)   = Piola(obj, Se, ∂Se∂Ce, F, Fn, A)
@@ -87,8 +87,8 @@ end
 @inline _sum_branches(f, gs::Tuple, As::Tuple, acc) =
   _sum_branches(f, Base.tail(gs), Base.tail(As), acc + f(first(gs), first(As)))
 
-function (obj::NVisco)()
-  DΨv   = map(b -> b(), obj)
+function (obj::NVisco)(Λ::Float64=1.0)
+  DΨv   = map(b -> b(Λ), obj)
   Ψα    = map(d -> d[1], DΨv)
   ∂ΨαF  = map(d -> d[2], DΨv)
   ∂ΨαFF = map(d -> d[3], DΨv)
@@ -137,18 +137,18 @@ struct GeneralizedMaxwell{E<:Elasto,B<:NVisco} <: ViscoElastic{E}
   end
 end
 
-function (obj::GeneralizedMaxwell{<:IsoElastic})()
-  Ψe, ∂ΨeF, ∂ΨeFF = obj.longterm()
-  Ψv, ∂ΨvF, ∂ΨvFF = obj.branches()
+function (obj::GeneralizedMaxwell{<:IsoElastic})(Λ::Float64=1.0)
+  Ψe, ∂ΨeF, ∂ΨeFF = obj.longterm(Λ)
+  Ψv, ∂ΨvF, ∂ΨvFF = obj.branches(Λ)
   Ψ(F, Fn, A::Vararg{Any,N})     where N = Ψe(F) + Ψv(F, Fn, A...)
   ∂Ψ∂F(F, Fn, A::Vararg{Any,N})  where N = ∂ΨeF(F) + ∂ΨvF(F, Fn, A...)
   ∂Ψ∂FF(F, Fn, A::Vararg{Any,N}) where N = ∂ΨeFF(F) + ∂ΨvFF(F, Fn, A...)
   (Ψ, ∂Ψ∂F, ∂Ψ∂FF)
 end
 
-function (obj::GeneralizedMaxwell{<:AnisoElastic})()
-  Ψe, ∂ΨeF, ∂ΨeFF = obj.longterm()
-  Ψv, ∂ΨvF, ∂ΨvFF = obj.branches()
+function (obj::GeneralizedMaxwell{<:AnisoElastic})(Λ::Float64=1.0)
+  Ψe, ∂ΨeF, ∂ΨeFF = obj.longterm(Λ)
+  Ψv, ∂ΨvF, ∂ΨvFF = obj.branches(Λ)
   Ψ(F, n, Fn, A::Vararg{Any,N})     where N = Ψe(F, n) + Ψv(F, Fn, A...)
   ∂Ψ∂F(F, n, Fn, A::Vararg{Any,N})  where N = ∂ΨeF(F, n) + ∂ΨvF(F, Fn, A...)
   ∂Ψ∂FF(F, n, Fn, A::Vararg{Any,N}) where N = ∂ΨeFF(F, n) + ∂ΨvFF(F, Fn, A...)

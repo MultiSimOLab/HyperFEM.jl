@@ -44,10 +44,10 @@ struct ThermalVolumetric{T<:Thermo} <: ThermoMechano{T,Volumetric}
   end
 end
 
-function (obj::ThermalVolumetric)()
+function (obj::ThermalVolumetric)(Λ::Float64=1.0)
   (; Cv, θr, α, κ) = obj.thermo
   cv0 = Cv  # FIXME
-  U, ∂U∂F, ∂∂U∂FF = obj.mechano()
+  U, ∂U∂F, ∂∂U∂FF = obj.mechano(Λ)
   κr = tangent(obj.mechano)
   f, df, ddf = obj.law()
   ζr = 1/df(θr)
@@ -77,8 +77,8 @@ struct ThermalDeviatoric{M<:Mechano} <: ThermoMechano{Nothing,M}
   end
 end
 
-function (obj::ThermalDeviatoric{<:IsoElastic})()
-  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano()
+function (obj::ThermalDeviatoric{<:IsoElastic})(Λ::Float64=1.0)
+  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano(Λ)
   f, df, ddf = obj.law()
   Ψ(F,θ)      = Ψm(F) * f(θ)
   ∂Ψ∂F(F,θ)   = ∂Ψm∂F(F) * f(θ)
@@ -137,9 +137,9 @@ struct ThermoMech_Bonet{M<:Mechano, LE<:ThermalLaw, LV<:ThermalLaw} <: ThermoMec
   end
 end
 
-function (obj::ThermoMech_Bonet{<:IsoElastic})()
-  Ψv, ∂Ψv∂F, ∂Ψv∂θ, ∂∂Ψv∂FF, ∂∂Ψv∂θθ, ∂∂Ψv∂Fθ = obj.thermo()
-  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano()
+function (obj::ThermoMech_Bonet{<:IsoElastic})(Λ::Float64=1.0)
+  Ψv, ∂Ψv∂F, ∂Ψv∂θ, ∂∂Ψv∂FF, ∂∂Ψv∂θθ, ∂∂Ψv∂Fθ = obj.thermo(Λ)
+  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano(Λ)
   f, ∂f, ∂∂f = obj.lawel()
   Ψ(F, θ)       =  Ψv(F,θ)      + f(θ)*Ψm(F)
   ∂Ψ∂F(F, θ)    =  ∂Ψv∂F(F,θ)   + f(θ)*∂Ψm∂F(F)
@@ -150,9 +150,9 @@ function (obj::ThermoMech_Bonet{<:IsoElastic})()
   return (Ψ, ∂Ψ∂F, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂θθ, ∂∂Ψ∂Fθ)
 end
 
-function (obj::ThermoMech_Bonet{<:AnisoElastic})()
-  Ψv, ∂Ψv∂F, ∂Ψv∂θ, ∂∂Ψv∂FF, ∂∂Ψv∂θθ, ∂∂Ψv∂Fθ = obj.thermo()
-  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano()
+function (obj::ThermoMech_Bonet{<:AnisoElastic})(Λ::Float64=1.0)
+  Ψv, ∂Ψv∂F, ∂Ψv∂θ, ∂∂Ψv∂FF, ∂∂Ψv∂θθ, ∂∂Ψv∂Fθ = obj.thermo(Λ)
+  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano(Λ)
   f, ∂f, ∂∂f = obj.lawel()
   Ψ(F, θ, N)       =  Ψv(F,θ)      + f(θ)*Ψm(F, N)
   ∂Ψ∂F(F, θ, N)    =  ∂Ψv∂F(F,θ)   + f(θ)*∂Ψm∂F(F, N)
@@ -163,10 +163,10 @@ function (obj::ThermoMech_Bonet{<:AnisoElastic})()
   return (Ψ, ∂Ψ∂F, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂θθ, ∂∂Ψ∂Fθ)
 end
 
-function (obj::ThermoMech_Bonet{<:ViscoElastic{<:IsoElastic}})()
-  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
-  Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm()
-  Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches()
+function (obj::ThermoMech_Bonet{<:ViscoElastic{<:IsoElastic}})(Λ::Float64=1.0)
+  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo(Λ)
+  Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm(Λ)
+  Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches(Λ)
   fe, ∂fe, ∂∂fe = obj.lawel()
   fv, ∂fv, ∂∂fv = obj.lawvis()
   Ψ(F, θ, X...)       =  Ψt(F, θ)      + fe(θ)*Ψe(F)      + fv(θ)*Ψv(F, X...)
@@ -178,10 +178,10 @@ function (obj::ThermoMech_Bonet{<:ViscoElastic{<:IsoElastic}})()
   return (Ψ, ∂Ψ∂F, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂θθ, ∂∂Ψ∂Fθ)
 end
 
-function (obj::ThermoMech_Bonet{<:ViscoElastic{<:AnisoElastic}})()
-  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
-  Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm()
-  Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches()
+function (obj::ThermoMech_Bonet{<:ViscoElastic{<:AnisoElastic}})(Λ::Float64=1.0)
+  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo(Λ)
+  Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm(Λ)
+  Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches(Λ)
   fe, ∂fe, ∂∂fe = obj.lawel()
   fv, ∂fv, ∂∂fv = obj.lawvis()
   Ψ(F, θ, N, X...)       =  Ψt(F, θ)      + fe(θ)*Ψe(F, N)      + fv(θ)*Ψv(F, X...)

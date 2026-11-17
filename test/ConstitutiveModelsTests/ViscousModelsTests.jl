@@ -96,7 +96,7 @@ end
 
 
 struct EmptyElastic <: Elasto
-  function (::EmptyElastic)()
+  function (::EmptyElastic)(::Float64=1.0)
     Ψ(F) = 0.0
     ∂Ψu(F) = TensorValue(zeros(9)...)
     ∂Ψuu(F) = TensorValue(zeros(81)...)

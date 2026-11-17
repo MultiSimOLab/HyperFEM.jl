@@ -14,7 +14,6 @@ import Base: +
 import Gridap.CellData: CellState, update_state!
 
 export Yeoh3D
-export PlaneStressIncompressible_I1PD 
 export Gent2D
 export NeoHookean3D
 export IsochoricNeoHookean3D
@@ -105,6 +104,16 @@ export getIsoInvariants
 export HessianRegularization
 export Hessian∇JRegularization
 
+"""
+    PhysicalModel
+
+Supertype of the constitutive models. A model is a functor: `model(Λ=1.0)` returns the energy density and its
+derivatives as functions of the kinematic fields (for a mechanical model, `(Ψ, ∂Ψ/∂F, ∂²Ψ/∂F²)` as functions of
+`F`). `Λ` is the load factor; the models that do not depend on it accept it and ignore it.
+
+Many mechanical models store a reference density `ρ` (keyword argument, `0.0` by default). The model does not use
+it: it is kept for the user, e.g. as the coefficient of the inertial term, `mass_term(u, v, model.ρ, dΩ)`.
+"""
 abstract type PhysicalModel end
 abstract type Mechano <: PhysicalModel end
 abstract type Electro <: PhysicalModel end

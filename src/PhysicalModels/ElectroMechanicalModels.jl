@@ -64,8 +64,8 @@ function (+)(Model1::Mechano, Model2::Electro)
 end
 
 function (obj::ElectroMechModel{<:Electro,<:IsoElastic})(Λ::Float64=1.0)
-  Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano()
-  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro()
+  Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano(Λ)
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro(Λ)
   Ψ(F, E)     = Ψm(F)     + Ψem(F, E)
   ∂Ψ∂F(F, E)  = ∂Ψm∂F(F)  + ∂Ψem∂F(F, E)
   ∂Ψ∂E(F, E)  =             ∂Ψem∂E(F, E)
@@ -76,8 +76,8 @@ function (obj::ElectroMechModel{<:Electro,<:IsoElastic})(Λ::Float64=1.0)
 end
 
 function (obj::ElectroMechModel{<:Electro,<:AnisoElastic})(Λ::Float64=1.0)
-  Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano()
-  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro()
+  Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano(Λ)
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro(Λ)
   Ψ(F, E, N)     = Ψm(F, N)     + Ψem(F, E)
   ∂Ψ∂F(F, E, N)  = ∂Ψm∂F(F, N)  + ∂Ψem∂F(F, E)
   ∂Ψ∂E(F, E, N)  =                ∂Ψem∂E(F, E)
@@ -88,8 +88,8 @@ function (obj::ElectroMechModel{<:Electro,<:AnisoElastic})(Λ::Float64=1.0)
 end
 
 function (obj::ElectroMechModel{<:Electro,<:ViscoElastic{<:IsoElastic}})(Λ::Float64=1.0)
-  Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano()
-  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro()
+  Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano(Λ)
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro(Λ)
   Ψ(F, E, Fn, A...)     = Ψm(F, Fn, A...)     + Ψem(F, E)
   ∂Ψ∂F(F, E, Fn, A...)  = ∂Ψm∂F(F, Fn, A...)  + ∂Ψem∂F(F, E)
   ∂Ψ∂E(F, E, Fn, A...)  =                       ∂Ψem∂E(F, E)
@@ -100,8 +100,8 @@ function (obj::ElectroMechModel{<:Electro,<:ViscoElastic{<:IsoElastic}})(Λ::Flo
 end
 
 function (obj::ElectroMechModel{<:Electro,<:ViscoElastic{<:AnisoElastic}})(Λ::Float64=1.0)
-  Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano()
-  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro()
+  Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano(Λ)
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro(Λ)
   Ψ(F, E, n, Fn, A...)     = Ψm(F, n, Fn, A...)     + Ψem(F, E)
   ∂Ψ∂F(F, E, n, Fn, A...)  = ∂Ψm∂F(F, n, Fn, A...)  + ∂Ψem∂F(F, E)
   ∂Ψ∂E(F, E, n, Fn, A...)  =                          ∂Ψem∂E(F, E)

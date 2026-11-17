@@ -10,7 +10,7 @@ struct IdealDielectric <: Electro
   end
 end
 
-function (obj::IdealDielectric)()
+function (obj::IdealDielectric)(Λ::Float64=1.0)
   J(F) = det(F)
   H(F) = det(F) * inv(F)'
 
