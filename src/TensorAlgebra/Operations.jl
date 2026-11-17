@@ -116,7 +116,7 @@ i.e. the cyclic index shift `Wᵀ[i,j,k] = W[k,i,j]`. Applied twice, it is not t
 """
     transpose(H::FourthOrderTensorValue)
 
-Major transpose of a fourth-order tensor, `Hᵀ[i,j,k,l] = H[k,l,i,j]`, such that `A ⊙ Hᵀ ⊙ B = B ⊙ H ⊙ A`.
+Major transpose of a fourth-order tensor, `Hᵀ[i,j,k,l] = H[k,l,i,j]`, such that `A ⊙ (Hᵀ ⋅² B) = B ⊙ (H ⋅² A)`.
 """
 @inline @generated function Base.transpose(H::FourthOrderTensorValue{D}) where {D}
   components = [component(:tH, (k, l, i, j), D) for l in 1:D for k in 1:D for j in 1:D for i in 1:D]
