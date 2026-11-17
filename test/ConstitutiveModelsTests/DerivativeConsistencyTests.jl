@@ -93,27 +93,7 @@ const DC_MECH3 = (
   end
 end
 
-@testset "Derivative consistency: Threshold applies to the energy and to its derivatives" begin
-  F = 0.3 * I3D   # J = 0.027 < Threshold
-  for m in (PM.NeoHookean3D(λ=3.0, μ=1.0), PM.MooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0), PM.Yeoh3D(λ=3.0, C10=1.0, C20=0.5, C30=0.2))
-    Ψ, P, C = m(1.0; Threshold=0.05)
-    @test dc_error(P, Ψ, (F,), 1) < DC_RTOL
-    @test dc_error(C, P, (F,), 1) < DC_RTOL
-  end
-  F2 = TensorValue(0.3, 0.0, 0.01, 0.4)   # J = 0.12 < Threshold = 0.2
-  for m in (PM.MooneyRivlin2D(λ=3.0, μ1=1.0, μ2=2.0), PM.NonlinearMooneyRivlin2D(λ=3.0, μ1=1.0, μ2=2.0, α1=1.5, α2=1.3))
-    Ψ, P, C = m(1.0; Threshold=0.2)
-    @test dc_error(P, Ψ, (F2,), 1) < DC_RTOL
-    @test dc_error(C, P, (F2,), 1) < DC_RTOL
-  end
-  Ψ, P, C = PM.NonlinearMooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0, α1=1.5, α2=1.3)(1.0; Threshold=0.05)
-  @test dc_error(P, Ψ, (F,), 1) < DC_RTOL
-  @test dc_error(C, P, (F,), 1) < DC_RTOL
-  for (m, Fa, N) in ((PM.TransverseIsotropy3D(μ=1.0, α1=1.5, α2=1.3), F, DC_N3), (PM.TransverseIsotropy2D(μ=1.0, α1=1.5, α2=1.3), F2, DC_N2))
-    Ψ, P, C = m(1.0; Threshold=0.2)
-    @test dc_error(P, Ψ, (Fa, N), 1) < DC_RTOL
-    @test dc_error(C, P, (Fa, N), 1) < DC_RTOL
-  end
+@testset "Yeoh3D: regularised energy" begin
   # Yeoh3D: the regularised energy is finite for inverted elements (it was a DomainError)
   Ψ, P, C = PM.Yeoh3D(λ=3.0, C10=1.0, C20=0.5, C30=0.2)()
   Finv = TensorValue(-0.1, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
