@@ -242,6 +242,26 @@ end
   @test_throws ArgumentError PM.ThermoMechModel(thermo, mech, PM.EntropicElasticityLaw(θr=2.0, γ=0.7))
   @test_throws ArgumentError PM.ThermoMechModel(thermo, mech; fθ=identity, dfdθ=identity)
   @test_throws ArgumentError PM.ThermoElectroMechModel(thermo, PM.IdealDielectric(ε=1.0), mech; fθ=identity, dfdθ=identity)
+  @test_throws ArgumentError PM.ThermoMechModel(; thermo, mechano=mech, fθ=identity, dfdθ=identity)
+  @test_throws ArgumentError PM.ThermoElectroMechModel(; thermo, electro=PM.IdealDielectric(ε=1.0), mechano=mech, fθ=identity, dfdθ=identity)
+  # the law is evaluated at θ = θr + δθ: f(θr) = 1, so at δθ = 0 the energy is that of the mechanical model plus
+  # the thermal terms (zero at δθ = 0); also with a law without reference temperature (f = 1)
+  thermo15 = PM.ThermalModel(Cv=2.0, θr=1.5, α=0.1)
+  Ψm = mech()[1]
+  for l in (PM.EntropicElasticityLaw(θr=1.5, γ=0.7), PM.ConstantEnergyLaw())
+    Ψ, Ψu, Ψθ, Ψuu, Ψθθ, Ψuθ = PM.ThermoMechModel(thermo15, mech, l)()
+    @test Ψ(DC_F3.large, 0.0) ≈ Ψm(DC_F3.large)
+    @test dc_error(Ψθ, Ψ, (DC_F3.large, 0.2), 2) < DC_RTOL
+    @test dc_error(Ψθθ, Ψθ, (DC_F3.large, 0.2), 2) < DC_RTOL
+  end
+end
+
+@testset "ThermalDeviatoric: time step without a thermal model" begin
+  m = PM.ThermalDeviatoric(PM.MooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0), PM.EntropicElasticityLaw(θr=1.0, γ=0.7))
+  @test update_time_step!(m, 0.1) == 0.1
+  visco = PM.GeneralizedMaxwell(PM.NeoHookean3D(λ=3.0, μ=1.0), PM.ViscousPolyconvex(μ=1.0, τ=1.0))
+  update_time_step!(PM.ThermalDeviatoric(visco, PM.EntropicElasticityLaw(θr=1.0, γ=0.7)), 0.25)
+  @test visco.branches[1].Δt[] == 0.25
 end
 
 @testset "Every constitutive model accepts the load factor Λ" begin
@@ -263,6 +283,27 @@ end
   for m in models
     @test m(1.0) isa Tuple
     @test m() isa Tuple
+  end
+end
+
+@testset "update_time_step! reaches the components of the thermo-mechanical models" begin
+  law = PM.EntropicElasticityLaw(θr=1.0, γ=0.7)
+  thermo = PM.ThermalVolumetric(cv0=2.0, θr=1.0, α=0.1, κr=3.0, γ=0.5)
+  diel = PM.IdealDielectric(ε=1.0)
+  nh = PM.NeoHookean3D(λ=3.0, μ=1.0)
+  # models without internal time step: the call must not fail (a transient driver calls it at every step)
+  for m in (thermo, PM.ThermalDeviatoric(nh, law), PM.ThermoMech_Bonet(thermo, nh, law),
+            PM.ThermoMechModel(PM.ThermalModel(Cv=2.0, θr=1.0, α=0.1), nh, law),
+            PM.ThermoElectroMech_Bonet(thermo, diel, nh; mech=law, elec=law),
+            PM.ThermoElectroMechModel(PM.ThermalModel(Cv=2.0, θr=1.0, α=0.1), diel, nh, law))
+    @test update_time_step!(m, 0.1) == 0.1
+  end
+  # viscous mechanical model: the time step reaches the viscous branch
+  for wrap in (v -> PM.ThermalDeviatoric(v, law), v -> PM.ThermoMech_Bonet(thermo, v, law, law))
+    branch = PM.ViscousPolyconvex(μ=1.0, τ=1.0)
+    m = wrap(PM.GeneralizedMaxwell(nh, branch))
+    update_time_step!(m, 0.25)
+    @test branch.Δt[] == 0.25
   end
 end
 

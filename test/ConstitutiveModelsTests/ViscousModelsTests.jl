@@ -100,7 +100,7 @@ end
 The stress of a viscous model is the algorithmic one (internal variable fixed after the return mapping), not the
 derivative of the energy: the consistent tangent is checked against the numerical derivative of the stress.
 """
-function test_viscous_tangent_numerical(model; rtol=1e-6)
+function test_viscous_tangent_numerical(model; rtol=1e-5)  # limited by the absolute tolerance (1e-6) of the return mapping
   update_time_step!(model, 1e-2)
   Ψ, ∂Ψu, ∂Ψuu = model()
   F = TensorValue(1.:9...) * 1e-3 + I3D

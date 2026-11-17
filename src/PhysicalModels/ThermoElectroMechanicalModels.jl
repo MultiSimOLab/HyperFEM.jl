@@ -44,13 +44,14 @@ struct ThermoElectroMechModel{T<:Thermo,E<:Electro,M<:Mechano,L<:ThermalLaw} <: 
   end
 end
 
-ThermoElectroMechModel(; thermo::Thermo, electro::Electro, mechano::Mechano, law::ThermalLaw) =
+function ThermoElectroMechModel(; thermo::Thermo, electro::Electro, mechano::Mechano,
+                                law::Union{ThermalLaw,Nothing}=nothing, kwargs...)
+  law === nothing && _missing_thermal_law("ThermoElectroMechModel(thermo, electro, mechano, law)")
   ThermoElectroMechModel(thermo, electro, mechano, law)
-
-function ThermoElectroMechModel(thermo::Thermo, electro::Electro, mechano::Mechano; kwargs...)
-  throw(ArgumentError("ThermoElectroMechModel(thermo, electro, mechano; fθ, dfdθ) has been replaced by " *
-                      "ThermoElectroMechModel(thermo, electro, mechano, law), with `law` a ThermalLaw."))
 end
+
+ThermoElectroMechModel(thermo::Thermo, electro::Electro, mechano::Mechano; kwargs...) =
+  _missing_thermal_law("ThermoElectroMechModel(thermo, electro, mechano, law)")
 
 function (obj::ThermoElectroMechModel)(Λ::Float64=1.0)
   Ψt, ∂Ψt_θ, ∂Ψt_θθ = obj.thermo(Λ)

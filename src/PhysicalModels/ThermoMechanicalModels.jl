@@ -77,6 +77,9 @@ struct ThermalDeviatoric{M<:Mechano} <: ThermoMechano{Nothing,M}
   end
 end
 
+# No thermal component: the time step goes to the mechanical model only.
+update_time_step!(obj::ThermalDeviatoric, Δt::Float64) = update_time_step!(obj.mechano, Δt)
+
 function (obj::ThermalDeviatoric{<:IsoElastic})(Λ::Float64=1.0)
   Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano(Λ)
   f, df, ddf = obj.law()
@@ -117,11 +120,17 @@ struct ThermoMechModel{T<:Thermo,M<:Mechano,L<:ThermalLaw} <: ThermoMechano{T,M}
   end
 end
 
-ThermoMechModel(; thermo::Thermo, mechano::Mechano, law::ThermalLaw) = ThermoMechModel(thermo, mechano, law)
+function ThermoMechModel(; thermo::Thermo, mechano::Mechano, law::Union{ThermalLaw,Nothing}=nothing, kwargs...)
+  law === nothing && _missing_thermal_law("ThermoMechModel(thermo, mechano, law)")
+  ThermoMechModel(thermo, mechano, law)
+end
 
-function ThermoMechModel(thermo::Thermo, mechano::Mechano; kwargs...)
-  throw(ArgumentError("ThermoMechModel(thermo, mechano; fθ, dfdθ) has been replaced by " *
-                      "ThermoMechModel(thermo, mechano, law), with `law` a ThermalLaw (e.g. EntropicElasticityLaw)."))
+ThermoMechModel(thermo::Thermo, mechano::Mechano; kwargs...) = _missing_thermal_law("ThermoMechModel(thermo, mechano, law)")
+
+"Error of the constructors without a thermal law (the former keywords `fθ` and `dfdθ` are no longer accepted)."
+function _missing_thermal_law(signature)
+  throw(ArgumentError("a ThermalLaw is required: $signature, with `law` e.g. EntropicElasticityLaw(θr=θr, γ=0.0) " *
+                      "for f(θ) = θ/θr (the keywords fθ and dfdθ are no longer accepted)"))
 end
 
 "The thermal law and the thermal model must share the reference temperature."
