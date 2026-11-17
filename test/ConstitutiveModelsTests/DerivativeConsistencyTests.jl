@@ -51,6 +51,11 @@ const DC_N3 = VectorValue(0.6, 0.0, 0.8)
 const DC_N2 = VectorValue(0.6, 0.8)
 const DC_E3 = VectorValue(0.3, -0.2, 0.5)
 
+"Govindjee model with f(δθ) = 1 + δθ (f(0) = 1) and a cubic g."
+dc_govindjee(electro, mechano) = PM.ThermoElectroMech_Govindjee(PM.ThermalModel(Cv=2.0, θr=1.0, α=0.1), electro, mechano;
+  fθ=δθ -> 1 + δθ, dfdθ=δθ -> 1.0, d2fdθ2=δθ -> 0.0,
+  gθ=δθ -> -0.3 * (1 + δθ)^3, dgdθ=δθ -> -0.9 * (1 + δθ)^2, d2gdθ2=δθ -> -1.8 * (1 + δθ))
+
 const DC_MECH2 = (
   PM.LinearElasticity2D(λ=3.0, μ=1.0),
   PM.Gent2D(λ=3.0, μ=1.0, Jm=50.0, γ=1.0),
@@ -238,6 +243,24 @@ end
     @test dc_error(Ψuθ, Ψu, a, 3) < DC_RTOL
     @test dc_error(Ψφθ, Ψφ, a, 3) < DC_RTOL
   end
+  # Govindjee: non-linear f and g (f'' ≠ 0, g'' ≠ 0) and β ≠ 0
+  gov = PM.ThermoElectroMech_Govindjee(thermo, PM.IdealDielectric(ε=1.0), mech;
+    fθ=δθ -> (1 + δθ)^1.5, dfdθ=δθ -> 1.5 * (1 + δθ)^0.5, d2fdθ2=δθ -> 0.75 * (1 + δθ)^-0.5,
+    gθ=δθ -> -0.3 * (1 + δθ)^3, dgdθ=δθ -> -0.9 * (1 + δθ)^2, d2gdθ2=δθ -> -1.8 * (1 + δθ), β=0.2)
+  Ψ, Ψu, Ψφ, Ψθ, Ψuu, Ψφφ, Ψθθ, Ψφu, Ψuθ, Ψφθ, η = gov()
+  for F in (DC_F3.small, DC_F3.large, DC_F3.compression)
+    a = (F, DC_E3, δθ)
+    @test dc_error(Ψu, Ψ, a, 1) < DC_RTOL
+    @test dc_error(Ψφ, Ψ, a, 2) < DC_RTOL
+    @test dc_error(Ψθ, Ψ, a, 3) < DC_RTOL
+    @test dc_error(Ψuu, Ψu, a, 1) < DC_RTOL
+    @test dc_error(Ψφφ, Ψφ, a, 2) < DC_RTOL
+    @test dc_error(Ψθθ, Ψθ, a, 3) < DC_RTOL
+    @test dc_error(Ψφu, Ψφ, a, 1) < DC_RTOL
+    @test dc_error(Ψuθ, Ψu, a, 3) < DC_RTOL
+    @test dc_error(Ψφθ, Ψφ, a, 3) < DC_RTOL
+    @test η(a...) == -Ψθ(a...)
+  end
   # the law and the thermal model share the reference temperature; the former constructor gives a clear error
   @test_throws ArgumentError PM.ThermoMechModel(thermo, mech, PM.EntropicElasticityLaw(θr=2.0, γ=0.7))
   @test_throws ArgumentError PM.ThermoMechModel(thermo, mech; fθ=identity, dfdθ=identity)
@@ -279,7 +302,8 @@ end
             PM.ThermoElectroMech_Bonet(thermo, diel, nh; mech=law, elec=law),
             PM.ThermoElectroMech_Bonet(thermo, diel, visco; el=law, vis=law, elec=law),
             PM.ThermoMechModel(PM.ThermalModel(Cv=2.0, θr=1.0, α=0.1), nh, law),
-            PM.ThermoElectroMechModel(PM.ThermalModel(Cv=2.0, θr=1.0, α=0.1), diel, nh, law))
+            PM.ThermoElectroMechModel(PM.ThermalModel(Cv=2.0, θr=1.0, α=0.1), diel, nh, law),
+            dc_govindjee(diel, nh))
   for m in models
     @test m(1.0) isa Tuple
     @test m() isa Tuple
@@ -334,7 +358,8 @@ end
            (PM.ThermoMech_Bonet(thermo, m, law), (1.0,)),
            (PM.ThermoElectroMech_Bonet(thermo, diel, m; mech=law, elec=law), (DC_E3, 1.0)),
            (PM.ThermoMechModel(PM.ThermalModel(Cv=2.0, θr=1.0, α=0.1), m, law), (0.0,)),
-           (PM.ThermoElectroMechModel(PM.ThermalModel(Cv=2.0, θr=1.0, α=0.1), diel, m, law), (DC_E3, 0.0)))
+           (PM.ThermoElectroMechModel(PM.ThermalModel(Cv=2.0, θr=1.0, α=0.1), diel, m, law), (DC_E3, 0.0)),
+           (dc_govindjee(diel, m), (DC_E3, 0.0)))
   for (w, rest) in cases
     Ψ1 = w(1.0)[1](F, rest...)
     Ψ2 = w(2.0)[1](F, rest...)

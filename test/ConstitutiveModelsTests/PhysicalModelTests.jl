@@ -639,11 +639,13 @@ end
   modelID = IdealDielectric(ε=1.0)
   modelT = ThermalModel(Cv=17.385, θr=293.0, α=0.00156331)
   f(δθ) = (δθ + 293.0) / 293.0
-  df(δθ) = 293.0
+  df(δθ) = 1 / 293.0
+  d2f(δθ) = 0.0
   g(δθ) = -0.33 * ((δθ + 293.0) / 293.0)^3
   dg(δθ) = -(3 * 0.33 / 293.0) * ((δθ + 293.0) / 293.0)^2
+  d2g(δθ) = -(6 * 0.33 / 293.0^2) * ((δθ + 293.0) / 293.0)
 
-  modelTEM = ThermoElectroMech_Govindjee(modelT, modelID, modelMR, fθ=f, dfdθ=df, gθ=g, dgdθ=dg, β=0.0)
+  modelTEM = ThermoElectroMech_Govindjee(modelT, modelID, modelMR, fθ=f, dfdθ=df, d2fdθ2=d2f, gθ=g, dgdθ=dg, d2gdθ2=d2g, β=0.0)
   Ψ, ∂Ψu, ∂ΨE, ∂Ψθ, ∂ΨFF, ∂ΨEE, ∂2Ψθθ, ∂ΨEF, ∂ΨFθ, ∂ΨEθ, η = modelTEM()
   K = Kinematics(Mechano, Solid)
   F, _, _ = get_Kinematics(K)
