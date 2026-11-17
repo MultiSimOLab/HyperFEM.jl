@@ -90,8 +90,10 @@ function supported_operations(D)
     ("A'", transpose, (A,), T2(D)),
     ("W'", transpose, (W,), T3(D)),
     ("H'", transpose, (H,), T4(D)),
-    ("TensorValue(Tuple(H))", H -> TensorValue(Tuple(H)), (H,), TensorValue{D^2,D^2,Float64}),
-    ("FourthOrderTensorValue(Tuple(M))", M -> FourthOrderTensorValue(Tuple(M)), (TensorValue(Tuple(H)),), T4(D)),
+    ("flat_tensor(v)", flat_tensor, (VectorValue(Tuple(A)),), T2(D)),
+    ("flat_tensor(W)", flat_tensor, (W,), TensorValue{D,D^2,Float64}),
+    ("flat_tensor(H)", flat_tensor, (H,), TensorValue{D^2,D^2,Float64}),
+    ("FourthOrderTensorValue(Tuple(M))", M -> FourthOrderTensorValue(Tuple(M)), (flat_tensor(H),), T4(D)),
   ]
   # operations preserving the type: sum, difference, negation and scaling
   for (name, X) in (("v", v), ("A", A), ("W", W), ("H", H))

@@ -28,7 +28,7 @@ fourth(a::Array{Float64,4}) = FourthOrderTensorValue(Tuple(a))
     H = fourth(h)
     @test H' == fourth([h[k, l, i, j] for i in 1:D, j in 1:D, k in 1:D, l in 1:D])
     @test H'' == H
-    @test Tuple(H') == Tuple(TensorValue(Tuple(H))')  # the transpose of the D²×D² matrix
+    @test Tuple(H') == Tuple(flat_tensor(H)')  # the transpose of the D²×D² matrix
   end
 end
 
@@ -115,7 +115,7 @@ end
   for (D, 𝕀) in ((2, 𝕀2D), (3, 𝕀3D))
     @test 𝕀 isa FourthOrderTensorValue{D,Float64}
     @test 𝕀 == fourth([Float64(i == k && j == l) for i in 1:D, j in 1:D, k in 1:D, l in 1:D])
-    @test Tuple(TensorValue(Tuple(𝕀))) == Tuple(one(TensorValue{D^2,D^2,Float64}))  # the identity matrix
+    @test Tuple(flat_tensor(𝕀)) == Tuple(one(TensorValue{D^2,D^2,Float64}))  # the identity matrix
     A = TensorValue{D,D}(digits2(D)...)
     @test 𝕀 ⊙ A == A
   end
@@ -195,7 +195,7 @@ end
     g = reverse(h)
     G = fourth(g)
     @test H ⋅² G == fourth([sum(h[i, j, m, n] * g[m, n, k, l] for m in r, n in r) for i in r, j in r, k in r, l in r])
-    @test Tuple(H ⋅² G) == Tuple(TensorValue(Tuple(H)) ⋅ TensorValue(Tuple(G)))  # the product of the D²×D² matrices
+    @test Tuple(H ⋅² G) == Tuple(flat_tensor(H) ⋅ flat_tensor(G))  # the product of the D²×D² matrices
     @test H ⋅² A == H ⊙ A
     @test A ⋅² H == TensorValue{D,D}([sum(a[m, n] * h[m, n, i, j] for m in r, n in r) for i in r, j in r]...)
     @test W ⋅² A == W ⊙ A
@@ -300,6 +300,6 @@ end
     Q = Matrix(LinearAlgebra.qr(randn(D^2, D^2)).Q)
     M = Q * LinearAlgebra.Diagonal(randn(D^2)) * Q'
     H = FourthOrderTensorValue(Tuple((M + M') / 2))
-    @test regularize_hessian(H, 1e-6) == FourthOrderTensorValue(Tuple(regularize_hessian(TensorValue(Tuple(H)), 1e-6)))
+    @test regularize_hessian(H, 1e-6) == FourthOrderTensorValue(Tuple(regularize_hessian(flat_tensor(H), 1e-6)))
   end
 end

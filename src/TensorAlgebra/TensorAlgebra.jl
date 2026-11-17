@@ -20,7 +20,7 @@ Fourth-order tensor in dimension `D`, with full indices `H[i,j,k,l]` (Gridap's `
 
 The components are stored in column-major order, as in its D²×D² matrix (rows `(i,j)`, columns `(k,l)`):
 
-    M = TensorValue(Tuple(H))              # D²×D² matrix, e.g. for `inv` or a linear system
+    M = flat_tensor(H)                     # D²×D² matrix, e.g. for `inv` or a linear system
     H = FourthOrderTensorValue(Tuple(M))   # from a D²×D² TensorValue, SMatrix or Matrix
 
 Pass the components as a tuple: splatting 81 components is not type-stable.

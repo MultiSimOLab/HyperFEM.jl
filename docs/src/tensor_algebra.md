@@ -18,10 +18,12 @@ components are stored in column-major order (first index fastest).
 
 For linear algebra (inverse, eigenvalues, linear systems), a fourth-order tensor is a D²×D² matrix,
 the linear map on second-order tensors, with rows `(i,j)` and columns `(k,l)`. Both hold the same
-components in the same order, so the conversion is the constructor applied to the components:
+components in the same order. `flat_tensor`, `flat_smatrix` and `flat_matrix` give the matrix
+(a third-order tensor gives the D×D² matrix, rows `i` and columns `(j,k)`), and the constructor applied
+to the components goes back:
 
 ```julia
-M = TensorValue(Tuple(H))              # TensorValue{D²,D²}
+M = flat_tensor(H)                     # TensorValue{D²,D²}; flat_smatrix(H), flat_matrix(H)
 H = FourthOrderTensorValue(Tuple(M))   # from a TensorValue{D²,D²}, SMatrix or Matrix (e.g. a ForwardDiff Hessian)
 W = ThirdOrderTensorValue(Tuple(M))    # from a D×D² matrix (e.g. a ForwardDiff Jacobian)
 H = FourthOrderTensorValue(1.:81...)   # also from the components
