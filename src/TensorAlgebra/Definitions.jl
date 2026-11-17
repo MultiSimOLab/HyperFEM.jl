@@ -45,14 +45,32 @@ const 𝕀3D = _identity4(3)
 # Tensor conversions
 # ==================
 
+const _FlattenableTensor = Union{VectorValue,ThirdOrderTensorValue,FourthOrderTensorValue}
+
+"""
+    flat_tensor(v::VectorValue{N²})::TensorValue{N,N}
+    flat_tensor(W::ThirdOrderTensorValue{D1,D2,D3})::TensorValue{D1,D2*D3}
+    flat_tensor(H::FourthOrderTensorValue{D})::TensorValue{D²,D²}
+
+Matrix representation of a tensor:
+- VectorValue: D² -> D×D,
+- ThirdOrderTensorValue: D×D×D -> D×D²
+- FourthOrderTensorValue: D×D×D×D -> D²×D²
+"""
 flat_tensor(a::VectorValue) = TensorValue(Tuple(a))
-flat_tensor(a::ThirdOrderTensorValue) = TensorValue(Tuple(a))
+flat_tensor(a::ThirdOrderTensorValue{D1,D2,D3}) where {D1,D2,D3} = TensorValue{D1,D2 * D3}(Tuple(a))
 flat_tensor(a::FourthOrderTensorValue) = TensorValue(Tuple(a))
 
-flat_smatrix(a::VectorValue) = get_array(flat_tensor(a))
-flat_smatrix(a::ThirdOrderTensorValue) = get_array(flat_tensor(a))
-flat_smatrix(a::FourthOrderTensorValue) = get_array(flat_tensor(a))
+"""
+    flat_smatrix(a)::SMatrix
 
-flat_matrix(a::VectorValue) = Matrix(flat_smatrix(a))
-flat_matrix(a::ThirdOrderTensorValue) = Matrix(flat_smatrix(a))
-flat_matrix(a::FourthOrderTensorValue) = Matrix(flat_smatrix(a))
+Matrix representation of `a` as an `SMatrix`, see [`flat_tensor`](@ref).
+"""
+flat_smatrix(a::_FlattenableTensor) = get_array(flat_tensor(a))
+
+"""
+    flat_matrix(a)::Matrix
+
+Matrix representation of `a` as a `Matrix`, see [`flat_tensor`](@ref).
+"""
+flat_matrix(a::_FlattenableTensor) = Matrix(flat_smatrix(a))

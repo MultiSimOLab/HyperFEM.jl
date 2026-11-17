@@ -109,7 +109,9 @@ keep their order, so a 9×9 matrix and the corresponding fourth-order tensor hol
 | `transpose_IJK_KIJ`              | `W'`             | `Wₖᵢⱼ`                          |
 | `H * G` (fourth-order)           | `H ⋅² G`         | `Σ Hᵢⱼₘₙ Gₘₙₖₗ`                 |
 
-`×ᵢ⁴`, `IIsym`, `cof` and `push_forward_C_to_F` keep their names. The cross products keep their
+`×ᵢ⁴`, `IIsym` and `push_forward_C_to_F` keep their names. `cof`, `logreg`, `∂log∂J` and `∂∂log∂JJ`
+moved to `PhysicalModels` (`Kinematics.jl`) and are no longer exported; `Tensorize` is replaced by
+`flat_tensor`. The cross products keep their
 implementation and will be revised separately.
 
 ### Renamed or removed constants

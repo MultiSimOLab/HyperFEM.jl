@@ -18,7 +18,7 @@ import Base: +,-
 import Gridap: inner
 inner(a::SMatrix, b::SMatrix) = sum(a.data .* b.data)  # inner function is required by SecondPiola to work with ForwardDiff
 
-import HyperFEM.TensorAlgebra: cof
+import HyperFEM.PhysicalModels: cof
 cof(a::SMatrix) = det(a) * inv(a)'  # cof is required by SecondPiola to work with ForwardDiff
 
 

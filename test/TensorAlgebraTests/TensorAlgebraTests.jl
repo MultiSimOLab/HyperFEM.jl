@@ -2,8 +2,9 @@ using Gridap.TensorValues
 using Gridap.Arrays
 using HyperFEM.TensorAlgebra
 using Test
-import LinearAlgebra
-import Random
+using LinearAlgebra
+using Random
+using StaticArrays
 
 
 digits1(D) = [Float64(i) for i in 1:D]
@@ -29,17 +30,6 @@ fourth(a::Array{Float64,4}) = FourthOrderTensorValue(Tuple(a))
     @test H'' == H
     @test Tuple(H') == Tuple(TensorValue(Tuple(H))')  # the transpose of the D²×D² matrix
   end
-end
-
-
-@testset "Jacobian regularization" begin
-  ∇u = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0) * 1e-3
-  F = one(∇u) + ∇u
-  J = det(F)
-  @test J == 1.0149819999999996
-  @test logreg(J; threshold=0.01) == 0.014870878346353422
-  @test ForwardDiff.derivative(logreg, J) ≈ ∂log∂J(J)
-  @test ForwardDiff.derivative(∂log∂J, J) ≈ ∂∂log∂JJ(J)
 end
 
 
@@ -147,6 +137,34 @@ end
 end
 
 
+@testset "tensor conversions" begin
+  for D in (2, 3)
+    # vector with D² components -> D×D matrix (column-major)
+    v = VectorValue(Tuple(1.0:D^2))
+    @test (@inferred flat_tensor(v)) == TensorValue{D,D}(Tuple(1.0:D^2))
+    # third-order tensor -> D×D² matrix, rows i, columns (j,k)
+    w = digits3(D)
+    W = third(w)
+    @test (@inferred flat_tensor(W)) isa TensorValue{D,D^2,Float64}
+    @test get_array(flat_tensor(W)) == reshape(w, D, D^2)
+    @test ThirdOrderTensorValue(Tuple(flat_tensor(W))) == W
+    # fourth-order tensor -> D²×D² matrix, rows (i,j), columns (k,l)
+    h = digits4(D)
+    H = fourth(h)
+    @test (@inferred flat_tensor(H)) isa TensorValue{D^2,D^2,Float64}
+    @test get_array(flat_tensor(H)) == reshape(h, D^2, D^2)
+    @test FourthOrderTensorValue(Tuple(flat_tensor(H))) == H
+    for X in (v, W, H)
+      M = flat_tensor(X)
+      @test (@inferred flat_smatrix(X)) isa SMatrix{size(M)...,Float64}
+      @test flat_smatrix(X) == get_array(M)
+      @test (@inferred flat_matrix(X)) isa Matrix{Float64}
+      @test flat_matrix(X) == Matrix(get_array(M))
+    end
+  end
+end
+
+
 @testset "products in index notation" begin
   # each product against its Einstein summation on plain arrays
   for D in (2, 3)
@@ -214,13 +232,6 @@ end
   A = A'*A + I3D
   sqrtA = TensorValue(sqrt(get_array(A)))
   @test isapprox(sqrt(A), sqrtA, rtol=1e-14)
-end
-
-
-@testset "cofactor" begin
-  A = TensorValue(1.:9...) + I3D
-  cofA = det(A) * inv(A')
-  @test isapprox(cof(A), cofA)
 end
 
 

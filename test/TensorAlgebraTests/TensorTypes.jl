@@ -111,7 +111,6 @@ function supported_operations(D)
       ("A×H", ×, (A, H), T4(D)),
       ("H×A", ×, (H, A), T4(D)),
       ("W×A", ×, (W, A), T3(D)),
-      ("cof(A)", cof, (A,), T2(D)),
       ("×ᵢ⁴(A)", ×ᵢ⁴, (A,), T4(D)))
   end
   ops
@@ -124,9 +123,6 @@ function broken_operations(D)
     ("A⊙v", ⊙, (A, v), V(D)),   # error
     ("v⊙A", ⊙, (v, A), V(D)),   # error
   ]
-  if D == 2
-    push!(ops, ("cof(A)", cof, (A,), T2(D)))  # error, the cross product is only defined in 3D
-  end
   ops
 end
 
