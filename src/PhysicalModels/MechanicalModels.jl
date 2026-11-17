@@ -14,7 +14,7 @@ Volumetric energy term
 ```
 
 with `λ` the volumetric penalty (bulk) parameter. It is usually added to an isochoric model, e.g.
-`IsochoricNeoHookean3D(μ=μ) + VolumetricEnergy(λ=λ)`.
+`IsochoricNeoHookean3D(μ=μ) + VolumetricEnergy(λ=λ)`. 3D only.
 """
 struct VolumetricEnergy <: Volumetric
   λ::Float64
@@ -51,7 +51,7 @@ Coercive volumetric energy term
 ```
 
 which vanishes with its derivative `∂Ψ/∂J = κ/2 (J - 1/J)` at `J = 1` and grows as `J → 0` and `J → ∞`. `ln J` is
-regularised below `J = 0.01` (`logreg`), so the energy stays finite for inverted elements.
+regularised below `J = 0.01` (`logreg`), so the energy stays finite for inverted elements. 3D only.
 """
 struct CoerciveVolumetric <: Volumetric
   κ::Float64

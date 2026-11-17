@@ -100,8 +100,35 @@ end
     @test dc_error(P, Ψ, (F,), 1) < DC_RTOL
     @test dc_error(C, P, (F,), 1) < DC_RTOL
   end
-  Ψ, P, _ = PM.MooneyRivlin2D(λ=3.0, μ1=1.0, μ2=2.0)(1.0; Threshold=0.2)
-  @test dc_error(P, Ψ, (TensorValue(0.3, 0.0, 0.01, 0.4),), 1) < DC_RTOL   # J = 0.12
+  F2 = TensorValue(0.3, 0.0, 0.01, 0.4)   # J = 0.12 < Threshold = 0.2
+  for m in (PM.MooneyRivlin2D(λ=3.0, μ1=1.0, μ2=2.0), PM.NonlinearMooneyRivlin2D(λ=3.0, μ1=1.0, μ2=2.0, α1=1.5, α2=1.3))
+    Ψ, P, C = m(1.0; Threshold=0.2)
+    @test dc_error(P, Ψ, (F2,), 1) < DC_RTOL
+    @test dc_error(C, P, (F2,), 1) < DC_RTOL
+  end
+  Ψ, P, C = PM.NonlinearMooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0, α1=1.5, α2=1.3)(1.0; Threshold=0.05)
+  @test dc_error(P, Ψ, (F,), 1) < DC_RTOL
+  @test dc_error(C, P, (F,), 1) < DC_RTOL
+  for (m, Fa, N) in ((PM.TransverseIsotropy3D(μ=1.0, α1=1.5, α2=1.3), F, DC_N3), (PM.TransverseIsotropy2D(μ=1.0, α1=1.5, α2=1.3), F2, DC_N2))
+    Ψ, P, C = m(1.0; Threshold=0.2)
+    @test dc_error(P, Ψ, (Fa, N), 1) < DC_RTOL
+    @test dc_error(C, P, (Fa, N), 1) < DC_RTOL
+  end
+  # Yeoh3D: the regularised energy is finite for inverted elements (it was a DomainError)
+  Ψ, P, C = PM.Yeoh3D(λ=3.0, C10=1.0, C20=0.5, C30=0.2)()
+  Finv = TensorValue(-0.1, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+  @test isfinite(Ψ(Finv))
+  @test dc_error(P, Ψ, (Finv,), 1) < DC_RTOL
+end
+
+@testset "IncompressibleNeoHookean3D with a large regularisation δ" begin
+  Ψ, P, C = PM.IncompressibleNeoHookean3D(λ=10.0, μ=1.0, δ=0.7)()
+  for F in DC_F3
+    @test dc_error(P, Ψ, (F,), 1) < DC_RTOL
+    @test dc_error(C, P, (F,), 1) < DC_RTOL
+  end
+  @test abs(Ψ(I3D)) < 1e-12
+  @test norm(P(I3D)) < 1e-12
 end
 
 @testset "Derivative consistency: anisotropic mechanical models" begin
@@ -131,7 +158,7 @@ end
   # with a floor δ below every eigenvalue the projection does not act: the tangent is the derivative of the stress
   for (mech, F) in ((PM.NeoHookean3D(λ=3.0, μ=1.0), DC_F3.large), (PM.ARAP2D(μ=1.0), DC_F2.large))
     Ψ, P, C = PM.Hessian∇JRegularization(mech; κ=2.0, δ=-1e6)()
-    Jh = det(F) - 1e-3
+    Jh = det(F) - 0.5   # the term κ (J - Jh) ∂H/∂F has weight in the tangent
     @test dc_error(P, Ψ, (F, Jh), 1) < DC_RTOL
     @test dc_error(C, P, (F, Jh), 1) < DC_RTOL
   end
@@ -203,4 +230,39 @@ end
     @test m(1.0) isa Tuple
     @test m() isa Tuple
   end
+end
+
+# A test model whose energy depends on the load factor: Λ × NeoHookean3D.
+struct DCLoadScaled <: PM.IsoElastic
+  m::PM.NeoHookean3D
+end
+function (obj::DCLoadScaled)(Λ::Float64=1.0)
+  Ψ, P, C = obj.m(Λ)
+  return (F -> Λ * Ψ(F), F -> Λ * P(F), F -> Λ * C(F))
+end
+
+@testset "The composed models forward Λ to their components" begin
+  law = PM.EntropicElasticityLaw(θr=1.0, γ=0.7)
+  thermo = PM.ThermalVolumetric(cv0=2.0, θr=1.0, α=0.1, κr=3.0, γ=0.5)
+  diel = PM.IdealDielectric(ε=1.0)
+  m = DCLoadScaled(PM.NeoHookean3D(λ=3.0, μ=1.0))
+  F = DC_F3.large
+  Ψm(Λ) = m(Λ)[1](F)
+  # each case: (wrapped model, arguments after F); the energy of the wrapper differs from Λ = 1 to Λ = 2 by
+  # (a multiple of) that of the component
+  cases = ((PM.HessianRegularization(m), ()),
+           (PM.Hessian∇JRegularization(m), (det(F) - 0.5,)),
+           (m + PM.VolumetricEnergy(λ=1.0), ()),
+           (PM.GeneralizedMaxwell(m), (I3D,)),
+           (diel + m, (DC_E3,)),
+           (PM.ThermalDeviatoric(m, law), (1.0,)),
+           (PM.ThermoMech_Bonet(thermo, m, law), (1.0,)),
+           (PM.ThermoElectroMech_Bonet(thermo, diel, m; mech=law, elec=law), (DC_E3, 1.0)))
+  for (w, rest) in cases
+    Ψ1 = w(1.0)[1](F, rest...)
+    Ψ2 = w(2.0)[1](F, rest...)
+    @test Ψ2 - Ψ1 ≈ Ψm(2.0) - Ψm(1.0)
+  end
+  e = PM.EnergyInterpolationScheme(m, PM.NeoHookean3D(λ=3.0, μ=1.0); p=3.0)
+  @test e(2.0)[1](1.0, F) - e(1.0)[1](1.0, F) ≈ Ψm(2.0) - Ψm(1.0)
 end
