@@ -2,7 +2,7 @@
 # a diagonal model problem R(x) = d .* x + x.^3 - f with an allocation-free operator and solver.
 using Gridap, Gridap.Algebra
 using HyperFEM
-using HyperFEM.Solvers: search!, LineSearch
+using HyperFEM.Solvers: search!
 using LinearAlgebra
 using Test
 

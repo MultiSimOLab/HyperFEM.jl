@@ -47,7 +47,6 @@ function hmre_vacuum_model(backend::Symbol; φbot=0.2 * 5200, verbose=false)
   dΩsolid = Measure(Ωsolid, 2 * order_solid)
   dΩvacuum_mag = Measure(Ωvacuum, 2 * order_solid)
   dΩvacuum_mec = Measure(Ωvacuum, 2 * order_vacuum)
-  Γair_int = BoundaryTriangulation(Ωvacuum, tags="Interface")
   Γsolid_int = BoundaryTriangulation(Ωsolid, tags="Interface")
   dΓs = Measure(Γsolid_int, 4 * order_solid)
 
@@ -65,16 +64,12 @@ function hmre_vacuum_model(backend::Symbol; φbot=0.2 * 5200, verbose=false)
   Vu_solid = TestFESpace(Ωsolid, reffeu, Du_solid, conformity=:H1)
   Uu_solid⁺ = TrialFESpace(Vu_solid, Du_solid); Uu_solid⁻ = TrialFESpace(Vu_solid, Du_solid)
   uh_solid⁺ = FEFunction(Uu_solid⁺, zero_free_values(Uu_solid⁺)); uh_solid⁻ = FEFunction(Uu_solid⁻, zero_free_values(Uu_solid⁻))
-  # Solid–vacuum coupling: staggered solid displacement interpolated to the vacuum interface
-  Uair_int = FESpace(Γair_int, reffeu_vacuum)
+  # Solid–vacuum coupling: the displacement of the solid between its two stages, prescribed on the interface of the
+  # vacuum. The nodes of the interface are located in the mesh of the solid once (they coincide: a copy of dof values)
   Usolid_int = FESpace(Γsolid_int, reffeu)
-  uhsolid(Λ) = uh_solid⁻ + (uh_solid⁺ - uh_solid⁻) * Λ
-  uhsolid_int = interpolate_everywhere(uh_solid⁺, Usolid_int)
-  uhair_int = interpolate_everywhere(Interpolable(uhsolid_int), Uair_int)
-  uhsolid_int_(Λ) = Interpolable(interpolate_everywhere!(uhsolid(Λ), get_free_dof_values(uhsolid_int), uhsolid_int.dirichlet_values, Usolid_int))
-  uhair_int_(Λ) = interpolate_everywhere!(uhsolid_int_(Λ), get_free_dof_values(uhair_int), uhair_int.dirichlet_values, Uair_int)
+  uhsolid = StageBlend(uh_solid⁻, uh_solid⁺)             # uhsolid(Λ) = uh_solid⁻ + (uh_solid⁺ - uh_solid⁻) * Λ
   Du_vacuum = BoundaryConditions(BoundaryCondition("Fixed_Air", [0.0, 0.0]), BoundaryCondition("Fixed_Air_x", [0.0, 0.0]; mask=(true, false)),
-                                 BoundaryCondition("Interface", Coupling(uhair_int_)))         # the state of the solid, a function of the stage parameter
+                                 BoundaryCondition("Interface", Coupling(uhsolid)))            # the state of the solid, a function of the stage parameter
   Vu_vacuum = TestFESpace(Ωvacuum, reffeu_vacuum, Du_vacuum, conformity=:H1)
   Uu_vacuum⁺ = TrialFESpace(Vu_vacuum, Du_vacuum); Uu_vacuum⁻ = TrialFESpace(Vu_vacuum, Du_vacuum)
   uh_vacuum⁺ = FEFunction(Uu_vacuum⁺, zero_free_values(Uu_vacuum⁺)); uh_vacuum⁻ = FEFunction(Uu_vacuum⁻, zero_free_values(Uu_vacuum⁻))
@@ -87,6 +82,7 @@ function hmre_vacuum_model(backend::Symbol; φbot=0.2 * 5200, verbose=false)
   U_traction = TrialFESpace(V_traction)
   tmaxw = interpolate_everywhere(Pmaxw, Usolid_int)
   tmaxw_ = get_free_dof_values(tmaxw)
+  T_maxwell = Transfer(V_maxwell, Usolid_int)             # vacuum → interface of the solid, built once
   Massoperator = StaticLinearModel((u, v) -> ∫(u ⋅ v)dΓs, U_traction, V_traction, NothingBC())
 
   # Weak forms
@@ -106,7 +102,7 @@ function hmre_vacuum_model(backend::Symbol; φbot=0.2 * 5200, verbose=false)
                               ∫(∇(vφ)' ⋅ ((∂Ψv∂H0H0 ∘ (F ∘ (∇(uhvacuum(Λ))'), ℋ₀ ∘ (∇(φ)))) ⋅ ∇(dφ)))dΩvacuum_mag
   res_mech(Λ) = begin
     assemble_vector!((v) -> ∫(∇(v)' ⊙ (∂Ψv∂F ∘ (F ∘ (∇(uhvacuum(Λ))'), ℋ₀ ∘ (∇(φh(Λ))))))dΩvacuum_mec, Pmaxw_, V_maxwell)
-    interpolate_everywhere!(Interpolable(Pmaxw), tmaxw_, tmaxw.dirichlet_values, Usolid_int)
+    transfer!(tmaxw_, T_maxwell, Pmaxw)
     Massoperator(tmaxw_)
     (u, v) -> ∫((∇(v)' ⊙ (∂Ψs∂F ∘ (F ∘ (∇(u)'), ℋ₀ ∘ (∇(φh(Λ))), Nh))))dΩsolid + ∫((v ⋅ tmaxw))dΓs
   end

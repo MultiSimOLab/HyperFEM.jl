@@ -484,8 +484,7 @@ is in `get_log(m)`.
 Hooks, all optional (`nothing`: no call):
 - `presolver(τ⁻, Δτ)`, before every attempt of a step, with the stage τ⁻ ∈ [0, 1] of the last accepted
   step and the increment to try (as the `presolver` of [`StaticNonlinearModel`](@ref)); a load ramped
-  by the loop reads `τ⁻ + Δτ`. With the `NamedTuple` `stepping` of earlier versions it receives instead
-  the 0-based index of the step, `presolver(n, Δτ)` (deprecated: pass a `StaggeredStepping`).
+  by the loop reads `τ⁻ + Δτ`.
 - `on_substep(k, errors)`, after every pass `k` of a step, with the coupling errors per field (a tuple).
 - `on_step(τ, Δτ, nsub)`, after every accepted step, with the stage reached, the increment of the next
   step and the passes of the step.
@@ -504,13 +503,9 @@ function solve!(m::StaggeredModel;
 
     N = length(m.compmodels)
     length(kargsolve) == N || error("HyperFEM: `kargsolve` has $(length(kargsolve)) entries for $N models")
-    legacy_index = stepping isa NamedTuple        # presolver(n, Δτ) with the index of the step, as in earlier versions
     s = staggered_stepping(stepping)
     relax = _relaxations(s.relaxation, N)
     states = map(relaxation_state, relax, m.caches.x⁺)
-    legacy_index && presolver !== nothing && Base.depwarn("solve!(::StaggeredModel): a `presolver` with a NamedTuple `stepping` " *
-        "receives the 0-based index of the step, which is deprecated; pass `stepping = StaggeredStepping(…)` to " *
-        "receive the stage, `presolver(τ⁻, Δτ)` with τ⁻ ∈ [0, 1]", :solve!)
     v = Int(verbose)
     log = reset!(m.log)
     c = m.caches
@@ -523,7 +518,7 @@ function solve!(m::StaggeredModel;
     t_run = time()
     staggered_header(v, s)
     while !finished(st, s)
-        ok = step!(m, st, s, relax, states; legacy_index, presolver, evolτ, kargsolve, on_substep, on_step, verbose=v)
+        ok = step!(m, st, s, relax, states; presolver, evolτ, kargsolve, on_substep, on_step, verbose=v)
         if fixed_loop(s)
             ok || (flagconv = 0)
         elseif st.nbisect > s.maxbisec
@@ -556,7 +551,7 @@ and (with a tolerance) the coupling converged. `relaxations` is the tuple of `Re
 the fields. See [`solve!`](@ref) for the keywords.
 """
 function step!(m::StaggeredModel, st::StaggeredStep, s::StaggeredStepping, relax::Tuple, states::Tuple=map(relaxation_state, relax, m.caches.x⁺);
-    legacy_index::Bool=false, presolver=nothing, evolτ=identity, kargsolve, on_substep=nothing, on_step=nothing, verbose::Int=0)
+    presolver=nothing, evolτ=identity, kargsolve, on_substep=nothing, on_step=nothing, verbose::Int=0)
 
     c = m.caches
     w = c.work
@@ -570,7 +565,7 @@ function step!(m::StaggeredModel, st::StaggeredStep, s::StaggeredStepping, relax
         Δτ = min(st.Δτ, 1.0 - st.τ)
         τ⁺raw = st.τ + Δτ
     end
-    _call(presolver, legacy_index ? st.nsteps : st.τ, Δτ)
+    _call(presolver, st.τ, Δτ)
     τ⁻ = evolτ(st.τ)
     τ⁺ = evolτ(τ⁺raw)
     # Inside the step the inner solves run their stage parameter from 0 to 1; the load they apply is

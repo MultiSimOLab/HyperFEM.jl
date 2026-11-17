@@ -20,7 +20,6 @@ export NewtonRaphson
 export NewtonTolerances
 export NewtonLog
 export NewtonCache
-export Newton_RaphsonSolver
 export solve!
 export converged
 export residual_history
@@ -47,8 +46,6 @@ export numerical_setup_state!
 export FullStepLS
 export BacktrackingLS
 export InjectivityLS
-export LineSearch
-export Injectivity_Preserving_LS
 export update_cellstate!
 export injectivity_step
 export ModelOperator
@@ -81,8 +78,5 @@ include("Injectivity.jl")
 include("ModelOperator.jl")
 include("LineSearches.jl")
 include("NonlinearSolvers.jl")
-
-# Deprecated names (one release)
-Base.@deprecate_binding Newton_RaphsonSolver NewtonRaphson
 
 end

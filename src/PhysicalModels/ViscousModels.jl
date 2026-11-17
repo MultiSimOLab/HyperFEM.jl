@@ -456,7 +456,7 @@ end
 function Energy(obj::ViscousIncompressible,
                 Ψe::Function, Se_::Function, ∂Se∂Ce_::Function,
                 F::TensorValue, Fn::TensorValue, A::VectorValue)
-  Uvn = TensorValue{3,3}(A[1:9]...)
+  Uvn = TensorValue{3,3}(ntuple(i -> A[i], Val(9)))   # static: A[1:9]... is type unstable
   λαn = A[10]
   #------------------------------------------
   # Get kinematics
@@ -494,7 +494,7 @@ end
 function Piola(obj::ViscousIncompressible,
                 Se_::Function, ∂Se∂Ce_::Function,
                 F::TensorValue, Fn::TensorValue, A::VectorValue)
-  Uvn = TensorValue{3,3}(A[1:9]...)
+  Uvn = TensorValue{3,3}(ntuple(i -> A[i], Val(9)))   # static: A[1:9]... is type unstable
   λαn = A[10]
   #------------------------------------------
   # Get kinematics
@@ -534,7 +534,7 @@ Visco-Elastic model for incompressible case
 function Tangent(obj::ViscousIncompressible,
                  Se_::Function, ∂Se∂Ce_::Function,
                  F::TensorValue, Fn::TensorValue, A::VectorValue)
-  Uvn = TensorValue{3,3}(A[1:9]...)
+  Uvn = TensorValue{3,3}(ntuple(i -> A[i], Val(9)))   # static: A[1:9]... is type unstable
   λαn = A[10]
   #------------------------------------------
   # Get kinematics
@@ -578,7 +578,7 @@ end
 function ReturnMapping(obj::ViscousIncompressible,
                        Se_::Function, ∂Se∂Ce_::Function,
                        F::TensorValue, Fn::TensorValue, A::VectorValue)
-  Uvn = TensorValue{3,3}(A[1:9]...)
+  Uvn = TensorValue{3,3}(ntuple(i -> A[i], Val(9)))   # static: A[1:9]... is type unstable
   λαn = A[10]
   #------------------------------------------
   # Get kinematics
@@ -603,7 +603,7 @@ end
 function ViscousDissipation(obj::ViscousIncompressible,
                        Se_::Function, ∂Se∂Ce_::Function,
                        F::TensorValue, Fn::TensorValue, A::VectorValue)
-  Uvn = TensorValue{3,3}(A[1:9]...)
+  Uvn = TensorValue{3,3}(ntuple(i -> A[i], Val(9)))   # static: A[1:9]... is type unstable
   λαn = A[10]
   #------------------------------------------
   # Get kinematics

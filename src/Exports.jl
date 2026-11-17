@@ -137,6 +137,7 @@ end
 @publish ComputationalModels Separable
 @publish ComputationalModels NonSeparable
 @publish ComputationalModels Coupling
+@publish ComputationalModels StageBlend
 @publish ComputationalModels BoundaryCondition
 @publish ComputationalModels BoundaryConditions
 @publish ComputationalModels MultiFieldBoundaryConditions
@@ -216,6 +217,11 @@ end
 @publish ComputationalModels level_glue
 @publish ComputationalModels prolongation
 @publish ComputationalModels prolongations
+@publish ComputationalModels PointLocation
+@publish ComputationalModels Transfer
+@publish ComputationalModels transfer!
+@publish ComputationalModels transfer_transpose!
+@publish ComputationalModels is_gather
 @publish ComputationalModels interpolate_L2_field
 @publish ComputationalModels L2_projection
 @publish ComputationalModels component_LInf
@@ -230,7 +236,6 @@ end
 @publish Solvers NewtonTolerances
 @publish Solvers NewtonLog
 @publish Solvers NewtonCache
-@publish Solvers Newton_RaphsonSolver
 @publish Solvers converged
 @publish Solvers residual_history
 @publish Solvers step_history
@@ -256,7 +261,6 @@ end
 @publish Solvers FullStepLS
 @publish Solvers BacktrackingLS
 @publish Solvers InjectivityLS
-@publish Solvers Injectivity_Preserving_LS
 @publish Solvers update_cellstate!
 @publish Solvers injectivity_step
 @publish Solvers ModelOperator
