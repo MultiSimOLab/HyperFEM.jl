@@ -9,8 +9,6 @@ using LinearAlgebra
 using StaticArrays
 
 using ..TensorAlgebra
-using ..TensorAlgebra: _∂H∂F_2D
-using ..TensorAlgebra: trAA
 
 import Base: +
 import Gridap.CellData: CellState, update_state!
@@ -132,6 +130,8 @@ abstract type FlexoElectro{EM} <: MultiPhysicalModel end
 abstract type MagnetoMechano{G,M} <: MultiPhysicalModel end
 
 include("KinematicModels.jl")
+
+include("Kinematics.jl")
 
 include("MechanicalModels.jl")
 

@@ -77,8 +77,6 @@ include("TensorsDefinitions.jl")
 
 include("Operations.jl")
 
-include("Functions.jl")
-
 include("SymmetricEigen.jl")
 
 include("Hessian.jl")
