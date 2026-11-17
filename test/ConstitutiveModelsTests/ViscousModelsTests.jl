@@ -195,11 +195,11 @@ end
   ∂Se∂Ce = ∂S∂C(Ce)
   ∂Se = -1/τ * (Se - λ*Ge)
   α = abs(tr(TensorValue(Tuple(∂Se∂Ce))))
-  Dvis_ref = -Se ⊙ (FourthOrderTensorValue(Tuple(inv(TensorValue(Tuple(2*∂Se∂Ce + 1e8α*Ge⊗Ge))))) ⊙ ∂Se)
+  Dvis_ref = -Se ⊙ (FourthOrderTensorValue(Tuple(inv(TensorValue(Tuple(2*∂Se∂Ce + 1e8α*Ge⊗Ge))))) ⋅² ∂Se)
   e_rel = Float64[]
   m_values = [10^m for m = 3:7]
   for m ∈ m_values
-    Dvis = -Se ⊙ (FourthOrderTensorValue(Tuple(inv(TensorValue(Tuple(2*∂Se∂Ce + m*α*Ge⊗Ge))))) ⊙ ∂Se)
+    Dvis = -Se ⊙ (FourthOrderTensorValue(Tuple(inv(TensorValue(Tuple(2*∂Se∂Ce + m*α*Ge⊗Ge))))) ⋅² ∂Se)
     e = abs(Dvis - Dvis_ref) / Dvis_ref
     push!(e_rel, e)
     @test e < 1e-6

@@ -58,7 +58,7 @@ Calculate the jacobian using the given constitutive model and finite element fun
 function jacobian(physicalmodel::Mechano, km::KinematicModel, u, du, v, dΩ, Λ=1.0, vars...)
   _, _, ∂Ψuu = physicalmodel()
   F, _, _    = get_Kinematics(km; Λ=Λ)
-  ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘∇(u)', vars...)) ⊙ ∇(du)'))dΩ
+  ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘∇(u)', vars...)) ⋅² ∇(du)'))dΩ
 end
 
 """
@@ -125,7 +125,7 @@ function jacobian(physicalmodel::ThermoElectroMechano, ::Type{Mechano}, kine::NT
   F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
   E     = get_Kinematics(kine[2]; Λ=Λ)
   ∂Ψuu = DΨ[5]
-  ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⊙ (∇(du)')))dΩ
+  ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⋅² (∇(du)')))dΩ
 end
 
 function jacobian(physicalmodel::ThermoElectroMechano, ::Type{Electro}, kine::NTuple{3,KinematicModel}, (u, φ, θ), dφ, vφ, dΩ, Λ=1.0)
@@ -151,8 +151,8 @@ function jacobian(physicalmodel::ThermoElectroMechano, ::Type{ElectroMechano}, k
   F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
   E     = get_Kinematics(kine[2]; Λ=Λ)
   ∂Ψφu = DΨ[8]
-  -1.0*∫(∇(dφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⊙ (∇(v)')))dΩ -
-  ∫(∇(vφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⊙ (∇(du)')))dΩ 
+  -1.0*∫(∇(dφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⋅² (∇(v)')))dΩ -
+  ∫(∇(vφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⋅² (∇(du)')))dΩ 
 end
 
 function jacobian(physicalmodel::ThermoElectroMechano, ::Type{ThermoMechano},kine::NTuple{3,KinematicModel}, (u, φ, θ), dθ, v, dΩ, Λ=1.0)
@@ -211,7 +211,7 @@ function jacobian(physicalmodel::ThermoMechano, ::Type{Mechano}, kine::NTuple{2,
   DΨ = physicalmodel()
   F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
   ∂Ψuu = DΨ[4]
-  ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘(∇(u)'), θ)) ⊙ (∇(du)')))dΩ
+  ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘(∇(u)'), θ)) ⋅² (∇(du)')))dΩ
 end
 
 function jacobian(physicalmodel::ThermoMechano, ::Type{Thermo}, kine::NTuple{2,KinematicModel},dθ, vθ, dΩ, Λ=1.0)
@@ -290,7 +290,7 @@ function jacobian(physicalmodel::FlexoElectro, ::Type{Mechano}, kine::NTuple{2,K
   F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
   E     = get_Kinematics(kine[2]; Λ=Λ)
   ∂Ψuu = DΨ[4]
-  ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘(∇(u)',X), E∘(∇(φ)))) ⊙ (∇(du)')))dΩ+
+  ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘(∇(u)',X), E∘(∇(φ)))) ⋅² (∇(du)')))dΩ+
   ∫(κ⋅(∇(v)'⊙ ∇(du)'))dΩ
 end
 
@@ -307,8 +307,8 @@ function jacobian(physicalmodel::FlexoElectro, ::Type{ElectroMechano}, kine::NTu
   F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
   E     = get_Kinematics(kine[2]; Λ=Λ)
   ∂Ψφu = DΨ[5]
-  -1.0*∫(∇(dφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)',X), E∘(∇(φ)))) ⊙ (∇(v)')))dΩ -
-  ∫(∇(vφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)',X), E∘(∇(φ)))) ⊙ (∇(du)')))dΩ 
+  -1.0*∫(∇(dφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)',X), E∘(∇(φ)))) ⋅² (∇(v)')))dΩ -
+  ∫(∇(vφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)',X), E∘(∇(φ)))) ⋅² (∇(du)')))dΩ 
 end
 
 
@@ -372,7 +372,7 @@ function jacobian(physicalmodel::ThermoElectroMech_PINNs, ::Type{Mechano}, kine:
   F, _, _ = get_Kinematics(kine[1]; Λ=Λ)
   E       = get_Kinematics(kine[2]; Λ=Λ)
   ∂Ψuu = DΨ[5]
-  ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⊙ (∇(du)')))dΩ
+  ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⋅² (∇(du)')))dΩ
 end
 
 function jacobian(physicalmodel::ThermoElectroMech_PINNs, ::Type{Electro}, kine::NTuple{2,KinematicModel},(u, φ, θ), dφ, vφ, dΩ, Λ=1.0)
@@ -398,8 +398,8 @@ function jacobian(physicalmodel::ThermoElectroMech_PINNs, ::Type{ElectroMechano}
   F, _, _ = get_Kinematics(kine[1]; Λ=Λ)
   E       = get_Kinematics(kine[2]; Λ=Λ)
   ∂Ψφu = DΨ[8]
-  -1.0*∫(∇(dφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⊙ (∇(v)')))dΩ -
-  ∫(∇(vφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⊙ (∇(du)')))dΩ 
+  -1.0*∫(∇(dφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⋅² (∇(v)')))dΩ -
+  ∫(∇(vφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⋅² (∇(du)')))dΩ 
 end
 
 function jacobian(physicalmodel::ThermoElectroMech_PINNs, ::Type{ThermoMechano}, kine::NTuple{2,KinematicModel}, (u, φ, θ), dθ, v, dΩ, Λ=1.0)

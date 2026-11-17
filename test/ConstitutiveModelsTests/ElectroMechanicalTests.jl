@@ -93,7 +93,7 @@ end
     0.0005129360612093835, 0.0012909164959851265, 0.001152698427032676, 0.0009471782270005929,
     0.001800950730156155, 0.0009587801251013468, 0.0008421896546088605, 0.0007114140805416631,
     0.001245006227831607)
-  Kin_mec = EvolutiveKinematics(Mechano; F=(t) -> ((∇u1, x) -> ∇u1 + one(∇u1) + t * ∇umacro + t * (A ⊙ x)))
+  Kin_mec = EvolutiveKinematics(Mechano; F=(t) -> ((∇u1, x) -> ∇u1 + one(∇u1) + t * ∇umacro + t * (A ⋅ x)))
   Kin_elec = EvolutiveKinematics(Electro; E=(t) -> ((∇φ) -> -∇φ + t * Emacro))
 
   physmec = MooneyRivlin3D(λ=10.0, μ1=1.0, μ2=1.0)

@@ -15,7 +15,7 @@ using Test
 # implemented they are reported as "Unexpected Pass" and must be moved to the supported list.
 #
 # Conventions of the contractions:
-#   a ⊙ b   contracts all the indices of the operand of lower order: the last indices of `a` or the first indices of `b`;
+#   a ⊙ b   contracts all the indices of two tensors of the same order;
 #   a ⋅ b   contracts the last index of `a` with the first index of `b`;
 #   a ⋅² b  contracts the last two indices of `a` with the first two indices of `b`;
 #   a * b   is `a ⋅ b` for second-order tensors.
@@ -44,16 +44,11 @@ function supported_operations(D)
     ("A⊗A", ⊗, (A, A), T4(D)),
     ("W⊗v", ⊗, (W, v), T4(D)),
     ("v⊗W", ⊗, (v, W), T4(D)),
-    # full contraction: |order(a) - order(b)|
+    # full contraction: tensors of the same order
     ("v⊙v", ⊙, (v, v), Float64),
     ("A⊙A", ⊙, (A, A), Float64),
     ("W⊙W", ⊙, (W, W), Float64),
     ("H⊙H", ⊙, (H, H), Float64),
-    ("W⊙v", ⊙, (W, v), T2(D)),
-    ("v⊙W", ⊙, (v, W), T2(D)),
-    ("W⊙A", ⊙, (W, A), V(D)),
-    ("H⊙A", ⊙, (H, A), T2(D)),
-    ("A⊙H", ⊙, (A, H), T2(D)),
     # single contraction: order(a) + order(b) - 2
     ("v⋅v", ⋅, (v, v), Float64),
     ("v⋅A", ⋅, (v, A), V(D)),
@@ -120,10 +115,7 @@ end
 # Operations not supported yet (the current result in the comment)
 function broken_operations(D)
   v, A, W, H = tensor_operands(D)
-  ops = Any[
-    ("A⊙v", ⊙, (A, v), V(D)),   # error
-    ("v⊙A", ⊙, (v, A), V(D)),   # error
-  ]
+  ops = Any[]
   if D == 2
     push!(ops, ("cof(A)", cof, (A,), T2(D)))  # error, the cross product is only defined in 3D
   end

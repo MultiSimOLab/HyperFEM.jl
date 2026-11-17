@@ -88,7 +88,7 @@ function mesh_movement_simulation(; backend=:lazy, verbose=false, interface_fiel
   # Vacuum mechanics
   res_vacmech(Λ) = (u, v) -> ∫((∇(v)' ⊙ (DΨvacuum_mech[2] ∘ (F ∘ (∇(u)')))))dΩair
 
-  jac_vacmech(Λ) = (u, du, v) -> ∫(∇(v)' ⊙ ((DΨvacuum_mech[3] ∘ (F ∘ (∇(u)'))) ⊙ (∇(du)')))dΩair
+  jac_vacmech(Λ) = (u, du, v) -> ∫(∇(v)' ⊙ ((DΨvacuum_mech[3] ∘ (F ∘ (∇(u)'))) ⋅² (∇(du)')))dΩair
 
   # the injectivity step (exact root over the quadrature points of the air) gives the safe load factor
   # of the Dirichlet projection; with rtol = 2 the Newton accepts the projected state without iterating

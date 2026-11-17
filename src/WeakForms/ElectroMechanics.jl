@@ -32,7 +32,7 @@ function jacobian(physicalmodel::ElectroMechano, ::Type{Mechano}, kine::NTuple{2
     F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
     E     = get_Kinematics(kine[2]; Λ=Λ)
     ∂Ψuu  = DΨ[4]
-    ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘∇(u)', E∘∇(φ), vars...)) ⊙ ∇(du)'))dΩ
+    ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘∇(u)', E∘∇(φ), vars...)) ⋅² ∇(du)'))dΩ
 end
 
 function jacobian(physicalmodel::ElectroMechano, ::Type{Electro}, kine::NTuple{2,KinematicModel}, (u, φ), dφ, vφ, dΩ, Λ=1.0, vars...; kwargs...)
@@ -48,8 +48,8 @@ function jacobian(physicalmodel::ElectroMechano, ::Type{ElectroMechano}, kine::N
     F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
     E     = get_Kinematics(kine[2]; Λ=Λ)
     ∂Ψφu  = DΨ[5]
-    -1.0*∫(∇(dφ) ⋅ ((∂Ψφu ∘ (F∘∇(u)', E∘∇(φ), vars...)) ⊙ ∇(v)'))dΩ -
-         ∫(∇(vφ) ⋅ ((∂Ψφu ∘ (F∘∇(u)', E∘∇(φ), vars...)) ⊙ ∇(du)'))dΩ 
+    -1.0*∫(∇(dφ) ⋅ ((∂Ψφu ∘ (F∘∇(u)', E∘∇(φ), vars...)) ⋅² ∇(v)'))dΩ -
+         ∫(∇(vφ) ⋅ ((∂Ψφu ∘ (F∘∇(u)', E∘∇(φ), vars...)) ⋅² ∇(du)'))dΩ 
 end
 
 # -------------------
