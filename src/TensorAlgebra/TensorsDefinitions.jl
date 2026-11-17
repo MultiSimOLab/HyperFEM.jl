@@ -40,3 +40,19 @@ const 𝕀3D = _identity4(3)
 """Second-order identity tensor in the dimension of the vector."""
 @generated Id(::VectorValue{D,Float64}) where {D} = _identity2(D)
 
+
+# ==================
+# Tensor conversions
+# ==================
+
+flat_tensor(a::VectorValue) = TensorValue(Tuple(a))
+flat_tensor(a::ThirdOrderTensorValue) = TensorValue(Tuple(a))
+flat_tensor(a::FourthOrderTensorValue) = TensorValue(Tuple(a))
+
+flat_smatrix(a::VectorValue) = get_array(flat_tensor(a))
+flat_smatrix(a::ThirdOrderTensorValue) = get_array(flat_tensor(a))
+flat_smatrix(a::FourthOrderTensorValue) = get_array(flat_tensor(a))
+
+flat_matrix(a::VectorValue) = Matrix(flat_smatrix(a))
+flat_matrix(a::ThirdOrderTensorValue) = Matrix(flat_smatrix(a))
+flat_matrix(a::FourthOrderTensorValue) = Matrix(flat_smatrix(a))
