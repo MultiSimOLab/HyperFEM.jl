@@ -57,6 +57,10 @@ export hessian_nonaffine
 export Box
 export Ellipsoid
 
+export flat_tensor
+export flat_smatrix
+export flat_matrix
+
 # outer               ⊗   \otimes
 # single contraction  ⋅   \cdot
 # double contraction  ⋅²  \cdot\^2
@@ -68,7 +72,7 @@ include("Kernel.jl")
 
 include("FunctionalAlgebra.jl")
 
-include("TensorsDefinitions.jl")
+include("Definitions.jl")
 
 include("Operations.jl")
 
