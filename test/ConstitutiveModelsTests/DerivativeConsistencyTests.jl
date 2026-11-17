@@ -192,6 +192,58 @@ end
   end
 end
 
+@testset "Derivative consistency: magneto-mechanical models" begin
+  E2 = VectorValue(0.3, -0.2)
+  for (mm, Fs, ℋ, N) in (
+      (PM.HardMagnetic(μ0=1.0, αr=0.4, χe=0.2, χr=8.0, βmok=1.0, βcoup=1.0) + PM.MooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0), DC_F3, DC_E3, DC_N3),
+      (PM.HardMagnetic2D(μ0=1.0, αr=0.4, χe=0.2, χr=8.0, βmok=1.0, βcoup=1.0) + PM.MooneyRivlin2D(λ=3.0, μ1=1.0, μ2=2.0), DC_F2, E2, DC_N2),
+      (PM.IdealMagnetic(μ0=1.0, χe=0.2) + PM.MooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0), DC_F3, DC_E3, DC_N3))
+    Ψ, Ψu, Ψφ, Ψuu, Ψφu, Ψφφ = mm()
+    @testset "$(nameof(typeof(mm.magneto))), $s" for (s, F) in pairs(Fs)
+      s == :regularised && continue
+      a = (F, ℋ, N)
+      @test dc_error(Ψu, Ψ, a, 1) < DC_RTOL
+      @test dc_error(Ψφ, Ψ, a, 2) < DC_RTOL
+      @test dc_error(Ψuu, Ψu, a, 1) < DC_RTOL
+      @test dc_error(Ψφu, Ψφ, a, 1) < DC_RTOL
+      @test dc_error(Ψφφ, Ψφ, a, 2) < DC_RTOL
+    end
+  end
+end
+
+@testset "Derivative consistency: thermo-(electro-)mechanical models with a thermal law" begin
+  thermo = PM.ThermalModel(Cv=2.0, θr=1.0, α=0.1)
+  law = PM.EntropicElasticityLaw(θr=1.0, γ=0.7)          # non-linear f(θ): f'' ≠ 0
+  mech = PM.MooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0)
+  δθ = 0.3
+  Ψ, Ψu, Ψθ, Ψuu, Ψθθ, Ψuθ = PM.ThermoMechModel(thermo, mech, law)()
+  for F in (DC_F3.small, DC_F3.large, DC_F3.compression)
+    a = (F, δθ)
+    @test dc_error(Ψu, Ψ, a, 1) < DC_RTOL
+    @test dc_error(Ψθ, Ψ, a, 2) < DC_RTOL
+    @test dc_error(Ψuu, Ψu, a, 1) < DC_RTOL
+    @test dc_error(Ψθθ, Ψθ, a, 2) < DC_RTOL
+    @test dc_error(Ψuθ, Ψu, a, 2) < DC_RTOL
+  end
+  Ψ, Ψu, Ψφ, Ψθ, Ψuu, Ψφφ, Ψθθ, Ψφu, Ψuθ, Ψφθ = PM.ThermoElectroMechModel(thermo, PM.IdealDielectric(ε=1.0), mech, law)()
+  for F in (DC_F3.small, DC_F3.large, DC_F3.compression)
+    a = (F, DC_E3, δθ)
+    @test dc_error(Ψu, Ψ, a, 1) < DC_RTOL
+    @test dc_error(Ψφ, Ψ, a, 2) < DC_RTOL
+    @test dc_error(Ψθ, Ψ, a, 3) < DC_RTOL
+    @test dc_error(Ψuu, Ψu, a, 1) < DC_RTOL
+    @test dc_error(Ψφφ, Ψφ, a, 2) < DC_RTOL
+    @test dc_error(Ψθθ, Ψθ, a, 3) < DC_RTOL
+    @test dc_error(Ψφu, Ψφ, a, 1) < DC_RTOL
+    @test dc_error(Ψuθ, Ψu, a, 3) < DC_RTOL
+    @test dc_error(Ψφθ, Ψφ, a, 3) < DC_RTOL
+  end
+  # the law and the thermal model share the reference temperature; the former constructor gives a clear error
+  @test_throws ArgumentError PM.ThermoMechModel(thermo, mech, PM.EntropicElasticityLaw(θr=2.0, γ=0.7))
+  @test_throws ArgumentError PM.ThermoMechModel(thermo, mech; fθ=identity, dfdθ=identity)
+  @test_throws ArgumentError PM.ThermoElectroMechModel(thermo, PM.IdealDielectric(ε=1.0), mech; fθ=identity, dfdθ=identity)
+end
+
 @testset "Every constitutive model accepts the load factor Λ" begin
   law = PM.EntropicElasticityLaw(θr=1.0, γ=0.7)
   thermo = PM.ThermalVolumetric(cv0=2.0, θr=1.0, α=0.1, κr=3.0, γ=0.5)
@@ -205,7 +257,9 @@ end
             PM.ThermalDeviatoric(nh, law), PM.ThermoMech_Bonet(thermo, nh, law), PM.ThermoMech_Bonet(thermo, visco, law, law),
             PM.ThermoElectroModel(diel, law),
             PM.ThermoElectroMech_Bonet(thermo, diel, nh; mech=law, elec=law),
-            PM.ThermoElectroMech_Bonet(thermo, diel, visco; el=law, vis=law, elec=law))
+            PM.ThermoElectroMech_Bonet(thermo, diel, visco; el=law, vis=law, elec=law),
+            PM.ThermoMechModel(PM.ThermalModel(Cv=2.0, θr=1.0, α=0.1), nh, law),
+            PM.ThermoElectroMechModel(PM.ThermalModel(Cv=2.0, θr=1.0, α=0.1), diel, nh, law))
   for m in models
     @test m(1.0) isa Tuple
     @test m() isa Tuple
@@ -237,7 +291,9 @@ end
            (diel + m, (DC_E3,)),
            (PM.ThermalDeviatoric(m, law), (1.0,)),
            (PM.ThermoMech_Bonet(thermo, m, law), (1.0,)),
-           (PM.ThermoElectroMech_Bonet(thermo, diel, m; mech=law, elec=law), (DC_E3, 1.0)))
+           (PM.ThermoElectroMech_Bonet(thermo, diel, m; mech=law, elec=law), (DC_E3, 1.0)),
+           (PM.ThermoMechModel(PM.ThermalModel(Cv=2.0, θr=1.0, α=0.1), m, law), (0.0,)),
+           (PM.ThermoElectroMechModel(PM.ThermalModel(Cv=2.0, θr=1.0, α=0.1), diel, m, law), (DC_E3, 0.0)))
   for (w, rest) in cases
     Ψ1 = w(1.0)[1](F, rest...)
     Ψ2 = w(2.0)[1](F, rest...)

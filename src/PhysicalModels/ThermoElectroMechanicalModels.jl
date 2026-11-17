@@ -17,43 +17,65 @@ function update_time_step!(obj::ThermoElectroMechano, Δt::Float64)
   update_time_step!(obj.mechano, Δt)
 end
 
-struct ThermoElectroMechModel{T<:Thermo,E<:Electro,M<:Mechano} <: ThermoElectroMechano{T,E,M}
+"""
+    ThermoElectroMechModel(thermo, electro, mechano, law)
+    ThermoElectroMechModel(; thermo, electro, mechano, law)
+
+Thermo-electro-mechanical model in the temperature increment `δθ = θ - θr`:
+
+```math
+\\Psi(F, E, \\delta\\theta) = f(\\theta)\\,\\big(\\Psi_m(F) + \\Psi_{em}(F, E)\\big) + \\Psi_t(\\delta\\theta)
++ \\Psi_{tm}(F, \\delta\\theta), \\qquad \\theta = \\theta_r + \\delta\\theta
+```
+
+with the same ingredients as [`ThermoMechModel`](@ref) plus the electro-mechanical model `Ψem`. The functor
+`model(Λ=1.0)` returns `(Ψ, ∂Ψ/∂F, ∂Ψ/∂E, ∂Ψ/∂θ, ∂²Ψ/∂F², ∂²Ψ/∂E², ∂²Ψ/∂θ², ∂²Ψ/∂E∂F, ∂²Ψ/∂F∂θ, ∂²Ψ/∂E∂θ, η)`
+as functions of `(F, E, δθ)`.
+"""
+struct ThermoElectroMechModel{T<:Thermo,E<:Electro,M<:Mechano,L<:ThermalLaw} <: ThermoElectroMechano{T,E,M}
   thermo::T
   electro::E
   mechano::M
-  fθ::Function
-  dfdθ::Function
+  law::L
 
-  function ThermoElectroMechModel(thermo::T, electro::E, mechano::M; fθ::Function, dfdθ::Function) where {T<:Thermo,E<:Electro,M<:Mechano}
-    new{T,E,M}(thermo, electro, mechano, fθ, dfdθ)
+  function ThermoElectroMechModel(thermo::T, electro::E, mechano::M, law::L) where {T<:Thermo,E<:Electro,M<:Mechano,L<:ThermalLaw}
+    _check_reference_temperature(thermo, law)
+    new{T,E,M,L}(thermo, electro, mechano, law)
   end
+end
 
-  function ThermoElectroMechModel(; thermo::T, electro::E, mechano::M, fθ::Function, dfdθ::Function) where {T<:Thermo,E<:Electro,M<:Mechano}
-    new{T,E,M}(thermo, electro, mechano, fθ, dfdθ)
-  end
+ThermoElectroMechModel(; thermo::Thermo, electro::Electro, mechano::Mechano, law::ThermalLaw) =
+  ThermoElectroMechModel(thermo, electro, mechano, law)
 
-  function (obj::ThermoElectroMechModel)(Λ::Float64=1.0)
-    Ψt, ∂Ψt_θ, ∂Ψt_θθ = obj.thermo(Λ)
-    Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano(Λ)
-    Ψem, ∂Ψem_u, ∂Ψem_φ, ∂Ψem_uu, ∂Ψem_φu, ∂Ψem_φφ = obj.electro(Λ)
-    Ψtm, ∂Ψtm_u, ∂Ψtm_θ, ∂Ψtm_uu, ∂Ψtm_uθ, ∂Ψtm_θθ = _getCoupling(obj.thermo, obj.mechano, Λ)
-    f(δθ) = (obj.fθ(δθ)::Float64)
-    df(δθ) = (obj.dfdθ(δθ)::Float64)
+function ThermoElectroMechModel(thermo::Thermo, electro::Electro, mechano::Mechano; kwargs...)
+  throw(ArgumentError("ThermoElectroMechModel(thermo, electro, mechano; fθ, dfdθ) has been replaced by " *
+                      "ThermoElectroMechModel(thermo, electro, mechano, law), with `law` a ThermalLaw."))
+end
 
-    Ψ(F, E, δθ) = f(δθ) * (Ψm(F) + Ψem(F, E)) + (Ψt(δθ) + Ψtm(F, δθ))
-    ∂Ψu(F, E, δθ) = f(δθ) * (∂Ψm_u(F) + ∂Ψem_u(F, E)) + ∂Ψtm_u(F, δθ)
-    ∂Ψφ(F, E, δθ) = f(δθ) * ∂Ψem_φ(F, E)
-    ∂Ψθ(F, E, δθ) = df(δθ) * (Ψm(F) + Ψem(F, E)) + ∂Ψtm_θ(F, δθ) + ∂Ψt_θ(δθ)
+function (obj::ThermoElectroMechModel)(Λ::Float64=1.0)
+  Ψt, ∂Ψt_θ, ∂Ψt_θθ = obj.thermo(Λ)
+  Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano(Λ)
+  Ψem, ∂Ψem_u, ∂Ψem_φ, ∂Ψem_uu, ∂Ψem_φu, ∂Ψem_φφ = obj.electro(Λ)
+  Ψtm, ∂Ψtm_u, ∂Ψtm_θ, ∂Ψtm_uu, ∂Ψtm_uθ, ∂Ψtm_θθ = _getCoupling(obj.thermo, obj.mechano, Λ)
+  fθ, dfθ, ddfθ = obj.law()
+  θr = obj.thermo.θr
+  f(δθ) = fθ(δθ + θr)
+  df(δθ) = dfθ(δθ + θr)
+  ddf(δθ) = ddfθ(δθ + θr)
 
-    ∂Ψuu(F, E, δθ) = f(δθ) * (∂Ψm_uu(F) + ∂Ψem_uu(F, E)) + ∂Ψtm_uu(F, δθ)
-    ∂Ψφu(F, E, δθ) = f(δθ) * ∂Ψem_φu(F, E)
-    ∂Ψφφ(F, E, δθ) = f(δθ) * ∂Ψem_φφ(F, E)
-    ∂Ψθθ(F, E, δθ) = ∂Ψtm_θθ(F, δθ) + ∂Ψt_θθ(δθ)
-    ∂Ψuθ(F, E, δθ) = df(δθ) * (∂Ψm_u(F) + ∂Ψem_u(F, E)) + ∂Ψtm_uθ(F, δθ)
-    ∂Ψφθ(F, E, δθ) = df(δθ) * ∂Ψem_φ(F, E)
-    η(F, E, δθ) = -∂Ψθ(F, E, δθ)
-    return (Ψ, ∂Ψu, ∂Ψφ, ∂Ψθ, ∂Ψuu, ∂Ψφφ, ∂Ψθθ, ∂Ψφu, ∂Ψuθ, ∂Ψφθ, η)
-  end
+  Ψ(F, E, δθ) = f(δθ) * (Ψm(F) + Ψem(F, E)) + (Ψt(δθ) + Ψtm(F, δθ))
+  ∂Ψu(F, E, δθ) = f(δθ) * (∂Ψm_u(F) + ∂Ψem_u(F, E)) + ∂Ψtm_u(F, δθ)
+  ∂Ψφ(F, E, δθ) = f(δθ) * ∂Ψem_φ(F, E)
+  ∂Ψθ(F, E, δθ) = df(δθ) * (Ψm(F) + Ψem(F, E)) + ∂Ψtm_θ(F, δθ) + ∂Ψt_θ(δθ)
+
+  ∂Ψuu(F, E, δθ) = f(δθ) * (∂Ψm_uu(F) + ∂Ψem_uu(F, E)) + ∂Ψtm_uu(F, δθ)
+  ∂Ψφu(F, E, δθ) = f(δθ) * ∂Ψem_φu(F, E)
+  ∂Ψφφ(F, E, δθ) = f(δθ) * ∂Ψem_φφ(F, E)
+  ∂Ψθθ(F, E, δθ) = ddf(δθ) * (Ψm(F) + Ψem(F, E)) + ∂Ψtm_θθ(F, δθ) + ∂Ψt_θθ(δθ)
+  ∂Ψuθ(F, E, δθ) = df(δθ) * (∂Ψm_u(F) + ∂Ψem_u(F, E)) + ∂Ψtm_uθ(F, δθ)
+  ∂Ψφθ(F, E, δθ) = df(δθ) * ∂Ψem_φ(F, E)
+  η(F, E, δθ) = -∂Ψθ(F, E, δθ)
+  return (Ψ, ∂Ψu, ∂Ψφ, ∂Ψθ, ∂Ψuu, ∂Ψφφ, ∂Ψθθ, ∂Ψφu, ∂Ψuθ, ∂Ψφθ, η)
 end
 
 

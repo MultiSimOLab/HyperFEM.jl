@@ -85,6 +85,34 @@ function test_viscous_derivatives_numerical(model; rtolP=1e-12, rtolH=1e-12)
 end
 
 
+"Numerical derivative of the stress `P(F)` (central differences)."
+function numerical_stress_derivative(P, F, ϵ=1e-5)
+  H = MMatrix{9,9}(zeros(Float64,81))
+  for j in 1:9
+    ej = zeros(9); ej[j] = ϵ
+    H[:, j] = (get_array(P(F + TensorValue(ej...))) - get_array(P(F - TensorValue(ej...))))[:] / 2ϵ
+  end
+  return FourthOrderTensorValue(Tuple(H))
+end
+
+
+"""
+The stress of a viscous model is the algorithmic one (internal variable fixed after the return mapping), not the
+derivative of the energy: the consistent tangent is checked against the numerical derivative of the stress.
+"""
+function test_viscous_tangent_numerical(model; rtol=1e-6)
+  update_time_step!(model, 1e-2)
+  Ψ, ∂Ψu, ∂Ψuu = model()
+  F = TensorValue(1.:9...) * 1e-3 + I3D
+  Fn = TensorValue(1.:9...) * 5e-4 + I3D
+  Uvn = isochoric_F(TensorValue(1.,2.,3.,2.,4.,5.,3.,5.,6.) * 2e-4 + I3D)
+  λvn = 1e-3
+  Avn = VectorValue(Uvn..., λvn)
+  tangent = richardson_expansion((F, ϵ) -> numerical_stress_derivative(F -> ∂Ψu(F, Fn, Avn), F, ϵ), F, 1e-4)
+  @test isapprox(∂Ψuu(F, Fn, Avn), tangent, rtol=rtol)
+end
+
+
 function test_elastic_derivatives_numerical(model; rtolP=1e-12, rtolH=1e-12)
   Ψ, ∂Ψu, ∂Ψuu = model()
   F = TensorValue(1.:9...) * 1e-3 + I3D
@@ -127,7 +155,7 @@ end;
 
 @testset "ViscousIncompressible" begin
   visco = ViscousIncompressible(IsochoricNeoHookean3D(μ=μ1), τ=τ1)
-  test_viscous_derivatives_numerical(visco, rtolP=1e-3, rtolH=1e-3)
+  test_viscous_tangent_numerical(visco)
 end
 
 @testset "ViscousIncompressible2" begin
@@ -160,7 +188,7 @@ end
   hyper_elastic_model = NeoHookean3D(λ=λ, μ=μ)
   branch1 = ViscousIncompressible(IsochoricNeoHookean3D(μ=μ1), τ=τ1)
   cons_model = GeneralizedMaxwell(hyper_elastic_model, branch1)
-  test_viscous_derivatives_numerical(cons_model, rtolP=1e-3, rtolH=1e-2)
+  test_viscous_tangent_numerical(cons_model)
 end
 
 @testset "Dissipation ViscousIncompressible" begin

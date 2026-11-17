@@ -6,6 +6,20 @@ using ..TensorAlgebra
 # Visco elastic models
 # =====================
 
+"""
+    ViscousIncompressible(elasto; τ)
+
+Viscous branch with an incompressible viscous strain (multiplicative split `C = Uvᵀ Ce Uv`): elastic model
+`elasto` (used through `SecondPiola`) and relaxation time `τ`. The state variable at each point is the viscous
+stretch `Uv` and the multiplier `λα` of the incompressibility constraint, `VectorValue(Uv..., λα)`. The functor
+`model(Λ=1.0)` returns `(Ψ, ∂Ψ/∂F, ∂²Ψ/∂F²)` as functions of `(F, Fn, A)`, with `Fn` the deformation gradient
+of the previous step and `A` the state; the time step is set with `update_time_step!`.
+
+The stress `∂Ψ/∂F` returned by the functor is the algorithmic stress: the first Piola–Kirchhoff stress with
+the viscous internal variable fixed at the value given by the return mapping of the step. It is not the total
+derivative `dΨ/dF` of the returned energy (which would include `∂Ψ/∂(internal variable)` times its
+derivative); the tangent `∂²Ψ/∂F²` is the consistent tangent, the derivative of that stress.
+"""
 struct ViscousIncompressible{E<:Elasto} <: Visco
   elasto::E
   τ::Float64
@@ -127,6 +141,18 @@ function Dissipation(obj::NVisco)
   D(F, Fn, A::Vararg{Any,N}) where N = _sum_branches((Di, Ai) -> Di(F, Fn, Ai), Dα, A, 0.0)
 end
 
+"""
+    GeneralizedMaxwell(longterm, branches...)
+
+Generalised Maxwell model: an elastic long-term model plus any number of viscous branches
+(`ViscousIncompressible`, `ViscousPolyconvex`). The functor `model(Λ=1.0)` returns `(Ψ, ∂Ψ/∂F, ∂²Ψ/∂F²)` as
+functions of `(F, Fn, A...)` (one state per branch; `(F, n, Fn, A...)` with an anisotropic long-term model).
+
+The stress `∂Ψ/∂F` returned by the functor is the algorithmic stress: the first Piola–Kirchhoff stress with
+the viscous internal variable fixed at the value given by the return mapping of the step. It is not the total
+derivative `dΨ/dF` of the returned energy (which would include `∂Ψ/∂(internal variable)` times its
+derivative); the tangent `∂²Ψ/∂F²` is the consistent tangent, the derivative of that stress. Without branches, the stress is the derivative of the energy.
+"""
 struct GeneralizedMaxwell{E<:Elasto,B<:NVisco} <: ViscoElastic{E}
   longterm::E
   branches::B

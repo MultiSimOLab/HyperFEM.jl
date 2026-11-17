@@ -60,7 +60,6 @@ export ThermoMech_EntropicPolyconvex
 export FlexoElectroModel
 export ThermoElectroMech_Bonet
 export ThermoElectroMech_Govindjee
-export ThermoElectroMech_PINNs
 export MagnetoMechModel
 export GeneralizedMaxwell
 export ViscousIncompressible
@@ -164,7 +163,6 @@ include("MagnetoMechanicalModels.jl")
 
 include("ThermoElectroMechanicalModels.jl")
 
-include("PINNs.jl")
 
 
 # ============================================

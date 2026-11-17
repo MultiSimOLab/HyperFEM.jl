@@ -90,35 +90,66 @@ function (obj::ThermalDeviatoric{<:IsoElastic})(Λ::Float64=1.0)
 end
 
 
-struct ThermoMechModel{T<:Thermo,M<:Mechano} <: ThermoMechano{T,M}
+"""
+    ThermoMechModel(thermo, mechano, law)
+    ThermoMechModel(; thermo, mechano, law)
+
+Thermo-mechanical model in the temperature increment `δθ = θ - θr`:
+
+```math
+\\Psi(F, \\delta\\theta) = f(\\theta)\\,\\Psi_m(F) + \\Psi_t(\\delta\\theta) + \\Psi_{tm}(F, \\delta\\theta),
+\\qquad \\theta = \\theta_r + \\delta\\theta
+```
+
+with `Ψm` the mechanical model, `Ψt` the thermal model (`ThermalModel`, which gives `θr`), `Ψtm` the
+thermo-mechanical coupling and `f` the thermal law (`ThermalLaw`, which gives `f`, `f'` and `f''`). The law must
+have the same reference temperature as the thermal model. The functor `model(Λ=1.0)` returns
+`(Ψ, ∂Ψ/∂F, ∂Ψ/∂θ, ∂²Ψ/∂F², ∂²Ψ/∂θ², ∂²Ψ/∂F∂θ, η)` as functions of `(F, δθ)`, with `η = -∂Ψ/∂θ`.
+"""
+struct ThermoMechModel{T<:Thermo,M<:Mechano,L<:ThermalLaw} <: ThermoMechano{T,M}
   thermo::T
   mechano::M
-  fθ::Function
-  dfdθ::Function
+  law::L
 
-  function ThermoMechModel(thermo::T, mechano::M; fθ::Function, dfdθ::Function) where {T <: Thermo, M <: Mechano}
-    new{T,M}(thermo, mechano, fθ, dfdθ)
+  function ThermoMechModel(thermo::T, mechano::M, law::L) where {T<:Thermo,M<:Mechano,L<:ThermalLaw}
+    _check_reference_temperature(thermo, law)
+    new{T,M,L}(thermo, mechano, law)
   end
+end
 
-  function ThermoMechModel(; thermo::T, mechano::M, fθ::Function, dfdθ::Function) where {T <: Thermo, M <: Mechano}
-    new{T,M}(thermo, mechano, fθ, dfdθ)
-  end
+ThermoMechModel(; thermo::Thermo, mechano::Mechano, law::ThermalLaw) = ThermoMechModel(thermo, mechano, law)
 
-  function (obj::ThermoMechModel)(Λ::Float64=1.0)
-    Ψt, ∂Ψt_θ, ∂Ψt_θθ = obj.thermo(Λ)
-    Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano(Λ)
-    Ψtm, ∂Ψtm_u, ∂Ψtm_θ, ∂Ψtm_uu, ∂Ψtm_uθ, ∂Ψtm_θθ = _getCoupling(obj.thermo, obj.mechano, Λ)
-    f(δθ) = (obj.fθ(δθ)::Float64)
-    df(δθ) = (obj.dfdθ(δθ)::Float64)
-    Ψ(F, δθ) = f(δθ) * (Ψm(F)) + (Ψt(δθ) + Ψtm(F, δθ))
-    ∂Ψu(F, δθ) = f(δθ) * (∂Ψm_u(F)) + ∂Ψtm_u(F, δθ)
-    ∂Ψθ(F, δθ) = df(δθ) * (Ψm(F)) + ∂Ψtm_θ(F, δθ) + ∂Ψt_θ(δθ)
-    ∂Ψuu(F, δθ) = f(δθ) * (∂Ψm_uu(F)) + ∂Ψtm_uu(F, δθ)
-    ∂Ψθθ(F, δθ) = ∂Ψtm_θθ(F, δθ) + ∂Ψt_θθ(δθ)
-    ∂Ψuθ(F, δθ) = df(δθ) * (∂Ψm_u(F)) + ∂Ψtm_uθ(F, δθ)
-    η(F, δθ) = -∂Ψθ(F, δθ)
-    return (Ψ, ∂Ψu, ∂Ψθ, ∂Ψuu, ∂Ψθθ, ∂Ψuθ, η)
+function ThermoMechModel(thermo::Thermo, mechano::Mechano; kwargs...)
+  throw(ArgumentError("ThermoMechModel(thermo, mechano; fθ, dfdθ) has been replaced by " *
+                      "ThermoMechModel(thermo, mechano, law), with `law` a ThermalLaw (e.g. EntropicElasticityLaw)."))
+end
+
+"The thermal law and the thermal model must share the reference temperature."
+function _check_reference_temperature(thermo, law)
+  if hasproperty(law, :θr) && hasproperty(thermo, :θr) && law.θr != thermo.θr
+    throw(ArgumentError("the reference temperature of the thermal law (θr = $(law.θr)) differs from that " *
+                        "of the thermal model (θr = $(thermo.θr))"))
   end
+  nothing
+end
+
+function (obj::ThermoMechModel)(Λ::Float64=1.0)
+  Ψt, ∂Ψt_θ, ∂Ψt_θθ = obj.thermo(Λ)
+  Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano(Λ)
+  Ψtm, ∂Ψtm_u, ∂Ψtm_θ, ∂Ψtm_uu, ∂Ψtm_uθ, ∂Ψtm_θθ = _getCoupling(obj.thermo, obj.mechano, Λ)
+  fθ, dfθ, ddfθ = obj.law()
+  θr = obj.thermo.θr
+  f(δθ) = fθ(δθ + θr)
+  df(δθ) = dfθ(δθ + θr)
+  ddf(δθ) = ddfθ(δθ + θr)
+  Ψ(F, δθ) = f(δθ) * (Ψm(F)) + (Ψt(δθ) + Ψtm(F, δθ))
+  ∂Ψu(F, δθ) = f(δθ) * (∂Ψm_u(F)) + ∂Ψtm_u(F, δθ)
+  ∂Ψθ(F, δθ) = df(δθ) * (Ψm(F)) + ∂Ψtm_θ(F, δθ) + ∂Ψt_θ(δθ)
+  ∂Ψuu(F, δθ) = f(δθ) * (∂Ψm_uu(F)) + ∂Ψtm_uu(F, δθ)
+  ∂Ψθθ(F, δθ) = ddf(δθ) * (Ψm(F)) + ∂Ψtm_θθ(F, δθ) + ∂Ψt_θθ(δθ)
+  ∂Ψuθ(F, δθ) = df(δθ) * (∂Ψm_u(F)) + ∂Ψtm_uθ(F, δθ)
+  η(F, δθ) = -∂Ψθ(F, δθ)
+  return (Ψ, ∂Ψu, ∂Ψθ, ∂Ψuu, ∂Ψθθ, ∂Ψuθ, η)
 end
 
 
