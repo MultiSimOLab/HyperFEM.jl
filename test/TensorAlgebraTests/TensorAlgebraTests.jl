@@ -139,9 +139,6 @@ end
 
 @testset "tensor conversions" begin
   for D in (2, 3)
-    # vector with D² components -> D×D matrix (column-major)
-    v = VectorValue(Tuple(1.0:D^2))
-    @test (@inferred flat_tensor(v)) == TensorValue{D,D}(Tuple(1.0:D^2))
     # third-order tensor -> D×D² matrix, rows i, columns (j,k)
     w = digits3(D)
     W = third(w)
@@ -154,7 +151,7 @@ end
     @test (@inferred flat_tensor(H)) isa TensorValue{D^2,D^2,Float64}
     @test get_array(flat_tensor(H)) == reshape(h, D^2, D^2)
     @test FourthOrderTensorValue(Tuple(flat_tensor(H))) == H
-    for X in (v, W, H)
+    for X in (W, H)
       M = flat_tensor(X)
       @test (@inferred flat_smatrix(X)) isa SMatrix{size(M)...,Float64}
       @test flat_smatrix(X) == get_array(M)

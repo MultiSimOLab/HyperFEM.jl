@@ -45,19 +45,16 @@ const 𝕀3D = _identity4(3)
 # Tensor conversions
 # ==================
 
-const _FlattenableTensor = Union{VectorValue,ThirdOrderTensorValue,FourthOrderTensorValue}
+const _FlattenableTensor = Union{ThirdOrderTensorValue,FourthOrderTensorValue}
 
 """
-    flat_tensor(v::VectorValue{N²})::TensorValue{N,N}
     flat_tensor(W::ThirdOrderTensorValue{D1,D2,D3})::TensorValue{D1,D2*D3}
     flat_tensor(H::FourthOrderTensorValue{D})::TensorValue{D²,D²}
 
 Matrix representation of a tensor:
-- VectorValue: D² -> D×D,
 - ThirdOrderTensorValue: D×D×D -> D×D²
 - FourthOrderTensorValue: D×D×D×D -> D²×D²
 """
-flat_tensor(a::VectorValue) = TensorValue(Tuple(a))
 flat_tensor(a::ThirdOrderTensorValue{D1,D2,D3}) where {D1,D2,D3} = TensorValue{D1,D2 * D3}(Tuple(a))
 flat_tensor(a::FourthOrderTensorValue) = TensorValue(Tuple(a))
 
