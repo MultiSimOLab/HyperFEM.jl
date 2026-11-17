@@ -46,8 +46,9 @@ function ∂∂log∂JJ(J; threshold=0.01)
 end
 
 
+"""Derivative of the cofactor in 2D, `∂cof(F)/∂F`."""
 function _∂H∂F_2D()
-  TensorValue(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+  FourthOrderTensorValue{2}(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
 end
 
 
@@ -56,10 +57,5 @@ function trAA(A::TensorValue{3, 3, T, N}) where {T, N}
 end
 
 
-@generated function Tensorize(A::VectorValue{D,Float64}) where {D}
-  str = ""
-  for i in 1:D
-    str *= "A.data[$i], "
-  end
-  Meta.parse("TensorValue($str)")
-end
+"""Square second-order tensor with the components of the vector (column-major)."""
+Tensorize(A::VectorValue{D,Float64}) where {D} = TensorValue(Tuple(A))

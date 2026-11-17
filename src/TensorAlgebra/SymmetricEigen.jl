@@ -96,3 +96,10 @@ function regularize_hessian(C::TensorValue{N,N,T}, δ::Real) where {N,T}
   R = Q * Diagonal(max.(T(δ), λ)) * Q'
   return TensorValue{N,N,T}(Tuple(R))
 end
+
+"""
+    regularize_hessian(H::FourthOrderTensorValue, δ) -> FourthOrderTensorValue
+
+Same as for the D²×D² matrix of `H`, `TensorValue(Tuple(H))`.
+"""
+regularize_hessian(H::FourthOrderTensorValue, δ::Real) = FourthOrderTensorValue(Tuple(regularize_hessian(TensorValue(Tuple(H)), δ)))

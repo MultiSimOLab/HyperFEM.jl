@@ -33,11 +33,11 @@ function Gridap.CellData.CellState(::ViscousIncompressible, F0::TensorValue, poi
 end
 
 function Gridap.CellData.CellState(obj::ViscousIncompressible, points::Measure; backend=:lazy)
-  CellState(obj, I3, points; backend)
+  CellState(obj, I3D, points; backend)
 end
 
 function initialize_state(::ViscousIncompressible)
-  VectorValue(I3..., 0.0)
+  VectorValue(I3D..., 0.0)
 end
 
 function Gridap.CellData.update_state!(obj::ViscousIncompressible, A, F, Fn; backend=:lazy)
@@ -93,8 +93,10 @@ function (obj::NVisco)()
   ∂ΨαF  = map(d -> d[2], DΨv)
   ∂ΨαFF = map(d -> d[3], DΨv)
   Ψ(F, Fn, A::Vararg{Any,N})     where N = _sum_branches((Ψi, Ai) -> Ψi(F, Fn, Ai), Ψα, A, 0.0)
-  ∂Ψ∂F(F, Fn, A::Vararg{Any,N})  where N = _sum_branches((∂ΨiF, Ai) -> ∂ΨiF(F, Fn, Ai), ∂ΨαF, A, zerotensor3)
-  ∂Ψ∂FF(F, Fn, A::Vararg{Any,N}) where N = _sum_branches((∂ΨiFF, Ai) -> ∂ΨiFF(F, Fn, Ai), ∂ΨαFF, A, zerotensor9)
+  zero2 = zero(TensorValue{3,3,Float64,9})
+  zero4 = zero(FourthOrderTensorValue{3,Float64,81})
+  ∂Ψ∂F(F, Fn, A::Vararg{Any,N})  where N = _sum_branches((∂ΨiF, Ai) -> ∂ΨiF(F, Fn, Ai), ∂ΨαF, A, zero2)
+  ∂Ψ∂FF(F, Fn, A::Vararg{Any,N}) where N = _sum_branches((∂ΨiFF, Ai) -> ∂ΨiFF(F, Fn, Ai), ∂ΨαFF, A, zero4)
   (Ψ, ∂Ψ∂F, ∂Ψ∂FF)
 end
 
@@ -303,7 +305,7 @@ function JacobianReturnMapping(γα, Ce, Se, Se_trial, ∂Se∂Ce, C, λα)
   ∂res2_∂Ce = Ge
   res = [get_array(res1)[:]; res2]
   ∂res = MMatrix{10,10}(zeros(10, 10))  # TODO: It'd be nice to use hvcat: ∂res = [∂res1_Ce ∂res1_∂λα; ∂res2_∂Ce 0.0]
-  ∂res[1:9, 1:9] = get_array(∂res1_∂Ce)
+  ∂res[1:9, 1:9] = get_array(TensorValue(Tuple(∂res1_∂Ce)))
   ∂res[1:9, 10] = get_array(∂res1_∂λα)[:]
   ∂res[10, 1:9] = (get_array(∂res2_∂Ce)[:])'
   return res, ∂res
@@ -350,7 +352,7 @@ function ∂Ce_∂C(::ViscousIncompressible, γα, ∂Se∂Ce_, invUvn, Ce, Ce_t
   Ge = cof(Ce)
   ∂Se∂Ce = ∂Se∂Ce_(Ce)
   ∂Se∂Ce_trial = ∂Se∂Ce_(Ce_trial)
-  ∂Ce_trial_∂C = invUvn ⊗₁₃²⁴ invUvn
+  ∂Ce_trial_∂C = invUvn ⊗ᵢₖʲˡ invUvn
   #------------------------------------------
   # Derivative of return mapping with respect to Ce and λα
   #------------------------------------------   
@@ -360,19 +362,19 @@ function ∂Ce_∂C(::ViscousIncompressible, γα, ∂Se∂Ce_, invUvn, Ce, Ce_t
   #------------------------------------------
   # Derivative of return mapping with respect to C
   #------------------------------------------   
-  F1 = γα * ∂Se∂Ce_trial * ∂Ce_trial_∂C
+  F1 = (γα * ∂Se∂Ce_trial) ⋅² ∂Ce_trial_∂C
   F2 = G
   #------------------------------------------
   # Derivative of {Ce,λα} with respect to C
   #------------------------------------------   
   K = MMatrix{10,10}(zeros(10, 10))
-  K[1:9, 1:9] = get_array(K11)    # TODO: Check the TensorValue interface
+  K[1:9, 1:9] = get_array(TensorValue(Tuple(K11)))
   K[1:9, 10] = get_array(K12)[:]
   K[10, 1:9] = get_array(K21)[:]  # There is no need to transpose the vector
-  F = [get_array(F1); (get_array(F2)[:])']
+  F = [get_array(TensorValue(Tuple(F1))); (get_array(F2)[:])']
   ∂u∂C = K \ F
   ∂Ce∂C = ∂u∂C[SOneTo(9), SOneTo(9)]  # Static slice (SMatrix), not a Matrix
-  return TensorValue(∂Ce∂C)
+  return FourthOrderTensorValue(Tuple(∂Ce∂C))
 end
 
 
@@ -380,7 +382,7 @@ end
 Tangent operator of Ce at fixed Uv
 """
 function ∂Ce_∂C_Uvfixed(invUv)
-  invUv ⊗₁₃²⁴ invUv
+  invUv ⊗ᵢₖʲˡ invUv
 end
 
 
@@ -389,7 +391,7 @@ end
 """
 function ∂Ce_∂invUv(C, invU)
   invU_C = invU * C
-  invU_C ⊗₁₃²⁴ I3 + I3 ⊗₁₃²⁴ invU_C
+  invU_C ⊗ᵢₖʲˡ I3D + I3D ⊗ᵢₖʲˡ invU_C
 end
 
 
@@ -410,7 +412,7 @@ Tangent operator for the incompressible case
 - `λα`
 
 # Return
-- `Cv::TensorValue{9,9}`: A fourth-order tensor in flattened notation
+- `Cv::FourthOrderTensorValue{3}`: fourth-order tangent
 """
 function ViscousTangentOperator(obj::ViscousIncompressible,
                   Se_::Function, ∂Se∂Ce_::Function,
@@ -426,27 +428,27 @@ function ViscousTangentOperator(obj::ViscousIncompressible,
   DCe_DC = ∂Ce_∂C(obj, γα, ∂Se∂Ce_, invUvn, Ce, Ce_trial, λα, F)
   DCe_DC_Uvfixed = ∂Ce_∂C_Uvfixed(invUv)
   DCe_DinvUv = ∂Ce_∂invUv(C, invUv)
-  DinvUv_DC = inv(DCe_DinvUv) * (DCe_DC - DCe_DC_Uvfixed)
-  DCDF = F' ⊗₁₃²⁴ I3 + I3 ⊗₁₄²³ F'
+  DinvUv_DC = FourthOrderTensorValue(Tuple(inv(TensorValue(Tuple(DCe_DinvUv))))) ⋅² (DCe_DC - DCe_DC_Uvfixed)
+  DCDF = F' ⊗ᵢₖʲˡ I3D + I3D ⊗ᵢₗʲᵏ F'
   #------------------------------------------
   # 0.5*δC_{Uvfixed}:DSe[ΔC]
   #------------------------------------------
-  C1 = 0.5 * DCe_DC_Uvfixed' * ∂Se∂Ce_(Ce) * DCe_DC
+  C1 = 0.5 * DCe_DC_Uvfixed' ⋅² ∂Se∂Ce_(Ce) ⋅² DCe_DC
   #------------------------------------------
   # Se:0.5*(DUv^{-1}[ΔC]*δC*Uv^{-1} + Uv^{-1}*δC*DUv^{-1}[ΔC])
   #------------------------------------------
   invUv_Se = invUv * Se_(Ce)
-  C2 = 0.5 * (contraction_IP_JPKL(invUv_Se, DinvUv_DC) +
-              contraction_IP_PJKL(invUv_Se, DinvUv_DC))
+  C2 = 0.5 * ((invUv_Se ⊗ᵢₘʲᵐᵏˡ DinvUv_DC) +
+              (invUv_Se ⋅ DinvUv_DC))
   #------------------------------------------
   # Sv:(D(δC_{Uvfixed})[ΔC])
   #------------------------------------------
   Sv = invUv_Se * invUv
-  C3 = I3 ⊗₁₃²⁴ Sv
+  C3 = I3D ⊗ᵢₖʲˡ Sv
   #------------------------------------------
   # Total Contribution
   #------------------------------------------
-  Cv = DCDF' * (C1 + C2) * DCDF + C3
+  Cv = DCDF' ⋅² (C1 + C2) ⋅² DCDF + C3
   Cv
 end
 
@@ -622,8 +624,8 @@ function ViscousDissipation(obj::ViscousIncompressible,
   Se = Se_(Ce)
   Ge = cof(Ce)
   ∂Se∂Ce = ∂Se∂Ce_(Ce)
-  α = 1.e3abs(tr(∂Se∂Ce))  # Ensure invertibility of the elasticity tensor.
-  invCCe = inv(2*∂Se∂Ce + α*Ge⊗Ge)
+  α = 1.e3abs(tr(TensorValue(Tuple(∂Se∂Ce))))  # Ensure invertibility of the elasticity tensor.
+  invCCe = FourthOrderTensorValue(Tuple(inv(TensorValue(Tuple(2*∂Se∂Ce + α*Ge⊗Ge)))))
   ∂Se = -1/τ * (Se - λα*Ge)
   Dvis = -Se ⊙ (invCCe ⊙ ∂Se)
   Dvis

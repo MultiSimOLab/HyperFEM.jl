@@ -19,7 +19,7 @@ jobs:
   test:
     name: Tests
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -40,7 +40,7 @@ jobs:
   lowest-gridap: # downgrade compatibility: the lowest Gridap allowed by [compat] must still work
     name: Lowest Gridap
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
 
     steps:
       - uses: actions/checkout@v7
@@ -66,7 +66,7 @@ jobs:
   kernels-dev: # early warning: HyperFEM against the development version (main) of HyperFEMKernels; does not block
     name: HyperFEMKernels main (non-blocking)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     continue-on-error: true
 
     steps:

@@ -32,7 +32,7 @@ function update_time_step!(obj::ViscousPolyconvex, Δt::Float64)
 end
 
 function initialize_state(::ViscousPolyconvex)
-  I3
+  I3D
 end
 
 function Gridap.CellData.CellState(::ViscousPolyconvex, Cv₀::TensorValue, points::Measure; backend=:lazy)
@@ -40,7 +40,7 @@ function Gridap.CellData.CellState(::ViscousPolyconvex, Cv₀::TensorValue, poin
 end
 
 function Gridap.CellData.CellState(obj::ViscousPolyconvex, points::Measure; backend=:lazy)
-  CellState(obj, I3, points; backend)
+  CellState(obj, I3D, points; backend)
 end
 
 function Gridap.CellData.update_state!(obj::ViscousPolyconvex, A, F, Fn; backend=:lazy)
@@ -101,7 +101,7 @@ end
   invCv, ∂invCv = ∂Cv⁻¹∂C(obj, C, Cn, Cvn)
   H1 = obj.μ * ∂invCv
   H2 = ∂Sv∂C_Cᵥfix(obj, C, invCv)
-  H3 = I3 ⊗₁₃²⁴ Sv(obj, C, invCv)
+  H3 = I3D ⊗ᵢₖʲˡ Sv(obj, C, invCv)
   push_forward_C_to_F(F, H1 + H2) + H3
 end
 
