@@ -2,6 +2,7 @@ using Gridap.TensorValues
 using Gridap.Arrays
 using HyperFEM.TensorAlgebra
 using Test
+import ForwardDiff
 import LinearAlgebra
 import Random
 
