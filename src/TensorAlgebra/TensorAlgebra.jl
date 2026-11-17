@@ -50,11 +50,6 @@ export 𝕀2D
 export 𝕀3D
 export Id
 
-export logreg
-export ∂log∂J
-export ∂∂log∂JJ
-export Tensorize
-export cof
 export push_forward_C_to_F
 export regularize_hessian
 export hessian_nonaffine
