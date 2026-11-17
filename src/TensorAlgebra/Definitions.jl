@@ -40,7 +40,34 @@ const 𝕀3D = _identity4(3)
 """Second-order identity tensor in the dimension of the vector."""
 @generated Id(::VectorValue{D,Float64}) where {D} = _identity2(D)
 
-# Former names, used by the benchmark scripts of `main` (temporary, see the end of Operations.jl)
-Base.@deprecate_binding I3 I3D
-Base.@deprecate_binding I4 TensorValue(Tuple(𝕀2D))   # the D²×D² identity matrix, as the former I4
-Base.@deprecate_binding I9 TensorValue(Tuple(𝕀3D))   # the D²×D² identity matrix, as the former I9
+
+# ==================
+# Tensor conversions
+# ==================
+
+const _FlattenableTensor = Union{ThirdOrderTensorValue,FourthOrderTensorValue}
+
+"""
+    flat_tensor(W::ThirdOrderTensorValue{D1,D2,D3})::TensorValue{D1,D2*D3}
+    flat_tensor(H::FourthOrderTensorValue{D})::TensorValue{D²,D²}
+
+Matrix representation of a tensor:
+- ThirdOrderTensorValue: D×D×D -> D×D²
+- FourthOrderTensorValue: D×D×D×D -> D²×D²
+"""
+flat_tensor(a::ThirdOrderTensorValue{D1,D2,D3}) where {D1,D2,D3} = TensorValue{D1,D2 * D3}(Tuple(a))
+flat_tensor(a::FourthOrderTensorValue) = TensorValue(Tuple(a))
+
+"""
+    flat_smatrix(a)::SMatrix
+
+Matrix representation of `a` as an `SMatrix`, see [`flat_tensor`](@ref).
+"""
+flat_smatrix(a::_FlattenableTensor) = get_array(flat_tensor(a))
+
+"""
+    flat_matrix(a)::Matrix
+
+Matrix representation of `a` as a `Matrix`, see [`flat_tensor`](@ref).
+"""
+flat_matrix(a::_FlattenableTensor) = Matrix(flat_smatrix(a))

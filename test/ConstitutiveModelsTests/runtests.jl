@@ -4,6 +4,10 @@ using Test
 @testset "ConstitutiveModels" begin
 
   @time begin
+    include("KinematicsTests.jl")
+  end
+
+  @time begin
     include("PhysicalModelTests.jl")
   end
 

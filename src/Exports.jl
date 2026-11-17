@@ -17,15 +17,12 @@ end
 @publish TensorAlgebra (⊗ᵢₘʲᵐᵏˡ)
 @publish TensorAlgebra ThirdOrderTensorValue
 @publish TensorAlgebra FourthOrderTensorValue
-@publish TensorAlgebra logreg
 @publish TensorAlgebra Box
 @publish TensorAlgebra Ellipsoid
 @publish TensorAlgebra I2D
 @publish TensorAlgebra I3D
-@publish TensorAlgebra I3  # temporary, ensure Benchmarks compat. To be removed
 @publish TensorAlgebra 𝕀2D
 @publish TensorAlgebra 𝕀3D
-@publish TensorAlgebra Tensorize
 @publish TensorAlgebra hessian_nonaffine
 
 @publish Backends AbstractBackend
@@ -132,6 +129,7 @@ end
 @publish WeakForms residual
 @publish WeakForms jacobian
 @publish WeakForms mass_term
+@publish WeakForms energy
 
 @publish ComputationalModels Prescription
 @publish ComputationalModels Separable
@@ -265,7 +263,6 @@ end
 @publish Solvers injectivity_step
 @publish Solvers ModelOperator
 @publish Solvers backend_operator
-@publish WeakForms energy
 @publish Solvers max_step
 @publish Solvers set_tangent!
 @publish Solvers ConsistentTangent

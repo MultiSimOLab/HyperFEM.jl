@@ -2,8 +2,9 @@ using Gridap.TensorValues
 using Gridap.Arrays
 using HyperFEM.TensorAlgebra
 using Test
-import LinearAlgebra
-import Random
+using LinearAlgebra
+using Random
+using StaticArrays
 
 
 digits1(D) = [Float64(i) for i in 1:D]
@@ -27,19 +28,8 @@ fourth(a::Array{Float64,4}) = FourthOrderTensorValue(Tuple(a))
     H = fourth(h)
     @test H' == fourth([h[k, l, i, j] for i in 1:D, j in 1:D, k in 1:D, l in 1:D])
     @test H'' == H
-    @test Tuple(H') == Tuple(TensorValue(Tuple(H))')  # the transpose of the D²×D² matrix
+    @test Tuple(H') == Tuple(flat_tensor(H)')  # the transpose of the D²×D² matrix
   end
-end
-
-
-@testset "Jacobian regularization" begin
-  ∇u = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0) * 1e-3
-  F = one(∇u) + ∇u
-  J = det(F)
-  @test J == 1.0149819999999996
-  @test logreg(J; threshold=0.01) == 0.014870878346353422
-  @test ForwardDiff.derivative(logreg, J) ≈ ∂log∂J(J)
-  @test ForwardDiff.derivative(∂log∂J, J) ≈ ∂∂log∂JJ(J)
 end
 
 
@@ -125,7 +115,7 @@ end
   for (D, 𝕀) in ((2, 𝕀2D), (3, 𝕀3D))
     @test 𝕀 isa FourthOrderTensorValue{D,Float64}
     @test 𝕀 == fourth([Float64(i == k && j == l) for i in 1:D, j in 1:D, k in 1:D, l in 1:D])
-    @test Tuple(TensorValue(Tuple(𝕀))) == Tuple(one(TensorValue{D^2,D^2,Float64}))  # the identity matrix
+    @test Tuple(flat_tensor(𝕀)) == Tuple(one(TensorValue{D^2,D^2,Float64}))  # the identity matrix
     A = TensorValue{D,D}(digits2(D)...)
     @test 𝕀 ⊙ A == A
   end
@@ -143,6 +133,31 @@ end
     w = digits3(D)
     @test ThirdOrderTensorValue(Tuple(reshape(w, D, D^2))) == third(w)
     @test FourthOrderTensorValue(Tuple(digits4(D))...) == H  # varargs
+  end
+end
+
+
+@testset "tensor conversions" begin
+  for D in (2, 3)
+    # third-order tensor -> D×D² matrix, rows i, columns (j,k)
+    w = digits3(D)
+    W = third(w)
+    @test (@inferred flat_tensor(W)) isa TensorValue{D,D^2,Float64}
+    @test get_array(flat_tensor(W)) == reshape(w, D, D^2)
+    @test ThirdOrderTensorValue(Tuple(flat_tensor(W))) == W
+    # fourth-order tensor -> D²×D² matrix, rows (i,j), columns (k,l)
+    h = digits4(D)
+    H = fourth(h)
+    @test (@inferred flat_tensor(H)) isa TensorValue{D^2,D^2,Float64}
+    @test get_array(flat_tensor(H)) == reshape(h, D^2, D^2)
+    @test FourthOrderTensorValue(Tuple(flat_tensor(H))) == H
+    for X in (W, H)
+      M = flat_tensor(X)
+      @test (@inferred flat_smatrix(X)) isa SMatrix{size(M)...,Float64}
+      @test flat_smatrix(X) == get_array(M)
+      @test (@inferred flat_matrix(X)) isa Matrix{Float64}
+      @test flat_matrix(X) == Matrix(get_array(M))
+    end
   end
 end
 
@@ -177,7 +192,7 @@ end
     g = reverse(h)
     G = fourth(g)
     @test H ⋅² G == fourth([sum(h[i, j, m, n] * g[m, n, k, l] for m in r, n in r) for i in r, j in r, k in r, l in r])
-    @test Tuple(H ⋅² G) == Tuple(TensorValue(Tuple(H)) ⋅ TensorValue(Tuple(G)))  # the product of the D²×D² matrices
+    @test Tuple(H ⋅² G) == Tuple(flat_tensor(H) ⋅ flat_tensor(G))  # the product of the D²×D² matrices
     @test H ⋅² A == H ⊙ A
     @test A ⋅² H == TensorValue{D,D}([sum(a[m, n] * h[m, n, i, j] for m in r, n in r) for i in r, j in r]...)
     @test W ⋅² A == W ⊙ A
@@ -214,13 +229,6 @@ end
   A = A'*A + I3D
   sqrtA = TensorValue(sqrt(get_array(A)))
   @test isapprox(sqrt(A), sqrtA, rtol=1e-14)
-end
-
-
-@testset "cofactor" begin
-  A = TensorValue(1.:9...) + I3D
-  cofA = det(A) * inv(A')
-  @test isapprox(cof(A), cofA)
 end
 
 
@@ -289,6 +297,6 @@ end
     Q = Matrix(LinearAlgebra.qr(randn(D^2, D^2)).Q)
     M = Q * LinearAlgebra.Diagonal(randn(D^2)) * Q'
     H = FourthOrderTensorValue(Tuple((M + M') / 2))
-    @test regularize_hessian(H, 1e-6) == FourthOrderTensorValue(Tuple(regularize_hessian(TensorValue(Tuple(H)), 1e-6)))
+    @test regularize_hessian(H, 1e-6) == FourthOrderTensorValue(Tuple(regularize_hessian(flat_tensor(H), 1e-6)))
   end
 end

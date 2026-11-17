@@ -10,6 +10,17 @@ Calculate the cofactor of a matrix.
 end
 
 
+"""Derivative of the cofactor in 2D, `∂cof(F)/∂F`."""
+function _∂H∂F_2D()
+  FourthOrderTensorValue{2}(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+end
+
+
+function trAA(A::TensorValue{3, 3, T, N}) where {T, N}
+  return sum(A.data[i]*A.data[i] for i in 1:N)
+end
+
+
 """
 Jacobian regularization
 """
@@ -46,16 +57,3 @@ function ∂∂log∂JJ(J; threshold=0.01)
 end
 
 
-"""Derivative of the cofactor in 2D, `∂cof(F)/∂F`."""
-function _∂H∂F_2D()
-  FourthOrderTensorValue{2}(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
-end
-
-
-function trAA(A::TensorValue{3, 3, T, N}) where {T, N}
-  return sum(A.data[i]*A.data[i] for i in 1:N)
-end
-
-
-"""Square second-order tensor with the components of the vector (column-major)."""
-Tensorize(A::VectorValue{D,Float64}) where {D} = TensorValue(Tuple(A))

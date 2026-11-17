@@ -90,8 +90,9 @@ function supported_operations(D)
     ("A'", transpose, (A,), T2(D)),
     ("W'", transpose, (W,), T3(D)),
     ("H'", transpose, (H,), T4(D)),
-    ("TensorValue(Tuple(H))", H -> TensorValue(Tuple(H)), (H,), TensorValue{D^2,D^2,Float64}),
-    ("FourthOrderTensorValue(Tuple(M))", M -> FourthOrderTensorValue(Tuple(M)), (TensorValue(Tuple(H)),), T4(D)),
+    ("flat_tensor(W)", flat_tensor, (W,), TensorValue{D,D^2,Float64}),
+    ("flat_tensor(H)", flat_tensor, (H,), TensorValue{D^2,D^2,Float64}),
+    ("FourthOrderTensorValue(Tuple(M))", M -> FourthOrderTensorValue(Tuple(M)), (flat_tensor(H),), T4(D)),
   ]
   # operations preserving the type: sum, difference, negation and scaling
   for (name, X) in (("v", v), ("A", A), ("W", W), ("H", H))
@@ -111,7 +112,6 @@ function supported_operations(D)
       ("A×H", ×, (A, H), T4(D)),
       ("H×A", ×, (H, A), T4(D)),
       ("W×A", ×, (W, A), T3(D)),
-      ("cof(A)", cof, (A,), T2(D)),
       ("×ᵢ⁴(A)", ×ᵢ⁴, (A,), T4(D)))
   end
   ops
@@ -124,9 +124,6 @@ function broken_operations(D)
     ("A⊙v", ⊙, (A, v), V(D)),   # error
     ("v⊙A", ⊙, (v, A), V(D)),   # error
   ]
-  if D == 2
-    push!(ops, ("cof(A)", cof, (A,), T2(D)))  # error, the cross product is only defined in 3D
-  end
   ops
 end
 
