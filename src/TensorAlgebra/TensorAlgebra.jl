@@ -52,6 +52,7 @@ export Id
 
 export push_forward_C_to_F
 export regularize_hessian
+export sqrt_sym
 export hessian_nonaffine
 
 export Box

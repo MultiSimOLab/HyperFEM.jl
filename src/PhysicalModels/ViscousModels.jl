@@ -245,10 +245,10 @@ Multiplicative decomposition of visous strain.
 - `Uv⁻¹::TensorValue`
 """
 function ViscousStrain(Ce, C)
-  Ue = sqrt(Ce)
+  Ue = sqrt_sym(Ce)
   Ue_C_Ue = Ue * C * Ue
   invUe = inv(Ue)
-  Uv = invUe * sqrt(Ue_C_Ue) * invUe
+  Uv = invUe * sqrt_sym(Ue_C_Ue) * invUe
   invUv = inv(Uv)
   return Ue, Uv, invUv
 end
@@ -454,7 +454,7 @@ function ViscousTangentOperator(obj::ViscousIncompressible,
   DCe_DC = ∂Ce_∂C(obj, γα, ∂Se∂Ce_, invUvn, Ce, Ce_trial, λα, F)
   DCe_DC_Uvfixed = ∂Ce_∂C_Uvfixed(invUv)
   DCe_DinvUv = ∂Ce_∂invUv(C, invUv)
-  DinvUv_DC = FourthOrderTensorValue(Tuple(inv(flat_tensor(DCe_DinvUv)))) ⋅² (DCe_DC - DCe_DC_Uvfixed)
+  DinvUv_DC = FourthOrderTensorValue(Tuple(inv(flat_smatrix(DCe_DinvUv)))) ⋅² (DCe_DC - DCe_DC_Uvfixed)
   DCDF = F' ⊗ᵢₖʲˡ I3D + I3D ⊗ᵢₗʲᵏ F'
   #------------------------------------------
   # 0.5*δC_{Uvfixed}:DSe[ΔC]
@@ -651,7 +651,7 @@ function ViscousDissipation(obj::ViscousIncompressible,
   Ge = cof(Ce)
   ∂Se∂Ce = ∂Se∂Ce_(Ce)
   α = 1.e3abs(tr(flat_tensor(∂Se∂Ce)))  # Ensure invertibility of the elasticity tensor.
-  invCCe = FourthOrderTensorValue(Tuple(inv(flat_tensor(2*∂Se∂Ce + α*Ge⊗Ge))))
+  invCCe = FourthOrderTensorValue(Tuple(inv(flat_smatrix(2*∂Se∂Ce + α*Ge⊗Ge))))
   ∂Se = -1/τ * (Se - λα*Ge)
   Dvis = -Se ⊙ (invCCe ⊙ ∂Se)
   Dvis

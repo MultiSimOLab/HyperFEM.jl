@@ -7,6 +7,8 @@ using StaticArrays
 using Test
 using ForwardDiff
 
+include("TypeStabilityHelpers.jl")
+
 
 μ      = 1.367e4  # Pa
 N      = 7.860e5  # -
@@ -82,6 +84,7 @@ function test_viscous_derivatives_numerical(model; rtolP=1e-12, rtolH=1e-12)
   tangent = richardson_expansion((F, ϵ) -> numerical_tangent(F -> Ψ(F, Fn, Avn), F, ϵ), F, 1e-4)
   @test isapprox(∂Ψu(F, Fn, Avn), piola, rtol=rtolP)
   @test isapprox(∂Ψuu(F, Fn, Avn), tangent, rtol=rtolH)
+  test_type_stability__(model, F, Fn, Avn)
 end
 
 
@@ -110,6 +113,7 @@ function test_viscous_tangent_numerical(model; rtol=1e-5)  # limited by the abso
   Avn = VectorValue(Uvn..., λvn)
   tangent = richardson_expansion((F, ϵ) -> numerical_stress_derivative(F -> ∂Ψu(F, Fn, Avn), F, ϵ), F, 1e-4)
   @test isapprox(∂Ψuu(F, Fn, Avn), tangent, rtol=rtol)
+  test_type_stability__(model, F, Fn, Avn)
 end
 
 
@@ -170,6 +174,7 @@ end
   Avn  =  VectorValue(Uvn...,0.0)
   @test isapprox(norm(∂Ψu(F, Fn, Avn)), 0.20303772905627682, rtol=1e-10)
   @test isapprox(norm(∂Ψuu(F, Fn, Avn)), 4.847586088299776, rtol=1e-10)
+  test_type_stability__(visco, F, Fn, Avn)
 end
 
 @testset "GeneralizedMaxwell EightChain 0-branch" begin
@@ -292,6 +297,7 @@ end
   Ψ, ∂Ψ∂F, ∂∂Ψ∂FF = model()
   ∂∂Ψ∂FF_ref = FourthOrderTensorValue(Tuple(ForwardDiff.jacobian(F -> get_array(∂Ψ∂F(TensorValue(F), Fn, Cv)), get_array(F1))))
   @test isapprox(∂∂Ψ∂FF(F1, Fn, Cv), ∂∂Ψ∂FF_ref, rtol=1e-8)
+  test_type_stability__(model, F1, Fn, Cv)
 end
 
 
@@ -320,4 +326,5 @@ end
   @test allocations(∂Ψ∂F, F, Fn, Cv, Cv) == 0
   @test allocations(∂∂Ψ∂FF, F, Fn, Cv, Cv) == 0
   @test allocations(D, F, Fn, Cv, Cv) == 0
+  test_type_stability__(cons_model, F, Fn, Cv, Cv)
 end

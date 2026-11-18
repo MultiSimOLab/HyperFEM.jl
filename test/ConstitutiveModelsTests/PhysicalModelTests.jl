@@ -67,13 +67,7 @@ function test_second_piola_3D_(model::PhysicalModel; rtol=1e-12, kwargs...)
   @test isapprox(∂S∂C(C), FourthOrderTensorValue(Tuple(ForwardDiff.jacobian(S, get_array(C)))); rtol=rtol, kwargs...)
 end
 
-# args... are forwarded as-is: fibers N for AnisoElastic, (Fn, A...) for viscous models, etc.
-function test_type_stability__(model::Mechano, F::TensorValue{D}, args...) where D
-  Ψ, ∂Ψu, ∂Ψuu = model()
-  @test (@inferred Ψ(F, args...)) isa Float64
-  @test (@inferred ∂Ψu(F, args...)) isa TensorValue{D,D,Float64}
-  @test (@inferred ∂Ψuu(F, args...)) isa FourthOrderTensorValue{D,Float64}
-end
+include("TypeStabilityHelpers.jl")
 
 test_type_stability_2D(model::Mechano, args...) = test_type_stability__(model, F2D, args...)
 test_type_stability_3D(model::Mechano, args...) = test_type_stability__(model, F3D, args...)

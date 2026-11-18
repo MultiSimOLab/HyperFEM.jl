@@ -232,6 +232,21 @@ end
 end
 
 
+@testset "sqrt_sym" begin
+  A = TensorValue(1.:9...)
+  A = A'*A + I3D                                   # symmetric positive definite
+  @test (@inferred sqrt_sym(A)) isa TensorValue{3,3,Float64}
+  @test isapprox(sqrt_sym(A), sqrt(A), rtol=1e-12)
+  @test isapprox(sqrt_sym(A) * sqrt_sym(A), A, rtol=1e-12)
+  @test sqrt_sym(I3D) ≈ I3D
+  B = TensorValue(4.0, 1.0, 1.0, 3.0)
+  @test isapprox(sqrt_sym(B), TensorValue(sqrt(get_array(B))), rtol=1e-12)
+  allocs(A) = @allocated sqrt_sym(A)
+  allocs(A)
+  @test allocs(A) == 0
+end
+
+
 @testset "regularize_hessian" begin
   # TensorValue from a Matrix by splatting (TensorValue(::Matrix) fails for 9x9 on Julia 1.14.0-alpha1)
   tensor(M::AbstractMatrix) = TensorValue{size(M, 1),size(M, 2)}(M...)
