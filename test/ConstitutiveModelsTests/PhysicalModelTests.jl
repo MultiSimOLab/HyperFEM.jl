@@ -203,6 +203,7 @@ end
   @test Ψ(F(∇u3), (M1, M2, M3, M4)) == 0.0005561006012767033
   @test isapprox(norm(∂Ψ∂F(F(∇u3), (M1, M2, M3, M4))), norm(∂Ψ∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-14)
   @test isapprox(norm(∂Ψ∂F∂F(F(∇u3), (M1, M2, M3, M4))), norm(∂Ψ∂F∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-14)
+  test_type_stability_3D(model, (M1, M2, M3, M4))
 end
 
 @testset "HGO_4Fibers" begin
@@ -229,6 +230,7 @@ end
   @test Ψ(F(∇u3), M1, M2, M3, M4) == 0.0005561006012767033
   @test isapprox(norm(∂Ψ∂F(F(∇u3), M1, M2, M3, M4)), norm(∂Ψ∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-14)
   @test isapprox(norm(∂Ψ∂F∂F(F(∇u3), M1, M2, M3, M4)), norm(∂Ψ∂F∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-14)
+  test_type_stability_3D(model, M1, M2, M3, M4)
 end
 
 
@@ -261,6 +263,7 @@ end
   @test Ψ(F(∇u3), M1, M2, M3, M4) == 23.21318362353833
   @test isapprox(norm(∂Ψ∂F(F(∇u3), M1, M2, M3, M4)), norm(∂Ψ∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-10)
   @test isapprox(norm(∂Ψ∂F∂F(F(∇u3), M1, M2, M3, M4)), norm(∂Ψ∂F∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-10)
+  test_type_stability_3D(model, M1, M2, M3, M4)
 end
 
 
@@ -281,6 +284,7 @@ end
   @test Ψ(F(∇u3), N) == Ψ1(F(∇u3)) + Ψ2(F(∇u3), N)
   @test norm(∂Ψu(F(∇u3), N)) == norm(∂Ψu1(F(∇u3)) + ∂Ψu2(F(∇u3), N))
   @test norm(∂Ψuu(F(∇u3), N)) == norm(∂Ψuu1(F(∇u3)) + ∂Ψuu2(F(∇u3), N))
+  test_type_stability_3D(model, N)
 end
 
 
@@ -305,6 +309,7 @@ end
   @test Ψ(F(∇u3), [N1, N2]) == Ψ1(F(∇u3)) + Ψ2(F(∇u3), [N1]) + Ψ3(F(∇u3), [N2])
   @test isapprox(norm(∂Ψu(F(∇u3), [N1, N2])), norm(∂Ψu1(F(∇u3)) + ∂Ψu2(F(∇u3), N1) + ∂Ψu3(F(∇u3), N2)), rtol=1e-14)
   @test isapprox(norm(∂Ψuu(F(∇u3), [N1, N2])), norm(∂Ψuu1(F(∇u3)) + ∂Ψuu2(F(∇u3), N1) + ∂Ψuu3(F(∇u3), N2)), rtol=1e-14)
+  test_type_stability_3D(model, [N1, N2])
 end
 
 
@@ -481,6 +486,7 @@ end
   @test norm(∂Ψu(F(∇u), N)) == 100.64088114687468
   @test norm(∂Ψuu(F(∇u), N)) == 46792.35008576098
   @test isapprox(Ψ(I2D, N), 0.0, atol=1e-10)
+  test_type_stability_2D(model, N)
 end
 
 
@@ -501,6 +507,7 @@ end
   @test norm(∂Ψu(F(∇u), N)) == 309.14297430663385
   @test norm(∂Ψuu(F(∇u), N)) == 81316.15339475962
   @test isapprox(Ψ(I3D, N), 0.0, atol=1e-10)
+  test_type_stability_3D(model, N)
 end
 
 
