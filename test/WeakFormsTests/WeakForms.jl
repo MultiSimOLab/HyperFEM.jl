@@ -4,9 +4,8 @@ using Gridap
 @testset "Assembly Jacobian ThermoMechanics" begin
     modelMR = MooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0)
     modelT = ThermalModel(Cv=1.0, θr=1.0, α=2.0, κ=1.0)
-    f(δθ::Float64)::Float64 = (δθ + 1.0) / 1.0
-    df(δθ::Float64)::Float64 = 1.0
-    modelTM = ThermoMechModel(modelT, modelMR, fθ=f, dfdθ=df)
+    law = EntropicElasticityLaw(θr=1.0, γ=0.0)   # f(θ) = θ/θr
+    modelTM = ThermoMechModel(modelT, modelMR, law)
 
     partition = (1, 1, 1)
     pmin = Point(0.0, 0.0, 0.0)
