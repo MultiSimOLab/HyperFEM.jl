@@ -187,7 +187,7 @@ end
     g = reverse(h)
     G = fourth(g)
     @test H ⋅² G == fourth([sum(h[i, j, m, n] * g[m, n, k, l] for m in r, n in r) for i in r, j in r, k in r, l in r])
-    @test H ⋅² G == flat_tensor(H) ⋅ flat_tensor(G)  # the product of the D²×D² matrices
+    @test H ⋅² G == FourthOrderTensorValue(Tuple(flat_tensor(H) ⋅ flat_tensor(G)))  # the product of the D²×D² matrices
     @test H ⋅² A == TensorValue{D,D}([sum(h[i, j, m, n] * a[m, n] for m in r, n in r) for i in r, j in r]...)
     @test A ⋅² H == TensorValue{D,D}([sum(a[m, n] * h[m, n, i, j] for m in r, n in r) for i in r, j in r]...)
     @test W ⋅² A == VectorValue([sum(w[i, m, n] * a[m, n] for m in r, n in r) for i in r]...)
