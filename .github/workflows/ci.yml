@@ -1,27 +1,86 @@
 name: Tests
 
-on: [pull_request, workflow_dispatch]
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
 
 permissions: # needed to allow julia-actions/cache to delete old caches that it has created
   actions: write
   contents: read
 
 jobs:
-  test: # main CI tests
+  test:
+    name: Tests
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        version: ['lts', '1', 'pre']
+        version: ['min', '1', 'pre'] # min = lowest Julia allowed by [compat] (1.12)
         arch: [x64]
         os: [ubuntu-latest]
 
     steps:
-      - uses: actions/checkout@v5
-      - uses: julia-actions/setup-julia@v2
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
-      - uses: julia-actions/cache@v2
+      - uses: julia-actions/cache@v3
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1 # both backends; HyperFEMKernels from the General registry (test/Project.toml)
+
+  lowest-gridap: # downgrade compatibility: the lowest Gridap allowed by [compat] must still work
+    name: Lowest Gridap
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: 'min' # lowest Julia allowed by [compat]
+          arch: x64
+      - uses: julia-actions/cache@v3
+      - name: Pin Gridap to the lowest version allowed by Project.toml
+        shell: julia --color=yes --project=. {0}
+        run: |
+          using Pkg, TOML
+          Pkg.Registry.add("General") # not installed yet on a fresh runner (no-op if cached)
+          spec = TOML.parsefile("Project.toml")["compat"]["Gridap"]
+          ranges = Pkg.Versions.semver_spec(spec).ranges
+          lowest = minimum(VersionNumber(r.lower.t...) for r in ranges)
+          println("Gridap compat \"$spec\" -> pinning to =$lowest")
+          Pkg.compat("Gridap", "=$lowest")
+          Pkg.resolve() # fail here if the lower bound is not installable
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
+
+  kernels-dev: # early warning: HyperFEM against the development version (main) of HyperFEMKernels; does not block
+    name: HyperFEMKernels main (non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      - name: Clone HyperFEMKernels main next to HyperFEM
+        run: git clone --depth 1 https://github.com/MultiSimOLab/HyperFEMKernels.jl ../HyperFEMKernels.jl
+      - name: Run tests with HyperFEMKernels main
+        shell: julia --color=yes --check-bounds=yes --project=test {0}
+        run: |
+          using Pkg
+          Pkg.develop([PackageSpec(path="."), PackageSpec(path="../HyperFEMKernels.jl")])
+          Pkg.instantiate()
+          include(joinpath(pwd(), "test", "runtests.jl"))

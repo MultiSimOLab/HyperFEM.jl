@@ -1,0 +1,97 @@
+using Gridap, Gridap.FESpaces
+using HyperFEM
+using HyperFEM: jacobian
+
+
+function staggered_electro_mechanical_simulation(; backend=:lazy, writevtk=false, verbose=false)
+  
+  # Problem name
+  pname = stem(@__FILE__)
+  folder = projdir("data", "sims", pname)
+  outpath = joinpath(folder, pname)
+  writevtk && setupfolder(folder)
+  
+  # Geometry and discrete model
+  domain = (0.0, 0.1, 0.0, 0.01, 0.0, 0.002)
+  partition = (8, 2, 2)
+  geometry = CartesianDiscreteModel(domain, partition)
+  labels = get_face_labeling(geometry)
+  add_tag_from_tags!(labels, "fixedu", CartesianTags.face0YZ⁺)
+  add_tag_from_tags!(labels, "topsuf", CartesianTags.faceXY1⁺)
+  add_tag_from_vertex_filter!(labels, "midsuf", geometry, x -> x[3] ≈ 0.001)
+
+  # Constitutive model
+  physmodel_mec = NeoHookean3D(λ=10.0, μ=1.0)
+  physmodel_elec = IdealDielectric(ε=1.0)
+  physmodel = ElectroMechModel(physmodel_elec, physmodel_mec)
+
+  # Setup integration
+  order = 2
+  degree = 2 * order
+  Ω = Triangulation(geometry)
+  dΩ = Measure(Ω, degree)
+
+  # Dirichlet conditions 
+  Du = BoundaryConditions(BoundaryCondition("fixedu", [0.0, 0.0, 0.0]))
+  Dφ = BoundaryConditions(
+    BoundaryCondition("midsuf", 0.0, Λ -> Λ),
+    BoundaryCondition("topsuf", 0.00005, Λ -> Λ))
+
+  # FE spaces
+  reffeu = ReferenceFE(lagrangian, VectorValue{3,Float64}, order)
+  reffeφ = ReferenceFE(lagrangian, Float64, order)
+
+  # Test FE Spaces
+  Vu = TestFESpace(geometry, reffeu, Du, conformity=:H1)
+  Vφ = TestFESpace(geometry, reffeφ, Dφ, conformity=:H1)
+
+  # Trial FE Spaces and state variables
+  Uu = TrialFESpace(Vu, Du, 1.0)
+  uh⁺ = FEFunction(Uu, zero_free_values(Uu))
+
+  Uu⁻ = TrialFESpace(Vu, Du, 1.0)
+  uh⁻ = FEFunction(Uu⁻, zero_free_values(Uu⁻))
+
+  Uφ = TrialFESpace(Vφ, Dφ, 1.0)
+  φh⁺ = FEFunction(Uφ, zero_free_values(Uφ))
+
+  Uφ⁻ = TrialFESpace(Vφ, Dφ, 1.0)
+  φh⁻ = FEFunction(Uφ⁻, zero_free_values(Uφ⁻))
+
+  # Kinematics
+  k = (Kinematics(Mechano, Solid), Kinematics(Electro, Solid))
+
+  # Electro
+  Mechano_coupling(Λ) = uh⁻ + (uh⁺ - uh⁻) * Λ
+  res_elec(Λ) = (φ, vφ) -> residual(physmodel, Electro, k, (Mechano_coupling(Λ), φ), vφ, dΩ)
+  jac_elec(Λ) = (φ, dφ, vφ) -> jacobian(physmodel, Electro, k, (Mechano_coupling(Λ), φ), dφ, vφ, dΩ)
+
+  # Mechano
+  Electro_coupling(Λ) = φh⁻ + (φh⁺ - φh⁻) * Λ
+  res_mec(Λ) = (u, v) -> residual(physmodel, Mechano, k, (u, Electro_coupling(Λ)), v, dΩ)
+  jac_mec(Λ) = (u, du, v) -> jacobian(physmodel, Mechano, k, (u, Electro_coupling(Λ)), du, v, dΩ)
+
+  # nonlinear solver
+  ls = LUSolver()
+  nls_ = NewtonRaphson(ls; maxiter=20, atol=1.e-10, rtol=1.e-8, verbose=verbose)
+  comp_model_elec = StaticNonlinearModel(res_elec, jac_elec, Uφ, Vφ, Dφ; nls=nls_, xh=φh⁺, backend=backend)
+  comp_model_mec = StaticNonlinearModel(res_mec, jac_mec, Uu, Vu, Du; nls=nls_, xh=uh⁺, backend=backend)
+  comp_model= StaggeredModel((comp_model_elec,comp_model_mec), (φh⁺,uh⁺), (φh⁻,uh⁻))
+
+  args_elec = Dict(:stepping => (nsteps=1, maxbisec=1))
+  args_mec  = Dict(:stepping => (nsteps=5, maxbisec=1))
+  args=(args_elec,args_mec)
+
+  x = solve!(comp_model; stepping=(nsteps=5, nsubsteps=1, maxbisec=1), kargsolve=args, verbose=verbose)
+
+  if writevtk
+    writevtk(Ω, outpath, cellfields=["φh" => φh⁺, "uh" => uh⁺])
+  end
+
+  return x
+end
+
+
+if abspath(PROGRAM_FILE) == @__FILE__
+  staggered_electro_mechanical_simulation(writevtk=true, verbose=true)
+end

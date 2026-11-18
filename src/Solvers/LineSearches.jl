@@ -1,115 +1,188 @@
 abstract type AbstractLineSearch end
 
+"""
+    search!(ls, w, op, x, dx, b) -> α
 
+Step length `α` along the Newton direction `dx` from `x` chosen by the line search `ls`, which
+also takes the step: on entry `b = -R(x)`; on return `x ← x + α dx` and `b = R(x)` at the new point
+(the residual Newton continues with). `w` is a work vector of the size of `x` for the trial points
+(no allocation). A failed search returns `α = 0` with `x` unchanged and `b = R(x)`. Line searches
+that implement the former callable interface `ls(x, dx, b, op) -> α` (which does not move `x`)
+keep working through the fallback.
+"""
+function search!(ls::AbstractLineSearch, w, op, x, dx, b)
+  α = ls(x, dx, b, op)
+  x .+= α .* dx
+  α
+end
 
-struct LineSearch <: AbstractLineSearch
-  function LineSearch()
-    new()
-  end
-  function (obj::LineSearch)(x::AbstractVector, dx::AbstractVector, b::AbstractVector, op::NonlinearOperator)
-    α = 1.0
-    residual!(b, op, x + α * dx)
-    return α
-  end
+"""
+    update_cellstate!(ls, xh, dxh) -> α
 
+Largest safe step along the increment `dxh` (an `FEFunction`) from the state `xh` according to the
+line search (1 for the line searches without an injectivity test). Former interface of the drivers
+for the safe load factor of the Dirichlet projection; `InjectivityLS` asks the model instead.
+"""
+update_cellstate!(::AbstractLineSearch, xh, dxh) = 1.0
+
+# residual at x + α dx, built in w
+@inline function _trial_residual!(b, w, op, x, dx, α)
+  w .= x .+ α .* dx
+  residual!(b, op, w)
 end
 
 
-function update_cellstate!(obj::LineSearch, xh, dxh)
+"""
+    FullStepLS()
+
+Full Newton step (`α = 1`).
+"""
+struct FullStepLS <: AbstractLineSearch end
+
+function search!(::FullStepLS, w, op, x, dx, b)
+  x .+= dx
+  residual!(b, op, x)
+  return 1.0
+end
+
+function (obj::FullStepLS)(x::AbstractVector, dx::AbstractVector, b::AbstractVector, op::NonlinearOperator)
+  residual!(b, op, x + dx)
   return 1.0
 end
 
 
+"""
+    BacktrackingLS(; maxiter=50, αmin=1e-16, ρ=0.5, c=0.95)
 
-struct Roman_LS <: AbstractLineSearch
+Backtracking on the directional derivative of the residual: starting from `α = 1`, `α ← ρ α` until
+`R(x + α dx)·dx ≤ c R(x)·dx` (at most `maxiter` reductions, `α > αmin`); the last `α` is taken if
+the condition is never met.
+"""
+struct BacktrackingLS <: AbstractLineSearch
   maxiter::Int
   αmin::Float64
   ρ::Float64
   c::Float64
-  function Roman_LS(; maxiter::Int64=50, αmin::Float64=1e-16, ρ::Float64=0.5, c::Float64=0.95)
-    new(maxiter, αmin, ρ, c)
+  last::Base.RefValue{Tuple{Float64,Int}}   # (initial step, reductions) of the last search, for the output
+  function BacktrackingLS(; maxiter::Integer=50, αmin::Real=1e-16, ρ::Real=0.5, c::Real=0.95)
+    new(maxiter, αmin, ρ, c, Ref((1.0, 0)))
   end
+end
 
-
-  function (obj::Roman_LS)(x::AbstractVector, dx::AbstractVector, b::AbstractVector, op::NonlinearOperator)
-
-    maxiter, αmin, ρ, c = obj.maxiter, obj.αmin, obj.ρ, obj.c
-    m = 0
-    α = 1.0
-    R₀ = b' * dx
-
-    while α > αmin && m < maxiter
-      residual!(b, op, x + α * dx)
-      R = b' * dx
-      if R <= c * R₀
-        break
-      end
-      α *= ρ
-      m += 1
+function search!(obj::BacktrackingLS, w, op, x, dx, b)
+  maxiter, αmin, ρ, c = obj.maxiter, obj.αmin, obj.ρ, obj.c
+  m = 0
+  α = 1.0
+  R₀ = dot(b, dx)
+  while α > αmin && m < maxiter
+    _trial_residual!(b, w, op, x, dx, α)
+    R = dot(b, dx)
+    if R <= c * R₀
+      break
     end
-    return α
+    α *= ρ
+    m += 1
   end
+  obj.last[] = (1.0, m)
+  x .+= α .* dx              # the last trial point (b holds its residual unless α fell below αmin first)
+  return α
 end
 
-function update_cellstate!(obj::Roman_LS, xh, dxh)
-  return 1.0
+linesearch_info(obj::BacktrackingLS) = "$(obj.last[][2]) reductions"
+
+function (obj::BacktrackingLS)(x::AbstractVector, dx::AbstractVector, b::AbstractVector, op::NonlinearOperator)
+  y = copy(x)
+  search!(obj, similar(x), op, y, dx, b)
 end
 
 
-struct Injectivity_Preserving_LS{A} <: AbstractLineSearch
-  α::CellState
-  maxiter::Int
-  αmin::Float64
+"""
+    InjectivityLS(; jmin=0.0, armijo=false, c1=1e-4, ftol=1e-12, β=1-1e-6, ρ=0.5, c=0.95, maxiter=50, αmin=1e-16)
+
+Injectivity-preserving line search: the step starts from the exact injectivity limit — `β` times
+the smallest root of `det(I + ∇u + α ∇δu) = jmin` over the quadrature points of the model
+(`injectivity = …` in the driver; quadratic in 2D, cubic in 3D, see [`injectivity_step`](@ref)) —
+and is then reduced by `ρ` until it is accepted:
+
+- `armijo = false`: backtracking on `|R(x + α dx)·dx| ≤ c |R(x)·dx|` (at most `maxiter` reductions);
+- `armijo = true`: Armijo on the incremental energy of the model (`energy = …` in the driver),
+  `E(x + α dx) ≤ E(x) + c1 α R(x)·dx`, a non-finite energy counting as a rejection; a change of the
+  energy below `ftol |E(x)|` cannot be resolved in floating point (near convergence) and the step is
+  accepted.
+
+Exhausting the reductions, or (Armijo) a direction that is not of descent (`R·dx ≥ 0`), is a
+failure: `α = 0`, the residual left at `x`, and the Newton reacts according to its tangent strategy.
+"""
+struct InjectivityLS <: AbstractLineSearch
+  jmin::Float64
+  armijo::Bool
+  c1::Float64
+  β::Float64
   ρ::Float64
   c::Float64
-  caches::A
-  function Injectivity_Preserving_LS(α::CellState, U, V; maxiter::Int64=50, αmin::Float64=1e-16, ρ::Float64=0.5, c::Float64=0.95)
-    caches = (U, V)
-    new{typeof(caches)}(α, maxiter, αmin, ρ, c, caches)
+  maxiter::Int
+  αmin::Float64
+  ftol::Float64
+  last::Base.RefValue{Tuple{Float64,Int,Bool}}   # (injectivity step, reductions, accepted) of the last search
+  function InjectivityLS(; jmin::Real=0.0, armijo::Bool=false, c1::Real=1e-4, ftol::Real=1e-12, β::Real=1 - 1e-6,
+                         ρ::Real=0.5, c::Real=0.95, maxiter::Integer=50, αmin::Real=1e-16)
+    0 <= jmin || throw(ArgumentError("InjectivityLS: jmin must be ≥ 0"))
+    0 < β <= 1 || throw(ArgumentError("InjectivityLS: β must be in (0, 1]"))
+    0 < ρ < 1 || throw(ArgumentError("InjectivityLS: ρ must be in (0, 1)"))
+    new(jmin, armijo, c1, β, ρ, c, maxiter, αmin, ftol, Ref((1.0, 0, true)))
   end
- 
+end
 
-  function (obj::Injectivity_Preserving_LS)(x::AbstractVector, dx::AbstractVector, b::AbstractVector, op::NonlinearOperator)
-
-    _, maxiter, αmin, ρ, c = obj.α, obj.maxiter, obj.αmin, obj.ρ, obj.c
-    #update cell state
-    U, V = obj.caches
-    xh = FEFunction(U, x)
-    dxh = FEFunction(V, dx)
-    α = update_cellstate!(obj, xh, dxh)
-    m = 0
-    R₀ = b' * dx
-
-    while α > αmin && m < maxiter
-      residual!(b, op, x + α * dx)
-      R = b' * dx
-      if R <= c * R₀
-        break
+function search!(obj::InjectivityLS, w, op, x, dx, b)
+  αinj = α = max_step(op, x, dx, obj.β, obj.jmin)
+  m = 0
+  if obj.armijo
+    g = -dot(b, dx)                       # R(x)·dx (b = -R(x) on entry)
+    ok = false
+    if g < 0
+      E0 = energy(op, x)
+      while m < obj.maxiter
+        w .= x .+ α .* dx
+        Eα = energy(op, w)
+        if isfinite(Eα) && (Eα <= E0 + obj.c1 * α * g || abs(Eα - E0) <= obj.ftol * abs(E0))
+          ok = true
+          break
+        end
+        α *= obj.ρ
+        m += 1
       end
-      α *= ρ
-      m += 1
     end
+    obj.last[] = (αinj, m, ok)
+    if !ok
+      residual!(b, op, x)
+      return 0.0
+    end
+    _trial_residual!(b, w, op, x, dx, α)
+    copyto!(x, w)
     return α
+  else
+    R₀ = abs(dot(b, dx))
+    while true
+      _trial_residual!(b, w, op, x, dx, α)
+      R = abs(dot(b, dx))
+      if R <= obj.c * R₀
+        obj.last[] = (αinj, m, true)
+        copyto!(x, w)
+        return α
+      end
+      α *= obj.ρ
+      m += 1
+      if m >= obj.maxiter || α <= obj.αmin
+        obj.last[] = (αinj, m, false)
+        residual!(b, op, x)
+        return 0.0
+      end
+    end
   end
-
 end
 
-
-
-function InjectivityCheck(α, ∇u, ∇du)
-  ε = 1e-6
-  F = ∇u + one(∇u)
-  J = det(F)
-  H = J * inv(F)'
-  if det(F+∇du) < 0.2
-  @show det(F), det(F+∇du)
-  end
-  return true, min(0.95*abs(( -J) / (det(∇du) + tr(H' * ∇du) )), 1.0)
-
-end
-
-
-function update_cellstate!(obj::Injectivity_Preserving_LS, xh, dxh)
-  update_state!(InjectivityCheck, obj.α, ∇(xh)', ∇(dxh)')
-  return minimum(minimum((obj.α.values)))
+injectivity_limit(obj::InjectivityLS) = obj.last[][1]
+function linesearch_info(obj::InjectivityLS)
+  αinj, m, ok = obj.last[]
+  "injectivity step $(@sprintf("%.4f", αinj)), $(m) reductions" * (ok ? "" : ", rejected") * (obj.armijo ? " (Armijo)" : "")
 end

@@ -2,4 +2,12 @@ Manifest.toml
 results/
 debug/
 data/sims/
+docs/build/
+docs/src/index.md
 **/.DS_Store
+.vscode/
+
+CLAUDE.md
+
+# Working material of the Claude sessions (benchmarks, environments, logs)
+Claude outputs/

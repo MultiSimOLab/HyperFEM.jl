@@ -1,88 +1,146 @@
 module ComputationalModels
-using DrWatson
+using HyperFEM.Backends
 using HyperFEM.PhysicalModels
 using HyperFEM.Solvers
 
 using Gridap
 using Gridap.Helpers
 using Gridap.TensorValues, Gridap.FESpaces, Gridap.Algebra
+using Gridap.CellData, Gridap.Fields
+import Gridap.ODEs: ∂t, ∂tt
+using SparseArrays
+using SparseArrays: getcolptr
 using Gridap: createvtk
 using Gridap.MultiField
 using Gridap.FESpaces: get_assembly_strategy
+import Gridap: solve!
 
 using BlockArrays
-using GridapPETSc, GridapPETSc.PETSC
-using GridapPETSc: PetscScalar, PetscInt, PETSC,  @check_error_code
-
-using GridapDistributed
-using GridapDistributed: DistributedDiscreteModel, DistributedTriangulation,
-  DistributedFESpace, DistributedDomainContribution, to_parray_of_arrays,
-  allocate_in_domain, DistributedCellField, DistributedMultiFieldCellField,
-  DistributedMultiFieldFEBasis, BlockPMatrix, BlockPVector, change_ghost
-
-using PartitionedArrays
-using PartitionedArrays: getany, tuple_of_arrays, matching_ghost_indices
-
-using GridapSolvers
-using GridapSolvers.LinearSolvers, GridapSolvers.NonlinearSolvers, GridapSolvers.BlockSolvers
-using GridapSolvers.SolverInterfaces: SolverVerboseLevel, SOLVER_VERBOSE_NONE, SOLVER_VERBOSE_LOW, SOLVER_VERBOSE_HIGH
-# using GridapSolvers.SolverInterfaces: init!, update!, finalize!
-using GridapSolvers.SolverInterfaces: finished, print_message, converged
 
 using LinearAlgebra
+using Printf
 using WriteVTK
 
 using GridapGmsh 
 using GridapGmsh: GmshDiscreteModel
-using GridapGmsh:@check_if_loaded
-# using Gmsh: Gmsh, gmsh
 
+using HyperFEM.DiscreteModeling
 
 include("BoundaryConditions.jl")
-export DirichletBC
-export NeumannBC
+export Prescription
+export Separable
+export NonSeparable
+export Coupling
+export StageBlend
+export BoundaryCondition
+export BoundaryConditions
+export MultiFieldBoundaryConditions
+export get_tags
+export get_masks
+export get_space_functions
+export get_time_derivative
+export central_difference
 export get_Neumann_dΓ
 export NothingBC
 export NothingTC
 export MultiFieldBC
-export SingleFieldTC
-export MultiFieldTC
 export residual_Neumann
-export updateBC!
-export DirichletCoupling
-export InterpolableBC
-export InterpolableBC!
+export NeumannConditions
+export add_tag_from_vertex_filter!
 
 
+include("DirichletApplicator.jl")
+export dirichlet_applicator
+export DirichletApplicator
 include("FESpaces.jl")
 export TrialFESpace
 export TrialFESpace!
 export TestFESpace
 export TestFESpace!
+export level_spaces
+include("MeshHierarchy.jl")
+export MeshHierarchy
+export num_levels
+export level_model
+export fine_model
+export level_glue
+export prolongation
+export prolongations
+include("Transfer.jl")
+export PointLocation
+export Transfer
+export transfer!
+export transfer_transpose!
+export is_gather
 
 include("GridapExtras.jl")
 export GmshDiscreteModel
 export evaluate!
 
 include("Drivers.jl")
+include("TimeStepping.jl")
+include("LoadStepping.jl")
+include("StaggeredModel.jl")
+include("TimeSchemes.jl")
+include("TransientModel.jl")
+export TransientModel
+export TimeScheme
+export QuasiStatic
+export BDF
+export Theta
+export GeneralizedAlpha
+export Newmark
+export HHT
+export Midpoint
+export CentralDifference
+export SDIRK
+export TimeContext
+export field
+export ∂t
+export ∂tt
+export at
+export δfield
+export δ∂t
+export δ∂tt
+export δat
+export get_velocity
+export get_previous_state
+export get_energies
+export get_acceleration
+export TimeStepping
+export AdaptiveStepping
+export TimeStep
+export LoadStepping
+export LoadStep
+export step!
 export StaggeredModel
+export StaggeredStepping
+export StaggeredStep
+export StaggeredLog
+export Aitken
+export IQNILS
+export get_log
 export StaticNonlinearModel
-export DynamicNonlinearModel
 export StaticLinearModel
+export NonlinearStepCache
+export LinearSystemCache
 export solve!
-# export evaluate!
 export dirichlet_preconditioning!
 export get_state
 export get_measure
 export get_spaces
+export get_applicators
 export get_assemblers
 export get_trial_space
 export get_test_space
 
 include("PostProcessors.jl")
 export PostProcessor
-export Cauchy
-export Entropy
-export D0
+export vtk_save
+export get_pvd
 export reset!
+export interpolate_L2_field
+export L2_projection
+export component_LInf
+
 end

@@ -3,6 +3,8 @@ abstract type ComputationalModel end
 get_state(::ComputationalModel) = @abstractmethod
 get_measure(::ComputationalModel) = @abstractmethod
 get_spaces(::ComputationalModel) = @abstractmethod
+"Dirichlet applicators of the spaces a model updates (see `dirichlet_applicator`)."
+get_applicators(::ComputationalModel) = @abstractmethod
 get_trial_space(m::ComputationalModel) = get_spaces(m)[1]
 get_test_space(m::ComputationalModel) = get_spaces(m)[2]
 
@@ -10,471 +12,507 @@ function solve!(::ComputationalModel, ::Float64)
     @abstractmethod
 end
 
+# Convergence, verbosity and step messages of the nonlinear solver of a model. HyperFEM's `NewtonRaphson`
+# answers through its log; other solvers add their own methods.
+nls_converged(nls::NewtonRaphson) = Solvers.converged(nls)
+nls_message(nls::NewtonRaphson, msg) = Solvers.verbosity(nls) >= 1 && print(msg)
+nls_verbosity(nls::NewtonRaphson) = Solvers.verbosity(nls)
+nls_converged(nls::NonlinearSolver) = error("HyperFEM: the drivers cannot tell whether $(typeof(nls)) converged; " *
+    "use NewtonRaphson or add a method of HyperFEM.ComputationalModels.nls_converged")
+nls_message(::NonlinearSolver, msg) = nothing
+nls_verbosity(::NonlinearSolver) = 0
+nls_reset!(nls::NewtonRaphson) = Solvers.reset!(nls.log)
+nls_reset!(::NonlinearSolver) = nothing
+"Iterations of the last solve (the growth of the increment asks for it; unknown solvers never grow it)."
+nls_iterations(nls::NewtonRaphson) = num_iterations(nls)
+nls_iterations(::NonlinearSolver) = typemax(Int)
 
-#*******************************************************************************	
-#    					 StaggeredModel
-#*******************************************************************************	
+# Output of the incremental drivers: `verbose = 1` one line per attempt and a summary of the run;
+# `verbose ≥ 2` a header per step before solving (the solver prints its iterations) and the summary.
+function step_header(v::Int, n::Int, Λ, ΔΛ)
+    v >= 2 || return
+    printstyled(@sprintf("━━ Step %d ━━ Λ = %.4f  ΔΛ = %.4f ━━\n", n, Λ, ΔΛ); bold=true)
+end
+function step_line(v::Int, nls::NewtonRaphson, n::Int, Λ, ΔΛ, ok::Bool, t, grown::Bool=false)
+    v == 1 || return
+    r = residual_history(nls)[end]
+    np = count(==(:projected), mode_history(nls))
+    @printf("step %4d  Λ = %.4f  ΔΛ = %.4f  it = %3d  ‖R‖ = %.3e  ", n, Λ, ΔΛ, num_iterations(nls), r)
+    printstyled(ok ? "✓" : "✗ → bisect"; color=ok ? :green : :yellow)
+    np > 0 && print("  (projected $np)")
+    grown && printstyled("  ↑ ΔΛ"; color=:cyan)
+    @printf("  %.2f s\n", t)
+end
+step_line(v::Int, ::NonlinearSolver, n, Λ, ΔΛ, ok, t, grown=false) = nothing
+function run_summary(v::Int, nls::NewtonRaphson, Λ, nsteps::Int, nbisect::Int, t)
+    v >= 1 || return
+    @printf("Λ = %.4f reached: %d steps, %d bisections, %.2f s\n", Λ, nsteps, nbisect, t)
+    print_summary(nls.log)
+end
+run_summary(v::Int, ::NonlinearSolver, Λ, nsteps, nbisect, t) = nothing
 
 
-struct StaggeredModel{A,B,C,D} <: ComputationalModel
-    compmodels::A
-    state⁺::B
-    state⁻::C
-    caches::D
+#*******************************************************************************
+#    					 Caches of the drivers
+#*******************************************************************************
 
-    function StaggeredModel(CompModels::Tuple{Vararg{<:ComputationalModel}},
-        state⁺::Tuple{Vararg{<:FEFunction}},
-        state⁻::Tuple{Vararg{<:FEFunction}})
+"""
+    NonlinearStepCache(nls, nls_cache, x, x⁻, assem, backend, op)
 
-        @assert(length(CompModels) == length(state⁺) == length(state⁻))
+Work data of the incremental nonlinear drivers, typed so that the hot path of the drivers has no
+dynamic dispatch: the nonlinear solver `nls` and its cache, the free values `x` of the state and
+`x⁻` of the last converged step, the assembler `assem` of the lazy backend (`nothing` for the
+others), the `backend` and its operator `op` of the current step (rebuilt or updated by
+`build_operator` at every step, hence a field of a fixed type), and the backend operator of
+the Dirichlet projection, `projection` (`nothing` until the first projection and for the lazy
+backend; the kernel operator on `∆U` of the compiled one, reused with `update`; its type depends on
+the backend, so it is untyped — one dynamic dispatch per projected step). The projection system
+itself lives in the tangent, residual and increment of `nls_cache` (`dirichlet_projection!`).
+"""
+mutable struct NonlinearStepCache{N<:NonlinearSolver,C,X<:AbstractVector,A,B<:AbstractBackend,O}
+    const nls::N
+    const nls_cache::C
+    const x::X
+    const x⁻::X
+    const assem::A
+    const backend::B
+    op::O
+    projection::Any
+    const functionals::Base.RefValue{Any}   # the backend's energy / injectivity functionals (`nothing` for the lazy backend)
+end
 
-        x⁺ = map((x) -> get_free_dof_values(x), state⁺)
-        x⁻ = map((x) -> get_free_dof_values(x), state⁻)
+NonlinearStepCache(nls, nls_cache, x, x⁻, assem, backend, op, functionals=Ref{Any}(nothing)) =
+    NonlinearStepCache{typeof(nls),typeof(nls_cache),typeof(x),typeof(assem),typeof(backend),typeof(op)}(
+        nls, nls_cache, x, x⁻, assem, backend, op, nothing, functionals)
 
-        caches = (x⁺, x⁻)
-        A, B, C, D = typeof(CompModels), typeof(state⁺), typeof(state⁻), typeof(caches)
+"""
+    LinearSystemCache(ns, K, b, x, assem, backend, op)
 
-        return new{A,B,C,D}(CompModels, state⁺, state⁻, caches)
+Work data of [`StaticLinearModel`](@ref): the numerical setup `ns` of the linear solver, the matrix
+`K`, the right-hand side `b`, the solution `x`, the assembler `assem` of the lazy backend, the
+`backend` and its operator `op` (`nothing` for the lazy backend; the operator of the last assembly
+for the others, whose form changes between the system, the matrix alone and the load vectors, hence
+untyped). `stale` records that `K` was re-assembled since the last numerical setup: the solves update
+the setup (the factorisation of a direct solver) only then (`numerical_setup!(cache)`); code that
+changes `K` by other means sets it.
+"""
+mutable struct LinearSystemCache{NS,TK,TB,TX,A,B<:AbstractBackend}
+    const ns::NS
+    const K::TK
+    const b::TB
+    const x::TX
+    const assem::A
+    const backend::B
+    op::Any
+    stale::Bool
+end
+
+LinearSystemCache(ns, K, b, x, assem, backend, op) =
+    LinearSystemCache{typeof(ns),typeof(K),typeof(b),typeof(x),typeof(assem),typeof(backend)}(ns, K, b, x, assem, backend, op, false)
+
+"Numerical setup of the linear solver for `K`, only if `K` changed since the last one."
+function Algebra.numerical_setup!(c::LinearSystemCache)
+    if c.stale
+        numerical_setup!(c.ns, c.K)
+        c.stale = false
     end
-
+    return c.ns
 end
 
 
-function solve!(m::StaggeredModel;
-    stepping=(nsteps=20, nsubsteps=1 , maxbisec=15),
-    kargsolve)
 
-    nsubsteps=stepping[:nsubsteps]
-    nsteps=stepping[:nsteps]
+"""
+    assembler(backend, assem, U, V)
 
-    x⁺, x⁻ = m.caches
-    map((x) -> TrialFESpace!(x.spaces[1], x.dirichlet, 0.0), m.compmodels)
-    map((x, y) -> TrialFESpace!(x.fe_space, y.dirichlet, 0.0), m.state⁻, m.compmodels)
-
-    flagconv = 1 # convergence flag 0 (max bisections) 1 (max steps)
-    ∆Λ = 1.0 / nsteps
-    for time in 0:nsteps-1
-        println("*******************************************")
-        println("           Staggered Step: $time           ")
-        println("*******************************************")
-        stevol(Λ) = ∆Λ * (Λ + time)
-        map(x -> updateBC!(x.dirichlet, x.dirichlet.caches, [stevol for _ in 1:length(x.dirichlet.caches)]), m.compmodels)
-        for Λ_inner in 1:nsubsteps
-            map((x) -> TrialFESpace!(x.spaces[1], x.dirichlet, 1.0), m.compmodels)
-            _, flagconv = map((x, y) -> solve!(x; y...), m.compmodels, kargsolve)
-            map((x, y) -> TrialFESpace!(x.fe_space, y.dirichlet, 1.0), m.state⁻, m.compmodels)
-            map((x, y) -> x .= y, x⁻, x⁺)
-        end
-    end
-
-    return x⁺, flagconv
-
-end
+Assembler of the drivers for `backend`: `LazyBackend` assembles with the Gridap assembler `assem`
+(`SparseMatrixAssembler(U, V)` when `assem === nothing`, the default of the drivers); the other
+backends assemble with their own kernels and accept no assembler (`assem_U` must be left to its
+default), failing with a clear error otherwise.
+"""
+assembler(::LazyBackend, ::Nothing, U, V) = SparseMatrixAssembler(U, V)
+assembler(::LazyBackend, assem, U, V) = assem
+assembler(::AbstractBackend, ::Nothing, U, V) = nothing
+assembler(b::AbstractBackend, assem, U, V) =
+    error("HyperFEM: backend :$(Backends.backend_name(b)) assembles with its own kernels and takes no assembler " *
+          "(got $(typeof(assem))); custom assemblers are only supported by backend = :lazy")
 
 #*******************************************************************************	
 #    					 StaticNonlinearModel
 #*******************************************************************************	
 
-struct StaticNonlinearModel{A,B,C,D,E} <: ComputationalModel
+"""
+    build_operator(backend, res, jac, U, V, assem, previous)
+
+Algebraic operator used by the drivers. `LazyBackend` (default) builds Gridap's `FEOperator`;
+`CompiledBackend` is provided by the HyperFEMKernels extension (`using HyperFEMKernels`).
+`previous` is the operator of the previous load step (or `nothing`), so that a backend can reuse
+its structure.
+"""
+build_operator(::LazyBackend, res, jac, U, V, assem, previous) =
+    get_algebraic_operator(FEOperator(res, jac, U, V, assem))
+build_operator(b::AbstractBackend, res, jac, U, V, assem, previous) = Backends.not_available(b, "the drivers")
+
+"""
+    dirichlet_projection!(backend, A, b, res, jac, uh, ∆U, V, assem, previous) -> op
+
+Linear system of the Dirichlet projection (`solve!` with `ProjectDirichlet=true`), assembled into
+the tangent `A` and the residual `b` of the Newton cache: `A du = b` is `jac(uh, du, v) = -res(uh, v)`
+for `du` in `∆U`, whose Dirichlet values hold the increment of the conditions of the step and are
+lifted to `b`. `∆U` shares the free dofs of the trial space of the model, so `A` has the pattern of
+the tangent (the backend must assemble into it; the system is then solved with the numerical setup
+of the cache, no second matrix nor factorisation structure per step). Returns the operator used,
+handed back as `previous` in the next step so that a backend can reuse its structure (`nothing` the
+first time). `LazyBackend` assembles with the Gridap assembler `assem` of the model;
+`CompiledBackend` is provided by the HyperFEMKernels extension.
+"""
+function dirichlet_projection!(::LazyBackend, A, b, res, jac, uh, ∆U, V, assem, previous)
+    l(v) = -1.0 * res(uh, v)
+    a(du, v) = jac(uh, du, v)
+    du = get_trial_fe_basis(∆U)
+    v = get_fe_basis(V)
+    data = collect_cell_matrix_and_vector(∆U, V, a(du, v), l(v), zero(∆U))
+    assemble_matrix_and_vector!(A, b, assem, data)
+    nothing
+end
+dirichlet_projection!(bk::AbstractBackend, A, b, res, jac, uh, ∆U, V, assem, previous) = Backends.not_available(bk, "the Dirichlet projection")
+
+# Tangent, residual and increment of a Newton cache for the projection, and its numerical setup
+# (HyperFEM's `NewtonCache`; Gridap's `NewtonRaphsonCache` has the same fields)
+projection_system(c) = (c.A, c.b, c.dx)
+projection_setup!(c::NewtonCache, x) = numerical_setup!(c, x)
+projection_setup!(c, x) = numerical_setup!(c.ns, c.A)
+
+"""
+    StaticNonlinearModel(res, jac, U, V, dirichlet; neumann=nothing, nls, xh, xh⁻, backend=:lazy,
+                         injectivity=nothing, energy=nothing, tangent_switch=nothing)
+
+`res(τ)` and `jac(τ)` are functions of the stage parameter τ of the solver. `dirichlet` are the
+`BoundaryConditions` of `U`; `neumann`, if any, the [`NeumannConditions`](@ref) added to the residual by
+the driver at the load of every step. The model owns the Dirichlet applicators of its spaces
+(`get_applicators`: those of `U`, `∆U` and the space of `xh⁻`). `backend` (`:lazy`, `:compiled` or an
+[`AbstractBackend`](@ref)) selects who evaluates and assembles the forms (see `build_operator`);
+`assem_U` is a custom Gridap assembler for the lazy backend only (see `assembler`).
+
+`injectivity` is the measure whose quadrature points must keep `det F > 0` (`dΩ`, or `(dΩ, i)` when
+the displacement is the field `i` of a multi-field space); it gives the injectivity step of
+[`InjectivityLS`](@ref) and the safe load factor of the Dirichlet projection (see
+[`injectivity_step`](@ref)). `energy(τ) = u -> ∫(…)dΩ + …` is the total potential energy of the
+model whose first variation is `res(τ)`: the stored energy of every subdomain (`energy(model, km, u, dΩ)`
+of `WeakForms`) plus the regularisation terms; the driver adds the work of the Neumann loads. It is
+the energy of the Armijo line search (`InjectivityLS(armijo = true)`), for minimisation problems
+only. `tangent_switch` is the `TangentSwitch` shared by the `HessianRegularization` wrappers of the
+models in `jac`, which the hybrid Newton (`HybridTangent`) flips between the consistent and the
+projected tangent. The solver receives the operator of the backend wrapped in a
+[`ModelOperator`](@ref) with these hooks.
+"""
+struct StaticNonlinearModel{A,B,C,D,E,F,G,H} <: ComputationalModel
     res::A
     jac::B
     spaces::C
     dirichlet::D
-    caches::E
+    neumann::E
+    applicators::F
+    caches::G
+    hooks::H
 
     function StaticNonlinearModel(
         res::Function, jac::Function, U, V, dirbc;
-        assem_U=SparseMatrixAssembler(U, V),
-        nls::NonlinearSolver=NewtonSolver(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
+        neumann=nothing,
+        assem_U=nothing,
+        nls::NonlinearSolver=NewtonRaphson(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
         xh::FEFunction=FEFunction(U, zero_free_values(U)),
-        xh⁻::FEFunction=FEFunction(U, zero_free_values(U)))
+        xh⁻::FEFunction=FEFunction(U, zero_free_values(U)),
+        backend=:lazy,
+        injectivity=nothing,
+        energy=nothing,
+        tangent_switch=nothing)
 
         ∆U = TrialFESpace(U, dirbc, 0.0)
-        TrialFESpace!(U, dirbc, 0.0)
-        spaces = (U, V, ∆U)
+        Un = get_fe_space(xh⁻)
+        app_U = dirichlet_applicator(U, dirbc)
+        applicators = (app_U, dirichlet_applicator(∆U, dirbc), Un === U ? app_U : dirichlet_applicator(Un, dirbc))
+        TrialFESpace!(U, app_U, 0.0)
+        spaces = (U, V, ∆U, Un)
         x = get_free_dof_values(xh)
         x⁻ = get_free_dof_values(xh⁻)
-        # x⁻ = zero_free_values(U)
-        _res = res(0.0)
-        _jac = jac(0.0)
-        op = get_algebraic_operator(FEOperator(_res, _jac, U, V, assem_U))
-        nls_cache = instantiate_caches(x, nls, op)
-        caches = (nls, nls_cache, x, x⁻, assem_U)
+        hooks = (injectivity=_injectivity_hook(injectivity), energy=energy, tangent_switch=tangent_switch)
+        _res = with_neumann(res(1.0), neumann, 1.0)
+        _jac = jac(1.0)
+        bk = as_backend(backend)
+        assem = assembler(bk, assem_U, U, V)
+        op = build_operator(bk, _res, _jac, U, V, assem, nothing)
+        functionals = Ref{Any}(nothing)
+        nls_cache = instantiate_caches(x, nls, model_operator(hooks, spaces, neumann, op, 1.0, 1.0; backend=bk, store=functionals))
+        caches = NonlinearStepCache(nls, nls_cache, x, x⁻, assem, bk, op, functionals)
 
         A, B, C = typeof(res), typeof(jac), typeof(spaces)
-        D, E = typeof(dirbc), typeof(caches)
-        return new{A,B,C,D,E}(res, jac, spaces, dirbc, caches)
+        D, E, F, G, H = typeof(dirbc), typeof(neumann), typeof(applicators), typeof(caches), typeof(hooks)
+        return new{A,B,C,D,E,F,G,H}(res, jac, spaces, dirbc, neumann, applicators, caches, hooks)
     end
 end
+
+_injectivity_hook(::Nothing) = nothing
+_injectivity_hook(dΩ::Measure) = (dΩ, nothing)
+_injectivity_hook(inj::Tuple{Measure,Int}) = inj
+_injectivity_hook(inj) = error("HyperFEM: `injectivity` must be a Measure or a tuple (Measure, field index); got $(typeof(inj))")
+
+_field(uh, ::Nothing) = uh
+_field(uh, i::Int) = uh[i]
+
+"""
+    injectivity_step(m::StaticNonlinearModel, xh, dxh, β, jmin) -> α
+
+Injectivity step of the model (`injectivity = …`) from the state `xh` along the increment `dxh`.
+"""
+function Solvers.injectivity_step(m::StaticNonlinearModel, xh, dxh, β, jmin)
+    inj = m.hooks.injectivity
+    inj === nothing && error("HyperFEM: the model has no `injectivity = …` measure for the injectivity step")
+    injectivity_step(inj[1], _field(xh, inj[2]), _field(dxh, inj[2]), β, jmin)
+end
+
+# The operator handed to the Newton: the operator of the backend with the hooks of the model at the
+# stage Λ and the load loadΛ of the step. The energy and the injectivity step are evaluated by the
+# `backend` (`energy_function`, `injectivity_function`): Gridap's lazy evaluation by default, the
+# kernels of the compiled backend (extension), which keep their functionals in `store` between steps.
+function model_operator(hooks, spaces, neumann, op, Λ, loadΛ; backend::AbstractBackend=LazyBackend(), store=nothing)
+    U, V = spaces[1], spaces[2]
+    inj = hooks.injectivity
+    ms = inj === nothing ? nothing : injectivity_function(backend, inj, U, V, store)
+    en = hooks.energy === nothing ? nothing : energy_function(backend, with_neumann_energy(hooks.energy(Λ), neumann, loadΛ), U, store)
+    ModelOperator(op; max_step=ms, energy=en, tangent_switch=hooks.tangent_switch)
+end
+model_operator(m::StaticNonlinearModel, op, Λ=1.0, loadΛ=1.0) =
+    model_operator(m.hooks, m.spaces, m.neumann, op, Λ, loadΛ; backend=m.caches.backend, store=m.caches.functionals)
+
+"""
+    energy_function(backend, e, U, store) -> x -> Float64
+
+Energy of the model at the free values `x` for the functional `e(uh)` (a `DomainContribution`):
+Gridap's lazy `sum` for any backend without its own evaluation; the compiled backend evaluates it
+with the kernels (`KernelFunctional`, kept in `store` and updated with the load factor).
+"""
+energy_function(::AbstractBackend, e, U, store) = x -> sum(e(FEFunction(U, x)))
+
+"""
+    injectivity_function(backend, inj, U, V, store) -> (x, dx, β, jmin) -> α
+
+Injectivity step of the model (`inj = (dΩ, field)`) from the free values `x` along the increment
+`dx` (numbered as `V`): Gridap's lazy minimum over the quadrature points by default; the compiled
+backend takes the pointwise minimum with the kernels, the increment read from an FE function.
+"""
+injectivity_function(::AbstractBackend, inj, U, V, store) =
+    (x, dx, β, jmin) -> injectivity_step(inj[1], _field(FEFunction(U, x), inj[2]), _field(FEFunction(V, dx), inj[2]), β, jmin)
 
 # Getters
-get_state(m::StaticNonlinearModel) = FEFunction(get_trial_space(m), m.caches[3])
+get_state(m::StaticNonlinearModel) = FEFunction(get_trial_space(m), m.caches.x)
 get_measure(m::StaticNonlinearModel) = m.res.dΩ
 get_spaces(m::StaticNonlinearModel) = m.spaces
-get_assemblers(m::StaticNonlinearModel) = (m.caches[4])
+get_applicators(m::StaticNonlinearModel) = m.applicators
+get_assemblers(m::StaticNonlinearModel) = m.caches.assem
 
 
-# is_vtk=true,
-#   filePath=datadir("sims", "Temp"),
-#   vtk::WriteVTK.CollectionFile=paraview_collection(datadir("sims", "Temp") * "/Results", append=false)
 
-function solve!(m::StaticNonlinearModel;
-    stepping=(nsteps=20, maxbisec=15), RestartState::Bool=false, ProjectDirichlet::Bool=true,
-    post=PostProcessor())
-
-    reset!(post)
-    flagconv = 1 # convergence flag 0 (max bisections) 1 (max steps)
-    U, V, ∆U = m.spaces
-    TrialFESpace!(U, m.dirichlet, 0.0)
-    nls, nls_cache, x, x⁻, assem_U = m.caches
-
-    Λ = 0.0
-    ∆Λ = 1.0 / stepping[:nsteps]
-    nbisect = 0
-    Λ_ = 0
-    if RestartState
-        x .*= 0.0
-    end
-    x⁻ .= x
-    α = 1.0
-
-    while Λ < 1.0
-        Λ += ∆Λ
-        if Λ > 1.0
-        ∆Λ = 1.0 - (Λ - ∆Λ)
-        Λ = min(1.0, Λ)
-        end
-        if ProjectDirichlet
-            α = dirichlet_preconditioning!(x, m, Λ, ∆Λ, nls)
-        end
-       #@show α
-        Λ -= ∆Λ
-        ∆Λ= α*∆Λ
-        Λ += ∆Λ
-
-        # U.dirichlet_values .+= α*∆U.dirichlet_values
- 
-        TrialFESpace!(U, m.dirichlet, Λ)
-        
-        res = m.res(Λ)
-        jac = m.jac(Λ)
-        op = get_algebraic_operator(FEOperator(res, jac, U, V, assem_U))
-        Algebra.solve!(x, nls, op, nls_cache)
-        r_abs = nls.log.residuals[nls.log.num_iters+1]
-        r_rel = r_abs / nls.log.residuals[1]
-        if !converged(nls.log.tols, nls.log.num_iters, r_abs, r_rel)
-            @warn "Bisection performed!"
-            x .= x⁻
-            Λ -= α*∆Λ 
-            ∆Λ = ∆Λ / 2
-            nbisect += 1
-            # @assert(nbisect <= stepping[:maxbisec], "Maximum number of bisections reached")
-        else
-            print_message(nls.log, "\nSTEP: $Λ_, Λ: $Λ\n")
-            Λ_ += 1
-            x⁻ .= x
-            # Write to PVD
-            post(Λ)
-        end
-        #  GC.gc()
-
-        if nbisect > stepping[:maxbisec]
-            @warn "Maximum number of bisections reached"
-            flagconv = 0
-            break
-        end
-
-    end
-
-    vtk_save(post)
-
-    return x, flagconv
-end
-
-function post_solve!(pvd, x, Λ, Λ_, m, filePath)
-
-    Ω = get_triangulation(get_spaces(m)[1])
-    xh = FEFunction(get_trial_space(m), x)
-
-    Λstring = replace(string(round(Λ, digits=2)), "." => "_")
-    pvd[Λ_] = createvtk(Ω,
-        filePath * "/_Λ_" * Λstring * "_TIME_$Λ_" * ".vtu",
-        cellfields=["u" => xh],
-    )
-
-    return pvd
-end
-
-function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, ::Newton_RaphsonSolver)
-    duh = get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64)
-    # update step
-    α = update_cellstate!(m.caches[1].linesearch, get_state(m), duh)
-     x .+= α * get_free_dof_values(duh)
+function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, nls::NewtonRaphson, load=identity)
+    duh = get_dirichlet_preconditioner(m, Λ, ∆Λ, load)
+    # safe load factor: the injectivity step of the line search along the Dirichlet increment
+    α = dirichlet_step(nls.linesearch, m, get_state(m), duh)
+    x .+= α .* get_free_dof_values(duh)
     return α
 end
 
-function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, ::Any)
-    duh = get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64)
+# Safe load factor of the Dirichlet projection for each line search
+dirichlet_step(ls::Solvers.AbstractLineSearch, m, xh, dxh) = update_cellstate!(ls, xh, dxh)
+dirichlet_step(ls::InjectivityLS, m, xh, dxh) = injectivity_step(m, xh, dxh, ls.β, ls.jmin)
+
+function dirichlet_preconditioning!(x::Vector{Float64}, m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, ::Any, load=identity)
+    duh = get_dirichlet_preconditioner(m, Λ, ∆Λ, load)
     x .+= get_free_dof_values(duh)
     return 1.0
 end
 
 
-function get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64)
+"""
+    get_dirichlet_preconditioner(m, Λ, ∆Λ, load=identity) -> duh
+
+Increment of the Dirichlet projection from the state of `m` at the stage `Λ - ∆Λ` to the stage `Λ`
+(`dirichlet_projection!` on the Newton cache of the model). `duh` is an `FEFunction` of `∆U` over the
+increment vector of the Newton cache: it is valid until the next Newton solve or projection.
+"""
+function get_dirichlet_preconditioner(m::StaticNonlinearModel, Λ::Float64, ∆Λ::Float64, load=identity)
     _, V, ∆U = m.spaces
     uh = get_state(m)
-    # TrialFESpace!(∆U, m.dirichlet, ∆Λ)
-    TrialFESpace!(∆U, m.dirichlet, Λ, ∆Λ)
-    res = m.res(Λ - ∆Λ)
+    # increment of the Dirichlet values between the stages Λ - ∆Λ and Λ (loads load(Λ - ∆Λ) and load(Λ))
+    TrialFESpace!(∆U, m.applicators[2], load(Λ), load(Λ) - load(Λ - ∆Λ); stage=(Λ, ∆Λ))
+    res = with_neumann(m.res(Λ - ∆Λ), m.neumann, load(Λ - ∆Λ))
     jac = m.jac(Λ - ∆Λ)
-    l(v) = -1.0 * res(uh, v)
-    a(du, v) = jac(uh, du, v)
-    op = AffineFEOperator(a, l, ∆U, V)
-    ls = m.caches[1].ls
-    duh = solve(ls, op)
-    return duh
+    c = m.caches
+    A, b, dx = projection_system(c.nls_cache)
+    c.projection = dirichlet_projection!(c.backend, A, b, res, jac, uh, ∆U, V, c.assem, c.projection)
+    ns = projection_setup!(c.nls_cache, c.x)
+    Algebra.solve!(dx, ns, b)
+    return FEFunction(∆U, dx)
 end
-#*******************************************************************************	
-#    					 DynamicNonlinearModel
-#*******************************************************************************	
-
-
-struct DynamicNonlinearModel{A,B,C,D,E,F} <: ComputationalModel
-    res::A
-    jac::B
-    spaces::C
-    dirichlet::D
-    velocity::E
-    caches::F
-
-    function DynamicNonlinearModel(
-        res::Function, jac::Function, U, Uold, V, dirbc, velocity::TimedependentCondition;
-        assem_U=SparseMatrixAssembler(U, V),
-        nls::NonlinearSolver=NewtonSolver(LUSolver(); maxiter=10, rtol=1.e-8, verbose=true),
-        xh::FEFunction=FEFunction(U, zero_free_values(U)))
-
-        spaces = (U, V, Uold)
-        x = get_free_dof_values(xh)
-        x⁻ = zero_free_values(Uold)
-        uh⁻ = FEFunction(Uold, x⁻)
-        vuh = velocity()
-        _res = res(0.0, uh⁻, vuh)
-        _jac = jac(0.0, uh⁻, vuh)
-        op = get_algebraic_operator(FEOperator(_res, _jac, U, V, assem_U))
-        nls_cache = instantiate_caches(x, nls, op)
-        caches = (nls, nls_cache, x, x⁻, assem_U, uh⁻)
-        A, B, C = typeof(res), typeof(jac), typeof(spaces)
-        D, E, F = typeof(dirbc), typeof(velocity), typeof(caches)
-        return new{A,B,C,D,E,F}(res, jac, spaces, dirbc, velocity, caches)
-    end
-end
-
-# Getters
-get_state(m::DynamicNonlinearModel) = FEFunction(get_trial_space(m), m.caches[3])
-get_measure(m::DynamicNonlinearModel) = m.res.dΩ
-get_spaces(m::DynamicNonlinearModel) = m.spaces
-get_assemblers(m::DynamicNonlinearModel) = (m.caches[4])
-
-
-
-function update_velocity!(vh, x, x⁻, Δt)
-    vh_ = get_free_dof_values(vh)
-    vh_ .*= -1.0
-    vh_ .-= (2.0 / Δt) .* x⁻
-    vh_ .+= (2.0 / Δt) .* x
-    return vh
-end
-
-
-function solve!(m::DynamicNonlinearModel;
-    stepping=(nsteps=10, Δt=0.1),
-    post=PostProcessor())
-
-    reset!(post)
-    U, V, U⁻ = m.spaces
-    t = 0.0
-    Δt = stepping[:Δt]
-    nsteps = stepping[:nsteps]
-    nls, nls_cache, x, x⁻, assem_U, uh⁻ = m.caches
-    itime = 0
-    KE = zeros(Float64, nsteps)
-    EE = zeros(Float64, nsteps)
-
-    uh = FEFunction(U, x)
-
-    for itime in 1:nsteps
-        t += Δt
-        vuh = m.velocity()
-        _res = m.res(t, uh⁻, vuh)
-        _jac = m.jac(t, uh⁻, vuh)
-        TrialFESpace!(U, m.dirichlet, t)
-        TrialFESpace!(U⁻, m.dirichlet, t - Δt)
-
-        # @show(    ∑( ∫(uh⁻[1]⋅uh⁻[1])m.res.dΩ  )  )
-        # @show(    ∑( ∫(uh⁻[2]⋅uh⁻[2])m.res.dΩ   ) )
-
-
-        op = get_algebraic_operator(FEOperator(_res, _jac, U, V, assem_U))
-        Algebra.solve!(x, nls, op, nls_cache)
-
-        # @show(    ∑( ∫(uu[1]⋅uu[1])m.res.dΩ  )  )
-        # @show(    ∑( ∫(uu[2]⋅uu[2])m.res.dΩ   ) )
-        # @show(    ∑( ∫(uh⁻[1]⋅uh⁻[1])m.res.dΩ  )  )
-        # @show(    ∑( ∫(uh⁻[2]⋅uh⁻[2])m.res.dΩ   ) )
-
-        update_velocity!(m.velocity.vh, x, x⁻, Δt)
-        x⁻ .= x
-        print_message(nls.log, "\nStep: $itime, Time: $t\n")
-        post(t)
-
-
-        # # Kinetic Energy
-        #  KE[itime] = ∑(∫(0.5  * (m.velocity.vh ⋅ m.velocity.vh))m.res.dΩ )
-        # # Elastic Energy
-        #  EE[itime] = ∑(∫(Ψ ∘ (∇(uh[1])',∇(uh[2])'))m.res.dΩ )
-        GC.gc()
-
-    end
-    vtk_save(post)
-
-    return x
-end
-
-
-
-
-#*******************************************************************************	
+#*******************************************************************************
 #    					 StaticLinearModel
-#*******************************************************************************	
+#*******************************************************************************
 
+"""
+    linear_system(backend, bf, lf, U, V, assem) -> (K, b, op)
 
+Matrix `K` of the bilinear form `bf` and vector `b` of the linear form `lf`, with the Dirichlet lift of
+`U` (the Dirichlet values of `U` are moved to the right-hand side), as Gridap's `AffineFEOperator`.
+With `lf === nothing` only `K` is assembled and `b` is allocated and zeroed. `op` is the operator
+of the backend (`nothing` for `:lazy`), handed back to `linear_system!` and
+`load_vector!` so that a backend can reuse its structure. `CompiledBackend` is provided by
+the HyperFEMKernels extension (`using HyperFEMKernels`).
+"""
+function linear_system(::LazyBackend, bf, lf, U, V, assem)
+    if lf === nothing
+        K = assemble_matrix(bf, assem, U, V)
+        b = allocate_in_range(K)
+        fill!(b, zero(eltype(b)))
+    else
+        op = AffineFEOperator(bf, lf, U, V, assem)
+        K, b = get_matrix(op), get_vector(op)
+    end
+    K, b, nothing
+end
+linear_system(b::AbstractBackend, args...) = Backends.not_available(b, "the linear drivers")
+
+"""
+    linear_system!(backend, K, b, bf, lf, U, V, assem, op) -> op
+
+Re-assembles in place the system of `linear_system`: `K` and `b` with the current Dirichlet
+values of `U`, or only `K` when `lf === nothing`. Returns the operator to hand back in the next call.
+"""
+function linear_system!(::LazyBackend, K, b, bf, lf, U, V, assem, op)
+    if lf === nothing
+        assemble_matrix!(bf, K, assem, U, V)
+    else
+        u = get_trial_fe_basis(U)
+        v = get_fe_basis(V)
+        data = collect_cell_matrix_and_vector(U, V, bf(u, v), lf(v), zero(U))
+        assemble_matrix_and_vector!(K, b, assem, data)
+    end
+    nothing
+end
+linear_system!(b::AbstractBackend, args...) = Backends.not_available(b, "the linear drivers")
+
+"""
+    load_vector!(backend, b, lf, U, V, assem, op) -> op
+
+Vector of the linear form `lf` alone (no Dirichlet lift), as Gridap's `assemble_vector!`; used for
+the right-hand sides of a [`StaticLinearModel`](@ref) with several linear forms. Returns the operator
+to hand back in the next call.
+"""
+function load_vector!(::LazyBackend, b, lf, U, V, assem, op)
+    assemble_vector!(lf, b, assem, V)
+    nothing
+end
+load_vector!(b::AbstractBackend, args...) = Backends.not_available(b, "the linear drivers")
+
+"""
+    StaticLinearModel(lf, bf, U, V, dirichlet; assem_U, ls, xh, backend=:lazy)
+    StaticLinearModel(bf, U, V, dirichlet; assem_U, ls, xh, backend=:lazy)
+    StaticLinearModel(lfs::Vector, bf, U0, V0, dirichlet; assem_U, ls, backend=:lazy)
+
+Linear problem `bf(u, v) = lf(v)`. With a linear form `lf` the matrix and the vector are assembled at
+construction; without one (`lf = nothing`) only the matrix (the right-hand side is given to `solve!`
+or built by the model's functors); with a vector of linear forms `lfs` one matrix is solved for
+several right-hand sides on the repeated spaces of `U0`, `V0`. The matrix is factorised (numerical
+setup of `ls`) at construction and again only when it is re-assembled (`Assembly = true`).
+`backend` selects who assembles (see `linear_system`): `:lazy` (default), `:compiled`
+(HyperFEMKernels extension, `using HyperFEMKernels`) or an [`AbstractBackend`](@ref); `assem_U`
+is a custom Gridap assembler for the lazy backend only (see `assembler`).
+"""
 struct StaticLinearModel{A,B,C,D,E} <: ComputationalModel
-    res::A
-    jac::B
+    lf::A
+    bf::B
     spaces::C
     dirichlet::D
     caches::E
 
     function StaticLinearModel(
-        res::Function, jac::Function, U, V, dirbc;
-        assem_U=SparseMatrixAssembler(U, V),
+        lf::Union{Nothing,Function,AbstractVector{<:Function}}, bf::Function, U0, V0, dirbc;
+        assem_U=nothing,
         ls::LinearSolver=LUSolver(),
-        xh::FEFunction=FEFunction(U, zero_free_values(U)))
+        xh::Union{Nothing,FEFunction}=nothing,
+        backend=:lazy)
 
-        spaces = (U, V)
-        op = AffineFEOperator(jac, res, U, V, assem_U)
-        K, b = get_matrix(op), get_vector(op)
-        x = get_free_dof_values(xh)
-        # x = allocate_in_domain(K)
+        multi = lf isa AbstractVector
+        spaces = multi ? repeat_spaces(length(lf), U0, V0) : (U0, V0)
+        bk = as_backend(backend)
+        assem = assembler(bk, assem_U, U0, V0)
+        K, b, op = linear_system(bk, bf, multi ? nothing : lf, U0, V0, assem)
+        x = multi ? repeated_allocate_in_domain(length(lf), K) :
+            get_free_dof_values(xh === nothing ? FEFunction(U0, zero_free_values(U0)) : xh)
         fill!(x, zero(eltype(x)))
         ns = numerical_setup(symbolic_setup(ls, K), K)
-        caches = (ns, K, b, x, assem_U)
+        caches = LinearSystemCache(ns, K, b, x, assem, bk, op)
 
-
-        A, B, C = typeof(res), typeof(jac), typeof(spaces)
+        A, B, C = typeof(lf), typeof(bf), typeof(spaces)
         D, E = typeof(dirbc), typeof(caches)
-        return new{A,B,C,D,E}(res, jac, spaces, dirbc, caches)
+        return new{A,B,C,D,E}(lf, bf, spaces, dirbc, caches)
     end
-
-
-
-    function StaticLinearModel(
-        res::Vector{<:Function}, jac::Function, U0, V0, dirbc;
-        assem_U0=SparseMatrixAssembler(U0, V0),
-        ls::LinearSolver=LUSolver())
-
-        nblocks = length(res)
-        U, V = repeat_spaces(nblocks, U0, V0)
-        spaces = (U, V)
-        ##  cache
-        K = assemble_matrix(jac, assem_U0, U0, V0) # 1D
-        b = allocate_in_range(K)
-        fill!(b, zero(eltype(b))) # 1D
-        x = repeated_allocate_in_domain(nblocks, K)
-        fill!(x, zero(eltype(x))) # nD
-        ns = numerical_setup(symbolic_setup(ls, K), K) # 1D
-        caches = (ns, K, b, x, assem_U0)
-
-        A, B, C = Vector{<:Function}, typeof(jac), typeof(spaces)
-        D, E = typeof(dirbc), typeof(caches)
-        return new{A,B,C,D,E}(res, jac, spaces, dirbc, caches)
-    end
-
-
-
-    function StaticLinearModel(
-        jac::Function, U, V, dirbc;
-        assem_U=SparseMatrixAssembler(U, V),
-        ls::LinearSolver=LUSolver(),
-        xh::FEFunction=FEFunction(U, zero_free_values(U)))
-
-        spaces = (U, V)
-        K = assemble_matrix(jac, assem_U, U, V)
-        b = allocate_in_range(K)
-        fill!(b, zero(eltype(b)))
-        x = get_free_dof_values(xh)
-        # x = allocate_in_domain(K)
-        fill!(x, zero(eltype(x)))
-        ns = numerical_setup(symbolic_setup(ls, K), K) # 1D
-        caches = (ns, K, b, x, assem_U)
-
-        A, B, C = Nothing, typeof(jac), typeof(spaces)
-        D, E = typeof(dirbc), typeof(caches)
-        return new{A,B,C,D,E}(nothing, jac, spaces, dirbc, caches)
-    end
-
-
 
     function (m::StaticLinearModel)(x::AbstractVector{Float64}; Assembly=false)
         U, V = m.spaces
-        jac = m.jac
-        ns, K, b, _, assem_U = m.caches
-        b .= x
-        if Assembly
-            assemble_matrix!(jac, K, assem_U, U, V)
-        end
-        numerical_setup!(ns, K)
-        Algebra.solve!(x, ns, b)
+        c = m.caches
+        c.b .= x
+        Assembly && assemble_stiffness!(m, m.bf, U, V, c.assem)
+        Algebra.solve!(x, numerical_setup!(c), c.b)
         return x
     end
 
+    # L2 projection of `xh`: the load vector ∫(xh v) dMeasure assembled by the backend of the model (no Dirichlet lift)
     function (m::StaticLinearModel)(xh::SingleFieldFEFunction; Measure=nothing, Assembly=false, kwargs...)
         x_ = get_free_dof_values(xh)
-        _, V = m.spaces
-        jac = m.jac
-        ns, K, b, _, assem_U = m.caches
-        assemble_vector!((v) -> ∫(xh * v)Measure, b, assem_U, V)
-        if Assembly
-            assemble_matrix!(jac, K, assem_U, U, V)
-        end
-        numerical_setup!(ns, K)
-        Algebra.solve!(x_, ns, b)
+        U, V = m.spaces
+        c = m.caches
+        Assembly && assemble_stiffness!(m, m.bf, U, V, c.assem)
+        c.op = load_vector!(c.backend, c.b, (v) -> ∫(xh * v)Measure, U, V, c.assem, c.op)
+        Algebra.solve!(x_, numerical_setup!(c), c.b)
         return x_
     end
+end
 
+StaticLinearModel(bf::Function, U, V, dirbc; kwargs...) = StaticLinearModel(nothing, bf, U, V, dirbc; kwargs...)
 
+# Backend of the model
+get_backend(m::StaticLinearModel) = m.caches.backend
 
+# Matrix only, with the backend of the model
+function assemble_stiffness!(m::StaticLinearModel, bf, U, V, assem)
+    c = m.caches
+    c.op = linear_system!(c.backend, c.K, c.b, bf, nothing, U, V, assem, c.op)
+    c.stale = true
+    nothing
 end
 
 
+"""
+    solve!(m::StaticLinearModel; Assembly=true, post) -> x
+    solve!(m::StaticLinearModel, b; Assembly=true, post) -> x
+
+Solve of the linear problem with the right-hand side of the model (or the vector `b`). With
+`Assembly = true` the system is re-assembled with the current Dirichlet values (the matrix alone
+when the model has no linear form or `b` is given) and the numerical setup updated; with
+`Assembly = false` the matrix and its setup of the last assembly are reused.
+"""
 function solve!(m::StaticLinearModel; Assembly=true, post=PostProcessor())
 
     reset!(post)
     U, V = m.spaces
-    jac = m.jac
-    res = m.res
-    ns, K, b, x, assem_U = m.caches
+    c = m.caches
     if Assembly
-        assemble_matrix_and_vector!(jac, res, K, b, assem_U, U, V)
-    else
-        assemble_vector!(res, b, assem_U, V)
+        c.op = linear_system!(c.backend, c.K, c.b, m.bf, m.lf, U, V, c.assem, c.op)
+        c.stale = true
     end
-    numerical_setup!(ns, K)
-    Algebra.solve!(x, ns, b)
+    Algebra.solve!(c.x, numerical_setup!(c), c.b)
     post(1.0)
     vtk_save(post)
 
-    return x
+    return c.x
 end
 
 
@@ -483,48 +521,34 @@ function solve!(m::StaticLinearModel, b::Vector{Float64}; Assembly=true, post=Po
 
     reset!(post)
     U, V = m.spaces
-    jac = m.jac
-    ns, K, _, x, assem_U = m.caches
-    if Assembly
-        assemble_matrix!(jac, K, assem_U, U, V)
-    end
-    numerical_setup!(ns, K)
-    Algebra.solve!(x, ns, b)
+    c = m.caches
+    Assembly && assemble_stiffness!(m, m.bf, U, V, c.assem)
+    Algebra.solve!(c.x, numerical_setup!(c), b)
     post(1.0)
     vtk_save(post)
-    return x
+    return c.x
 end
 
 
 
-function solve!(m::StaticLinearModel{Vector{<:Function},<:Any,<:Any,<:Any,<:Any}; Assembly=true, post=PostProcessor())
+function solve!(m::StaticLinearModel{<:AbstractVector}; Assembly=true, post=PostProcessor())
     reset!(post)
     U, V = m.spaces
     U0 = U[1]
     V0 = V[1]
-    jac = m.jac
-    res = m.res
-    ns, K, b, x, assem_U0 = m.caches
-
-    if Assembly
-        assemble_matrix!(jac, K, assem_U0, U0, V0)
-    end
-
-    numerical_setup!(ns, K)
-
-    map(blocks(x), res) do xi, li
-        assemble_vector!(li, b, assem_U0, V0)
-        Algebra.solve!(xi, ns, b)
+    c = m.caches
+    Assembly && assemble_stiffness!(m, m.bf, U0, V0, c.assem)
+    ns = numerical_setup!(c)
+    map(blocks(c.x), m.lf) do xi, li
+        c.op = load_vector!(c.backend, c.b, li, U0, V0, c.assem, c.op)
+        Algebra.solve!(xi, ns, c.b)
     end
     post(1.0)
     vtk_save(post)
-    return x
+    return c.x
 end
 
 # Getters
-get_state(m::StaticLinearModel) = FEFunction(get_trial_space(m), m.caches[4])
-get_measure(m::StaticLinearModel) = m.biform.dΩ
+get_state(m::StaticLinearModel) = FEFunction(get_trial_space(m), m.caches.x)
 get_spaces(m::StaticLinearModel) = m.spaces
-get_assemblers(m::StaticLinearModel) = (m.caches[5], m.plb_caches[2], m.adj_caches[4])
-
-
+get_assemblers(m::StaticLinearModel) = m.caches.assem

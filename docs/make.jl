@@ -1,25 +1,48 @@
-using HyperFEM
 using Documenter
+using HyperFEM
 
-DocMeta.setdocmeta!(HyperFEM, :DocTestSetup, :(using HyperFEM); recursive=true)
+readme_path = joinpath(@__DIR__, "..", "README.md")
+index_path = joinpath(@__DIR__, "src", "index.md")
 
-makedocs(;
-    modules=[HyperFEM],
-    authors="MultiSimo_Group",
-    repo="https://github.com/jmartfrut/Mimosa.jl/blob/{commit}{path}#{line}",
-    sitename="HyperFEM.jl",
-    format=Documenter.HTML(;
-        prettyurls=get(ENV, "CI", "false") == "true",
-        canonical="https://jmartfrut.github.io/HyperFEM.jl",
-        edit_link="main",
-        assets=String[],
-    ),
-    pages=[
-        "Home" => "index.md",
-    ],
+readme_content = read(readme_path, String)
+header_start = findfirst("# Multiphysics", readme_content)
+readme_content = header_start !== nothing ? readme_content[header_start.start:end] : readme_content
+readme_content = replace(readme_content, r"(<p align=\"center\"><img.*?</p>)" => s"```@raw html\n\1\n```")
+write(index_path, readme_content)
+
+makedocs(
+  sitename = "HyperFEM.jl",
+  modules = [
+    HyperFEM,
+    HyperFEM.TensorAlgebra,
+    HyperFEM.PhysicalModels,
+    HyperFEM.WeakForms,
+    HyperFEM.Solvers,
+    HyperFEM.DiscreteModeling,
+    HyperFEM.DiscreteModeling.EvolutionFunctions,
+    HyperFEM.DiscreteModeling.CartesianTags,
+    HyperFEM.ComputationalModels
+  ],
+  pages = [
+    "Home" => "index.md",           # Inject README.md (previously cloned into index.md)
+    "Tutorials" => "tutorials.md",  # Point to the tutorials repository
+    "Time integration" => "transient.md",
+    "Tensor algebra" => "tensor_algebra.md",
+    "API reference" => "api.md"     # Inject the docstrings from the code
+  ],
+  format = Documenter.HTML(
+    prettyurls = get(ENV, "CI", "false") == "true",
+    canonical = "https://MultiSimOLab.github.io/HyperFEM.jl",
+    size_threshold = 400 * 2^10,        # the API reference is one page with every docstring (~210 KiB)
+    size_threshold_warn = 250 * 2^10,
+  ),
+  checkdocs = :none,
+  warnonly = false,
+  linkcheck = get(ENV, "CI", "false") == "true", # check links only if running in ci
+  linkcheck_ignore = [r"^mailto:"],
 )
 
-deploydocs(;
-    repo="github.com/jmartfrut/HyperFEM.jl",
-    devbranch="main",
+deploydocs(
+  repo = "github.com/MultiSimOLab/HyperFEM.jl.git",
+  devbranch = "main"
 )

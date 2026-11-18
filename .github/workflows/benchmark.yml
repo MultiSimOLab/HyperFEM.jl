@@ -1,0 +1,22 @@
+# https://astroautomata.com/AirspeedVelocity.jl/stable/
+
+name: Benchmark
+
+on:
+  pull_request_target:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}  # pull_request_target sets github.ref to the base branch (e.g., refs/heads/main)
+  cancel-in-progress: true
+
+permissions:
+  pull-requests: write  # need to post comments
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: MilesCranmer/AirspeedVelocity.jl@action-v1
+        with:
+          julia-version: '1.13.1'  # setup fails on 1.13.2 ("Unknown package: Parsers"); go back to '1' once fixed

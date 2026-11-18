@@ -6,11 +6,22 @@ using HyperFEM.PhysicalModels
 
 export residual
 export jacobian
+export energy
 export mass_term
 export (+)
 
+import Gridap.Algebra:residual,jacobian
+
+"""
+    energy(op, x)
+
+Incremental energy of an operator at the state `x` (see `HyperFEM.Solvers.ModelOperator`); the
+methods for the physical models follow.
+"""
+function energy end
 import Base: +
 
+# ===================
 # Coupling management
 # ===================
 
@@ -27,25 +38,50 @@ end
 # ===================
 # Mechanics
 # ===================
- 
-function residual(physicalmodel::Mechano, u, v, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-       F,_,_ = get_Kinematics(physicalmodel.Kinematic; Λ=Λ)
-    ∂Ψu=DΨ[2]
 
-    ∫(∇(v)' ⊙ (∂Ψu ∘ (F∘(∇(u)'))))dΩ
+"""
+    residual(...)::Gridap.CellData.Integrand
 
+Calculate the residual using the given constitutive model and finite element functions.
+"""
+function residual(physicalmodel::Mechano, km::KinematicModel, u, v, dΩ, Λ=1.0, vars...)
+  _, ∂Ψu, _ = physicalmodel()
+  F, _, _   = get_Kinematics(km; Λ=Λ)
+  ∫(∇(v)' ⊙ (∂Ψu ∘ (F∘∇(u)', vars...)))dΩ
 end
 
-function jacobian(physicalmodel::Mechano, u, du, v, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-      F,_,_ = get_Kinematics(physicalmodel.Kinematic; Λ=Λ)
-    ∂Ψuu=DΨ[3]
-    ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘(∇(u)'))) ⊙ (∇(du)')))dΩ
+"""
+    jacobian(...)::Gridap.CellData.Integrand
+
+Calculate the jacobian using the given constitutive model and finite element functions.
+"""
+function jacobian(physicalmodel::Mechano, km::KinematicModel, u, du, v, dΩ, Λ=1.0, vars...)
+  _, _, ∂Ψuu = physicalmodel()
+  F, _, _    = get_Kinematics(km; Λ=Λ)
+  ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘∇(u)', vars...)) ⊙ ∇(du)'))dΩ
 end
+
+"""
+    energy(physicalmodel, km, u, dΩ, Λ=1.0, vars...)::Gridap.CellData.DomainContribution
+
+Stored energy of the constitutive model over `dΩ` for the displacement `u`; its first variation is
+`residual(physicalmodel, km, u, v, dΩ, Λ, vars...)`. Summed over the subdomains of a model (plus
+the regularisation terms and the Neumann work, added by the driver) it is the energy of the
+Armijo line search ([`InjectivityLS`](@ref HyperFEM.Solvers.InjectivityLS) with `armijo = true`).
+"""
+function energy(physicalmodel::Mechano, km::KinematicModel, u, dΩ, Λ=1.0, vars...)
+  Ψ, _, _ = physicalmodel()
+  F, _, _ = get_Kinematics(km; Λ=Λ)
+  ∫(Ψ ∘ (F∘∇(u)', vars...))dΩ
+end
+
+
+# ===================
+# Mass term
+# ===================
 
 function mass_term(u, v, Coeff, dΩ)
-    ∫(Coeff* (u⋅v))dΩ
+  ∫(Coeff* (u⋅v))dΩ
 end
 
 
@@ -55,94 +91,101 @@ end
 
 # Stagered strategy
 # -----------------
-function residual(physicalmodel::ThermoElectroMechano, ::Type{Mechano}, (u, φ, θ), v, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.Mechano.Kinematic; Λ=Λ)
-    E     = get_Kinematics(physicalmodel.Electro.Kinematic; Λ=Λ)
-    ∂Ψu=DΨ[2]
-    return ∫(∇(v)' ⊙ (∂Ψu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)))dΩ
+function residual(physicalmodel::ThermoElectroMechano, ::Type{Mechano}, kine::NTuple{3,KinematicModel},(u, φ, θ), v, dΩ, Λ=1.0)
+  DΨ = physicalmodel()
+  F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
+  E     = get_Kinematics(kine[2]; Λ=Λ)
+  ∂Ψu=DΨ[2]
+  return ∫(∇(v)' ⊙ (∂Ψu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)))dΩ
 end
 
-function residual(physicalmodel::ThermoElectroMechano, ::Type{Electro}, (u, φ, θ), vφ, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.Mechano.Kinematic; Λ=Λ)
-    E     = get_Kinematics(physicalmodel.Electro.Kinematic; Λ=Λ)
-    ∂Ψφ=DΨ[3]
-    return -1.0*∫(∇(vφ)' ⋅ (∂Ψφ ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)))dΩ
+function residual(physicalmodel::ThermoElectroMechano, ::Type{Electro}, kine::NTuple{3,KinematicModel}, (u, φ, θ), vφ, dΩ, Λ=1.0)
+  DΨ = physicalmodel()
+  F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
+  E     = get_Kinematics(kine[2]; Λ=Λ)
+  ∂Ψφ=DΨ[3]
+  return -1.0*∫(∇(vφ)' ⋅ (∂Ψφ ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)))dΩ
 end
 
-function residual(physicalmodel::ThermoElectroMechano, ::Type{Thermo}, (u, φ, θ), vθ, dΩ, Λ=1.0)
-    κ=physicalmodel.Thermo.κ
-    return ∫(κ * ∇(θ) ⋅ ∇(vθ))dΩ
+function residual(physicalmodel::ThermoElectroMechano, ::Type{Thermo}, kine::NTuple{3,KinematicModel}, (u, φ, θ), vθ, dΩ, Λ=1.0, vars...)
+  κ = physicalmodel.thermo.κ
+  D, ∂D = Dissipation()
+  return ∫(κ * ∇(θ) ⋅ ∇(vθ) -D(u, φ, θ, vars...))dΩ
+end
+
+function transient_residual(physicalmodel::ThermoElectroMechano, ::Type{Thermo}, kine::NTuple{3,KinematicModel}, (u, φ, θ), (un, φn, θn), vθ, dΩ, Λ, Δt, vars...)
+  DΨ = physicalmodel()
+  η = -DΨ[4]
+  return ∫((1/Δt)*(θ*η(F,E,θ,vars...) - θn*η(Fn,En,θn,vars...) + η(F,E,θ)*(θ - θn)))dΩ
 end
 
 
-function jacobian(physicalmodel::ThermoElectroMechano, ::Type{Mechano}, (u, φ, θ), du, v, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.Mechano.Kinematic; Λ=Λ)
-    E     = get_Kinematics(physicalmodel.Electro.Kinematic; Λ=Λ)
-    ∂Ψuu=DΨ[5]
-    ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⊙ (∇(du)')))dΩ
+function jacobian(physicalmodel::ThermoElectroMechano, ::Type{Mechano}, kine::NTuple{3,KinematicModel}, (u, φ, θ), du, v, dΩ, Λ=1.0)
+  DΨ = physicalmodel()
+  F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
+  E     = get_Kinematics(kine[2]; Λ=Λ)
+  ∂Ψuu = DΨ[5]
+  ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⊙ (∇(du)')))dΩ
 end
 
-function jacobian(physicalmodel::ThermoElectroMechano, ::Type{Electro}, (u, φ, θ), dφ, vφ, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.Mechano.Kinematic; Λ=Λ)
-    E     = get_Kinematics(physicalmodel.Electro.Kinematic; Λ=Λ)
-    ∂Ψφφ=DΨ[6]
-    ∫(∇(vφ) ⋅ ((∂Ψφφ ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⋅ ∇(dφ)))dΩ
+function jacobian(physicalmodel::ThermoElectroMechano, ::Type{Electro}, kine::NTuple{3,KinematicModel}, (u, φ, θ), dφ, vφ, dΩ, Λ=1.0)
+  DΨ = physicalmodel()
+  F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
+  E     = get_Kinematics(kine[2]; Λ=Λ)
+  ∂Ψφφ = DΨ[6]
+  ∫(∇(vφ) ⋅ ((∂Ψφφ ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⋅ ∇(dφ)))dΩ
 end
 
-function jacobian(physicalmodel::ThermoElectroMechano, ::Type{Thermo}, dθ, vθ, dΩ, Λ=1.0)
-    κ=physicalmodel.Thermo.κ
-    ∫(κ * ∇(dθ) ⋅ ∇(vθ))dΩ
+function jacobian(physicalmodel::ThermoElectroMechano, ::Type{Thermo}, kine::NTuple{3,KinematicModel}, dθ, vθ, dΩ, Λ=1.0)
+  κ = physicalmodel.thermo.κ
+  ∫(κ * ∇(dθ) ⋅ ∇(vθ))dΩ
 end
 
-function jacobian(physicalmodel::ThermoElectroMechano, ::Type{Thermo}, (u, φ, θ)::Tuple, dθ, vθ, dΩ, Λ=1.0)
-    κ=physicalmodel.Thermo.κ
-    ∫((κ ∘ (u, φ, θ)) * ∇(dθ) ⋅ ∇(vθ))dΩ
+function jacobian(physicalmodel::ThermoElectroMechano, ::Type{Thermo}, kine::NTuple{3,KinematicModel}, (u, φ, θ)::Tuple, dθ, vθ, dΩ, Λ=1.0)
+  κ = physicalmodel.thermo.κ
+  ∫((κ ∘ (u, φ, θ)) * ∇(dθ) ⋅ ∇(vθ))dΩ
 end
 
-function jacobian(physicalmodel::ThermoElectroMechano, ::Type{ElectroMechano}, (u, φ, θ), (du, dφ), (v,vφ), dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.Mechano.Kinematic; Λ=Λ)
-    E     = get_Kinematics(physicalmodel.Electro.Kinematic; Λ=Λ)
-    ∂Ψφu=DΨ[8]
-    -1.0*∫(∇(dφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⊙ (∇(v)')))dΩ -
-    ∫(∇(vφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⊙ (∇(du)')))dΩ 
+function jacobian(physicalmodel::ThermoElectroMechano, ::Type{ElectroMechano}, kine::NTuple{3,KinematicModel},(u, φ, θ), (du, dφ), (v,vφ), dΩ, Λ=1.0)
+  DΨ = physicalmodel()
+  F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
+  E     = get_Kinematics(kine[2]; Λ=Λ)
+  ∂Ψφu = DΨ[8]
+  -1.0*∫(∇(dφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⊙ (∇(v)')))dΩ -
+  ∫(∇(vφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⊙ (∇(du)')))dΩ 
 end
 
-function jacobian(physicalmodel::ThermoElectroMechano, ::Type{ThermoMechano}, (u, φ, θ), dθ, v, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.Mechano.Kinematic; Λ=Λ)
-    E     = get_Kinematics(physicalmodel.Electro.Kinematic; Λ=Λ)
-    ∂Ψuθ=DΨ[9]
-    ∫(∇(v)' ⊙ (∂Ψuθ ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) * dθ)dΩ 
+function jacobian(physicalmodel::ThermoElectroMechano, ::Type{ThermoMechano},kine::NTuple{3,KinematicModel}, (u, φ, θ), dθ, v, dΩ, Λ=1.0)
+  DΨ = physicalmodel()
+  F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
+  E     = get_Kinematics(kine[2]; Λ=Λ)
+  ∂Ψuθ = DΨ[9]
+  ∫(∇(v)' ⊙ (∂Ψuθ ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) * dθ)dΩ 
 end
 
-function jacobian(physicalmodel::ThermoElectroMechano, ::Type{ThermoElectro}, (u, φ, θ), dθ, vφ, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.Mechano.Kinematic; Λ=Λ)
-    E     = get_Kinematics(physicalmodel.Electro.Kinematic; Λ=Λ)
-    ∂Ψφθ=DΨ[10]
-    -1.0*∫(∇(vφ) ⋅ ((∂Ψφθ ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) * dθ))dΩ
+function jacobian(physicalmodel::ThermoElectroMechano, ::Type{ThermoElectro}, kine::NTuple{3,KinematicModel},(u, φ, θ), dθ, vφ, dΩ, Λ=1.0)
+  DΨ= physicalmodel()
+  F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
+  E     = get_Kinematics(kine[2]; Λ=Λ)
+  ∂Ψφθ = DΨ[10]
+  -1.0*∫(∇(vφ) ⋅ ((∂Ψφθ ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) * dθ))dΩ
 end
 
 # Monolithic strategy
 # -------------------
-function residual(physicalmodel::ThermoElectroMechano, (u, φ, θ), (v, vφ, vθ), dΩ, Λ=1.0)
-    residual(physicalmodel, Mechano, (u, φ, θ), v, dΩ, Λ) +
-    residual(physicalmodel, Electro, (u, φ, θ), vφ, dΩ, Λ) +
-    residual(physicalmodel, Thermo, (u, φ, θ), vθ, dΩ, Λ)
+function residual(physicalmodel::ThermoElectroMechano, kine::NTuple{3,KinematicModel}, (u, φ, θ), (v, vφ, vθ), dΩ, Λ=1.0)
+  residual(physicalmodel, Mechano, kine, (u, φ, θ), v, dΩ, Λ) +
+  residual(physicalmodel, Electro, kine, (u, φ, θ), vφ, dΩ, Λ) +
+  residual(physicalmodel, Thermo, kine,(u, φ, θ), vθ, dΩ, Λ)
 end
 
-function jacobian(physicalmodel::ThermoElectroMechano, (u, φ, θ), (du, dφ, dθ), (v, vφ, vθ),  dΩ, Λ=1.0)
-    jacobian(physicalmodel, Mechano, (u, φ, θ), du, v, dΩ, Λ)+
-    jacobian(physicalmodel, Electro, (u, φ, θ), dφ, vφ, dΩ, Λ)+
-    jacobian(physicalmodel, Thermo, dθ, vθ, dΩ, Λ)+
-    jacobian(physicalmodel, ElectroMechano, (u, φ, θ), (du, dφ), (v,vφ), dΩ, Λ)+
-    jacobian(physicalmodel, ThermoMechano, (u, φ, θ), dθ, v, dΩ, Λ)+
-    jacobian(physicalmodel, ThermoElectro, (u, φ, θ), dθ, vφ, dΩ, Λ)
+function jacobian(physicalmodel::ThermoElectroMechano, kine::NTuple{3,KinematicModel}, (u, φ, θ), (du, dφ, dθ), (v, vφ, vθ), dΩ, Λ=1.0)
+  jacobian(physicalmodel, Mechano, kine, (u, φ, θ), du, v, dΩ, Λ) +
+  jacobian(physicalmodel, Electro, kine, (u, φ, θ), dφ, vφ, dΩ, Λ) +
+  jacobian(physicalmodel, Thermo, kine, dθ, vθ, dΩ, Λ) +
+  jacobian(physicalmodel, ElectroMechano, kine, (u, φ, θ), (du, dφ), (v,vφ), dΩ, Λ) +
+  jacobian(physicalmodel, ThermoMechano, kine, (u, φ, θ), dθ, v, dΩ, Λ) +
+  jacobian(physicalmodel, ThermoElectro, kine, (u, φ, θ), dθ, vφ, dΩ, Λ)
 end
 
 
@@ -152,118 +195,60 @@ end
 
 # Stagered strategy
 # -----------------
-function residual(physicalmodel::ThermoMechano, ::Type{Mechano}, (u, θ), v, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.Mechano.Kinematic; Λ=Λ)
-    ∂Ψu=DΨ[2]
-    ∫(∇(v)' ⊙ (∂Ψu ∘ (F∘(∇(u)'), θ)))dΩ
+function residual(physicalmodel::ThermoMechano, ::Type{Mechano}, kine::NTuple{2,KinematicModel}, (u, θ), v, dΩ, Λ=1.0)
+  DΨ = physicalmodel()
+  F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
+  ∂Ψu = DΨ[2]
+  ∫(∇(v)' ⊙ (∂Ψu ∘ (F∘(∇(u)'), θ)))dΩ
 end
 
-function residual(physicalmodel::ThermoMechano, ::Type{Thermo}, (u, θ), vθ, dΩ, Λ=1.0)
-    κ=physicalmodel.Thermo.κ
-    ∫(κ * ∇(θ) ⋅ ∇(vθ))dΩ
+function residual(physicalmodel::ThermoMechano, ::Type{Thermo}, kine::NTuple{2,KinematicModel}, (u, θ), vθ, dΩ, Λ=1.0)
+  κ = physicalmodel.thermo.κ
+  ∫(κ * ∇(θ) ⋅ ∇(vθ))dΩ
 end
 
-function jacobian(physicalmodel::ThermoMechano, ::Type{Mechano}, (u, θ), du, v, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.Mechano.Kinematic; Λ=Λ)
-    ∂Ψuu=DΨ[4]
-    ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘(∇(u)'), θ)) ⊙ (∇(du)')))dΩ
+function jacobian(physicalmodel::ThermoMechano, ::Type{Mechano}, kine::NTuple{2,KinematicModel}, (u, θ), du, v, dΩ, Λ=1.0)
+  DΨ = physicalmodel()
+  F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
+  ∂Ψuu = DΨ[4]
+  ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘(∇(u)'), θ)) ⊙ (∇(du)')))dΩ
 end
 
-function jacobian(physicalmodel::ThermoMechano, ::Type{Thermo}, dθ, vθ, dΩ, Λ=1.0)
-    κ=physicalmodel.Thermo.κ
-    ∫(κ * ∇(dθ) ⋅ ∇(vθ))dΩ
+function jacobian(physicalmodel::ThermoMechano, ::Type{Thermo}, kine::NTuple{2,KinematicModel},dθ, vθ, dΩ, Λ=1.0)
+  κ = physicalmodel.thermo.κ
+  ∫(κ * ∇(dθ) ⋅ ∇(vθ))dΩ
 end
 
-function jacobian(physicalmodel::ThermoMechano, ::Type{Thermo}, (u, θ)::Tuple, dθ, vθ, dΩ, Λ=1.0)
-    κ=physicalmodel.Thermo.κ
-    ∫((κ ∘ (u, θ)) * ∇(dθ) ⋅ ∇(vθ))dΩ
+function jacobian(physicalmodel::ThermoMechano, ::Type{Thermo}, kine::NTuple{2,KinematicModel}, (u, θ)::Tuple, dθ, vθ, dΩ, Λ=1.0)
+  κ=physicalmodel.thermo.κ
+  ∫((κ ∘ (u, θ)) * ∇(dθ) ⋅ ∇(vθ))dΩ
 end
 
-function jacobian(physicalmodel::ThermoMechano, ::Type{ThermoMechano}, (u, θ), (du, dθ), v, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.Mechano.Kinematic; Λ=Λ)
-    ∂Ψuθ=DΨ[6]
-    ∫(∇(v)' ⊙ (∂Ψuθ ∘ (F∘(∇(u)'), θ)) * dθ)dΩ 
+function jacobian(physicalmodel::ThermoMechano, ::Type{ThermoMechano}, kine::NTuple{2,KinematicModel}, (u, θ), (du, dθ), v, dΩ, Λ=1.0)
+  DΨ = physicalmodel()
+  F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
+  ∂Ψuθ = DΨ[6]
+  ∫(∇(v)' ⊙ (∂Ψuθ ∘ (F∘(∇(u)'), θ)) * dθ)dΩ 
 end
 
 # Monolithic strategy
 # -------------------
-function residual(physicalmodel::ThermoMechano,  (u, θ), (v, vθ), dΩ, Λ=1.0)
-    residual(physicalmodel, Mechano, (u, θ), v, dΩ, Λ) +
-    residual(physicalmodel, Thermo, (u, θ), vθ, dΩ, Λ)
+function residual(physicalmodel::ThermoMechano, kine::NTuple{2,KinematicModel},(u, θ), (v, vθ), dΩ, Λ=1.0)
+  residual(physicalmodel, Mechano, kine, (u, θ), v, dΩ, Λ) +
+  residual(physicalmodel, Thermo, kine, (u, θ), vθ, dΩ, Λ)
 end
 
-function jacobian(physicalmodel::ThermoMechano,  (u, θ), (du, dθ), (v, vθ),  dΩ, Λ=1.0)
-    jacobian(physicalmodel, Mechano, (u, θ), du, v, dΩ, Λ)+
-    jacobian(physicalmodel, Thermo, dθ, vθ, dΩ, Λ)+
-    jacobian(physicalmodel, ThermoMechano, (u, θ), (du, dθ), v, dΩ, Λ)
+function jacobian(physicalmodel::ThermoMechano, kine::NTuple{2,KinematicModel}, (u, θ), (du, dθ), (v, vθ), dΩ, Λ=1.0)
+  jacobian(physicalmodel, Mechano, kine, (u, θ), du, v, dΩ, Λ) +
+  jacobian(physicalmodel, Thermo, kine,dθ, vθ, dΩ, Λ) +
+  jacobian(physicalmodel, ThermoMechano, kine,(u, θ), (du, dθ), v, dΩ, Λ)
 end
 
 # ===================
 # ElectroMechanics
 # ===================
 
-# Stagered strategy
-# -----------------
-
-function residual(physicalmodel::ElectroMechano, ::Type{Mechano}, (u, φ), v, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.Mechano.Kinematic; Λ=Λ)
-    E     = get_Kinematics(physicalmodel.Electro.Kinematic; Λ=Λ)
-    ∂Ψu=DΨ[2]
-    ∫((∇(v)' ⊙ (∂Ψu ∘ (F∘(∇(u)'), E∘(∇(φ))))))dΩ
-end
-
-function residual(physicalmodel::ElectroMechano, ::Type{Electro}, (u, φ), vφ, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.Mechano.Kinematic; Λ=Λ)
-    E     = get_Kinematics(physicalmodel.Electro.Kinematic; Λ=Λ)
-    ∂Ψφ=DΨ[3]
-    -1.0*∫((∇(vφ) ⋅ (∂Ψφ ∘ (F∘(∇(u)'), E∘(∇(φ))))))dΩ
-end
-
-function jacobian(physicalmodel::ElectroMechano, ::Type{Mechano}, (u, φ), du, v, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.Mechano.Kinematic; Λ=Λ)
-    E     = get_Kinematics(physicalmodel.Electro.Kinematic; Λ=Λ)
-    ∂Ψuu=DΨ[4]
-    ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘(∇(u)'), E∘(∇(φ)))) ⊙ (∇(du)')))dΩ
-end
-
-function jacobian(physicalmodel::ElectroMechano, ::Type{Electro}, (u, φ), dφ, vφ, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.Mechano.Kinematic; Λ=Λ)
-    E     = get_Kinematics(physicalmodel.Electro.Kinematic; Λ=Λ)
-    ∂Ψφφ=DΨ[6]
-    ∫(∇(vφ)' ⋅ ((∂Ψφφ ∘ (F∘(∇(u)'), E∘(∇(φ)))) ⋅ ∇(dφ)))dΩ
-end
-
-function jacobian(physicalmodel::ElectroMechano, ::Type{ElectroMechano}, (u, φ), (du, dφ), (v, vφ), dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.Mechano.Kinematic; Λ=Λ)
-    E     = get_Kinematics(physicalmodel.Electro.Kinematic; Λ=Λ)
-    ∂Ψφu=DΨ[5]
-    -1.0*∫(∇(dφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)'), E∘(∇(φ)))) ⊙ (∇(v)')))dΩ -
-    ∫(∇(vφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)'), E∘(∇(φ)))) ⊙ (∇(du)')))dΩ 
-end
-
-
-# Monolithic strategy
-# -------------------
-
-function residual(physicalmodel::ElectroMechano, (u, φ), (v, vφ), dΩ, Λ=1.0)
-    residual(physicalmodel, Mechano, (u, φ), v, dΩ, Λ) +
-    residual(physicalmodel, Electro, (u, φ), vφ, dΩ, Λ)
-end
-
-
-function jacobian(physicalmodel::ElectroMechano, (u, φ), (du, dφ), (v, vφ), dΩ, Λ=1.0)
-    jacobian(physicalmodel, Mechano, (u, φ), du, v, dΩ, Λ)+
-    jacobian(physicalmodel, Electro, (u, φ), dφ, vφ, dΩ, Λ)+
-    jacobian(physicalmodel, ElectroMechano, (u, φ), (du, dφ), (v, vφ), dΩ, Λ)
-end
+include("ElectroMechanics.jl")
 
 
 # =====================
@@ -274,242 +259,90 @@ end
 # -----------------
  
 
-function residual(physicalmodel::FlexoElectro, ::Type{Mechano}, (u, φ, ϕ₁, ϕ₂, ϕ₃), v, dΩ, X, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    κ=physicalmodel.κ
-    F,_,_ = get_Kinematics(physicalmodel.ElectroMechano.Mechano.Kinematic; Λ=Λ)
-    E     = get_Kinematics(physicalmodel.ElectroMechano.Electro.Kinematic; Λ=Λ)
-    ∂Ψu=DΨ[2]
-    Φ=DΨ[7]
-    ∫((∇(v)' ⊙ (∂Ψu ∘ (F∘(∇(u)',X), E∘(∇(φ)))+κ*(∇(u)'-(Φ(ϕ₁,ϕ₂,ϕ₃))))))dΩ
+function residual(physicalmodel::FlexoElectro, ::Type{Mechano},  kine::NTuple{2,KinematicModel}, (u, φ, ϕ₁, ϕ₂, ϕ₃), v, dΩ, X, Λ=1.0)
+  DΨ = physicalmodel()
+  κ = physicalmodel.κ
+  F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
+  E     = get_Kinematics(kine[2]; Λ=Λ)
+  ∂Ψu = DΨ[2]
+  Φ = DΨ[7]
+  ∫((∇(v)' ⊙ (∂Ψu ∘ (F∘(∇(u)',X), E∘(∇(φ)))+κ*(∇(u)'-(Φ(ϕ₁,ϕ₂,ϕ₃))))))dΩ
 end
 
-function residual(physicalmodel::FlexoElectro, ::Type{Electro}, (u, φ), vφ, dΩ, X, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.ElectroMechano.Mechano.Kinematic; Λ=Λ)
-    E     = get_Kinematics(physicalmodel.ElectroMechano.Electro.Kinematic; Λ=Λ)
-    ∂Ψφ=DΨ[3]
-    -1.0*∫((∇(vφ) ⋅ (∂Ψφ ∘ (F∘(∇(u)',X), E∘(∇(φ))))))dΩ
+function residual(physicalmodel::FlexoElectro, ::Type{Electro}, kine::NTuple{2,KinematicModel}, (u, φ), vφ, dΩ, X, Λ=1.0)
+  DΨ = physicalmodel()
+  F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
+  E     = get_Kinematics(kine[2]; Λ=Λ)
+  ∂Ψφ = DΨ[3]
+  -1.0*∫((∇(vφ) ⋅ (∂Ψφ ∘ (F∘(∇(u)',X), E∘(∇(φ))))))dΩ
 end
 
-function residual(physicalmodel::FlexoElectro, ::Type{FlexoElectro}, (u, ϕ₁, ϕ₂, ϕ₃), (δϕ₁, δϕ₂, δϕ₃), dΩ, X, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    κ=physicalmodel.κ
-    Φ=DΨ[7]
-    ∫((κ⋅(-∇(u)'+(Φ(ϕ₁,ϕ₂,ϕ₃)))) ⊙ (Φ(δϕ₁,δϕ₂,δϕ₃)))dΩ
+function residual(physicalmodel::FlexoElectro, ::Type{FlexoElectro}, kine::NTuple{2,KinematicModel},(u, ϕ₁, ϕ₂, ϕ₃), (δϕ₁, δϕ₂, δϕ₃), dΩ, X, Λ=1.0)
+  DΨ = physicalmodel()
+  κ = physicalmodel.κ
+  Φ = DΨ[7]
+  ∫((κ⋅(-∇(u)'+(Φ(ϕ₁,ϕ₂,ϕ₃)))) ⊙ (Φ(δϕ₁,δϕ₂,δϕ₃)))dΩ
 end
 
-function jacobian(physicalmodel::FlexoElectro, ::Type{Mechano}, (u, φ), du, v, dΩ, X, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    κ=physicalmodel.κ
-    F,_,_ = get_Kinematics(physicalmodel.ElectroMechano.Mechano.Kinematic; Λ=Λ)
-    E     = get_Kinematics(physicalmodel.ElectroMechano.Electro.Kinematic; Λ=Λ)
-    ∂Ψuu=DΨ[4]
-    ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘(∇(u)',X), E∘(∇(φ)))) ⊙ (∇(du)')))dΩ+
-    ∫(κ⋅(∇(v)'⊙ ∇(du)'))dΩ
+function jacobian(physicalmodel::FlexoElectro, ::Type{Mechano}, kine::NTuple{2,KinematicModel},(u, φ), du, v, dΩ, X, Λ=1.0)
+  DΨ = physicalmodel()
+  κ = physicalmodel.κ
+  F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
+  E     = get_Kinematics(kine[2]; Λ=Λ)
+  ∂Ψuu = DΨ[4]
+  ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘(∇(u)',X), E∘(∇(φ)))) ⊙ (∇(du)')))dΩ+
+  ∫(κ⋅(∇(v)'⊙ ∇(du)'))dΩ
 end
 
-function jacobian(physicalmodel::FlexoElectro, ::Type{Electro}, (u, φ), dφ, vφ, dΩ, X, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.ElectroMechano.Mechano.Kinematic; Λ=Λ)
-    E     = get_Kinematics(physicalmodel.ElectroMechano.Electro.Kinematic; Λ=Λ)
-    ∂Ψφφ=DΨ[6]
-    ∫(∇(vφ)' ⋅ ((∂Ψφφ ∘ (F∘(∇(u)',X), E∘(∇(φ)))) ⋅ ∇(dφ)))dΩ
+function jacobian(physicalmodel::FlexoElectro, ::Type{Electro}, kine::NTuple{2,KinematicModel},(u, φ), dφ, vφ, dΩ, X, Λ=1.0)
+  DΨ = physicalmodel()
+  F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
+  E     = get_Kinematics(kine[2]; Λ=Λ)
+  ∂Ψφφ = DΨ[6]
+  ∫(∇(vφ)' ⋅ ((∂Ψφφ ∘ (F∘(∇(u)',X), E∘(∇(φ)))) ⋅ ∇(dφ)))dΩ
 end
 
-function jacobian(physicalmodel::FlexoElectro, ::Type{ElectroMechano}, (u, φ), (du, dφ), (v, vφ), dΩ, X, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    F,_,_ = get_Kinematics(physicalmodel.ElectroMechano.Mechano.Kinematic; Λ=Λ)
-    E     = get_Kinematics(physicalmodel.ElectroMechano.Electro.Kinematic; Λ=Λ)
-    ∂Ψφu=DΨ[5]
-    -1.0*∫(∇(dφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)',X), E∘(∇(φ)))) ⊙ (∇(v)')))dΩ -
-    ∫(∇(vφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)',X), E∘(∇(φ)))) ⊙ (∇(du)')))dΩ 
+function jacobian(physicalmodel::FlexoElectro, ::Type{ElectroMechano}, kine::NTuple{2,KinematicModel},(u, φ), (du, dφ), (v, vφ), dΩ, X, Λ=1.0)
+  DΨ = physicalmodel()
+  F,_,_ = get_Kinematics(kine[1]; Λ=Λ)
+  E     = get_Kinematics(kine[2]; Λ=Λ)
+  ∂Ψφu = DΨ[5]
+  -1.0*∫(∇(dφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)',X), E∘(∇(φ)))) ⊙ (∇(v)')))dΩ -
+  ∫(∇(vφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)',X), E∘(∇(φ)))) ⊙ (∇(du)')))dΩ 
 end
 
 
-function jacobian(physicalmodel::FlexoElectro, ::Type{FlexoElectro}, (ϕ₁,ϕ₂,ϕ₃), (du, dϕ₁,dϕ₂,dϕ₃), (v, δϕ₁,δϕ₂,δϕ₃), dΩ, X, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    κ=physicalmodel.κ
-    Φ=DΨ[7]
-    ∫((κ⋅(Φ(δϕ₁,δϕ₂,δϕ₃))) ⊙ ((Φ(dϕ₁,dϕ₂,dϕ₃))))dΩ-
-    ∫(∇(v)' ⊙ (κ*(Φ(dϕ₁,dϕ₂,dϕ₃))))dΩ-
-    ∫(∇(du)' ⊙ (κ*(Φ(δϕ₁,δϕ₂,δϕ₃))))dΩ
+function jacobian(physicalmodel::FlexoElectro, ::Type{FlexoElectro}, kine::NTuple{2,KinematicModel}, (ϕ₁,ϕ₂,ϕ₃), (du, dϕ₁,dϕ₂,dϕ₃), (v, δϕ₁,δϕ₂,δϕ₃), dΩ, X, Λ=1.0)
+  DΨ = physicalmodel()
+  κ = physicalmodel.κ
+  Φ = DΨ[7]
+  ∫((κ⋅(Φ(δϕ₁,δϕ₂,δϕ₃))) ⊙ ((Φ(dϕ₁,dϕ₂,dϕ₃))))dΩ-
+  ∫(∇(v)' ⊙ (κ*(Φ(dϕ₁,dϕ₂,dϕ₃))))dΩ-
+  ∫(∇(du)' ⊙ (κ*(Φ(δϕ₁,δϕ₂,δϕ₃))))dΩ
 end
 
 
 # Monolithic strategy
 # -------------------
 
-function residual(physicalmodel::FlexoElectro, (u, φ, ϕ₁, ϕ₂, ϕ₃), (v, vφ, δϕ₁, δϕ₂, δϕ₃), dΩ, X, Λ=1.0)
-    residual(physicalmodel, Mechano, (u, φ, ϕ₁, ϕ₂, ϕ₃), v, dΩ, X, Λ) +
-    residual(physicalmodel, Electro, (u, φ), vφ, dΩ, X, Λ)+
-    residual(physicalmodel, FlexoElectro, (u, ϕ₁, ϕ₂, ϕ₃), (δϕ₁, δϕ₂, δϕ₃), dΩ, X, Λ)
+function residual(physicalmodel::FlexoElectro, kine::NTuple{2,KinematicModel},(u, φ, ϕ₁, ϕ₂, ϕ₃), (v, vφ, δϕ₁, δϕ₂, δϕ₃), dΩ, X, Λ=1.0)
+  residual(physicalmodel, Mechano, kine,(u, φ, ϕ₁, ϕ₂, ϕ₃), v, dΩ, X, Λ) +
+  residual(physicalmodel, Electro, kine,(u, φ), vφ, dΩ, X, Λ) +
+  residual(physicalmodel, FlexoElectro, kine,(u, ϕ₁, ϕ₂, ϕ₃), (δϕ₁, δϕ₂, δϕ₃), dΩ, X, Λ)
 end
 
-function jacobian(physicalmodel::FlexoElectro, (u, φ, ϕ₁,ϕ₂,ϕ₃), (du, dφ, dϕ₁,dϕ₂,dϕ₃), (v, vφ, δϕ₁,δϕ₂,δϕ₃), dΩ, X, Λ=1.0)
-    jacobian(physicalmodel, Mechano, (u, φ), du, v, dΩ, X, Λ)+
-    jacobian(physicalmodel, Electro, (u, φ), dφ, vφ, dΩ, X, Λ)+
-    jacobian(physicalmodel, ElectroMechano, (u, φ), (du, dφ), (v, vφ), dΩ, X, Λ)+
-    jacobian(physicalmodel, FlexoElectro, (ϕ₁,ϕ₂,ϕ₃), (du, dϕ₁,dϕ₂,dϕ₃), (v, δϕ₁,δϕ₂,δϕ₃), dΩ, X, Λ)
-end
-
-
-
-
-
-# ===================
-# ThermoElectroMech_PINNs
-# ===================
-
-# Stagered strategy
-# -----------------
-function residual(physicalmodel::ThermoElectroMech_PINNs, ::Type{Mechano}, (u, φ, θ), v, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    Kinematic_mec = Kinematics(Mechano)
-    Kinematic_elec = Kinematics(Electro)
-    F, _, _ = get_Kinematics(Kinematic_mec)
-    E = get_Kinematics(Kinematic_elec)
-    ∂Ψu=DΨ[2]    
-    return ∫(∇(v)' ⊙ (∂Ψu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)))dΩ
-end
-
-function residual(physicalmodel::ThermoElectroMech_PINNs, ::Type{Electro}, (u, φ, θ), vφ, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    Kinematic_mec = Kinematics(Mechano)
-    Kinematic_elec = Kinematics(Electro)
-    F, _, _ = get_Kinematics(Kinematic_mec)
-    E = get_Kinematics(Kinematic_elec)
-    ∂Ψφ=DΨ[3]
-    return -1.0*∫(∇(vφ)' ⋅ (∂Ψφ ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)))dΩ
-end
-
-function residual(physicalmodel::ThermoElectroMech_PINNs, ::Type{Thermo}, (u, φ, θ), vθ, dΩ, Λ=1.0)
-    κ=physicalmodel.κ
-    return ∫(κ * ∇(θ) ⋅ ∇(vθ))dΩ
+function jacobian(physicalmodel::FlexoElectro, kine::NTuple{2,KinematicModel},(u, φ, ϕ₁,ϕ₂,ϕ₃), (du, dφ, dϕ₁,dϕ₂,dϕ₃), (v, vφ, δϕ₁,δϕ₂,δϕ₃), dΩ, X, Λ=1.0)
+  jacobian(physicalmodel, Mechano, kine,(u, φ), du, v, dΩ, X, Λ) +
+  jacobian(physicalmodel, Electro, kine,(u, φ), dφ, vφ, dΩ, X, Λ) +
+  jacobian(physicalmodel, ElectroMechano, kine,(u, φ), (du, dφ), (v, vφ), dΩ, X, Λ) +
+  jacobian(physicalmodel, FlexoElectro, kine,(ϕ₁,ϕ₂,ϕ₃), (du, dϕ₁,dϕ₂,dϕ₃), (v, δϕ₁,δϕ₂,δϕ₃), dΩ, X, Λ)
 end
 
 
-function jacobian(physicalmodel::ThermoElectroMech_PINNs, ::Type{Mechano}, (u, φ, θ), du, v, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    Kinematic_mec = Kinematics(Mechano)
-    Kinematic_elec = Kinematics(Electro)
-    F, _, _ = get_Kinematics(Kinematic_mec)
-    E = get_Kinematics(Kinematic_elec)
-    ∂Ψuu=DΨ[5]
-    ∫(∇(v)' ⊙ ((∂Ψuu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⊙ (∇(du)')))dΩ
+function transient_residual(physicalmodel::ThermoElectroMechModel, ::Type{Thermo}, kine::NTuple{3,KinematicModel}, (u, φ, θ), vθ, dΩ, Λ=1.0)
+  κ = physicalmodel.thermo.κ
+  return ∫(κ * ∇(θ) ⋅ ∇(vθ))dΩ
 end
-
-function jacobian(physicalmodel::ThermoElectroMech_PINNs, ::Type{Electro}, (u, φ, θ), dφ, vφ, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    Kinematic_mec = Kinematics(Mechano)
-    Kinematic_elec = Kinematics(Electro)
-    F, _, _ = get_Kinematics(Kinematic_mec)
-    E = get_Kinematics(Kinematic_elec)
-    ∂Ψφφ=DΨ[6]
-    ∫(∇(vφ) ⋅ ((∂Ψφφ ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⋅ ∇(dφ)))dΩ
-end
-
-function jacobian(physicalmodel::ThermoElectroMech_PINNs, ::Type{Thermo}, dθ, vθ, dΩ, Λ=1.0)
-    κ=physicalmodel.κ
-    ∫(κ * ∇(dθ) ⋅ ∇(vθ))dΩ
-end
-
-function jacobian(physicalmodel::ThermoElectroMech_PINNs, ::Type{Thermo}, (u, φ, θ)::Tuple, dθ, vθ, dΩ, Λ=1.0)
-    κ=physicalmodel.κ
-    ∫((κ ∘ (u, φ, θ)) * ∇(dθ) ⋅ ∇(vθ))dΩ
-end
-
-function jacobian(physicalmodel::ThermoElectroMech_PINNs, ::Type{ElectroMechano}, (u, φ, θ), (du, dφ), (v,vφ), dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    Kinematic_mec = Kinematics(Mechano)
-    Kinematic_elec = Kinematics(Electro)
-    F, _, _ = get_Kinematics(Kinematic_mec)
-    E = get_Kinematics(Kinematic_elec)
-    ∂Ψφu=DΨ[8]
-    -1.0*∫(∇(dφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⊙ (∇(v)')))dΩ -
-    ∫(∇(vφ) ⋅ ((∂Ψφu ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) ⊙ (∇(du)')))dΩ 
-end
-
-function jacobian(physicalmodel::ThermoElectroMech_PINNs, ::Type{ThermoMechano}, (u, φ, θ), dθ, v, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    Kinematic_mec = Kinematics(Mechano)
-    Kinematic_elec = Kinematics(Electro)
-    F, _, _ = get_Kinematics(Kinematic_mec)
-    E = get_Kinematics(Kinematic_elec)
-    ∂Ψuθ=DΨ[9]
-    ∫(∇(v)' ⊙ (∂Ψuθ ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) * dθ)dΩ 
-end
-
-function jacobian(physicalmodel::ThermoElectroMech_PINNs, ::Type{ThermoElectro}, (u, φ, θ), dθ, vφ, dΩ, Λ=1.0)
-    DΨ= physicalmodel(Λ)
-    Kinematic_mec = Kinematics(Mechano)
-    Kinematic_elec = Kinematics(Electro)
-    F, _, _ = get_Kinematics(Kinematic_mec)
-    E = get_Kinematics(Kinematic_elec)
-    ∂Ψφθ=DΨ[10]
-    -1.0*∫(∇(vφ) ⋅ ((∂Ψφθ ∘ (F∘(∇(u)'), E∘(∇(φ)), θ)) * dθ))dΩ
-end
-
-# Monolithic strategy
-# -------------------
-function residual(physicalmodel::ThermoElectroMech_PINNs, (u, φ, θ), (v, vφ, vθ), dΩ, Λ=1.0)
-    residual(physicalmodel, Mechano, (u, φ, θ), v, dΩ, Λ) +
-    residual(physicalmodel, Electro, (u, φ, θ), vφ, dΩ, Λ) +
-    residual(physicalmodel, Thermo, (u, φ, θ), vθ, dΩ, Λ)
-end
-
-function jacobian(physicalmodel::ThermoElectroMech_PINNs, (u, φ, θ), (du, dφ, dθ), (v, vφ, vθ),  dΩ, Λ=1.0)
-    jacobian(physicalmodel, Mechano, (u, φ, θ), du, v, dΩ, Λ)+
-    jacobian(physicalmodel, Electro, (u, φ, θ), dφ, vφ, dΩ, Λ)+
-    jacobian(physicalmodel, Thermo, dθ, vθ, dΩ, Λ)+
-    jacobian(physicalmodel, ElectroMechano, (u, φ, θ), (du, dφ), (v,vφ), dΩ, Λ)+
-    jacobian(physicalmodel, ThermoMechano, (u, φ, θ), dθ, v, dΩ, Λ)+
-    jacobian(physicalmodel, ThermoElectro, (u, φ, θ), dθ, vφ, dΩ, Λ)
-end
-
-
-
-
-
-
-
-# ===================
-# Time Integrators+
-# ===================
-
-# abstract type TimeIntegrator end
-
-# struct MidPoint <: TimeIntegrator
-# res::A
-# jac::B
-# params::A    
-# function MidPoint(res_,jac_, dΩ; αray = 0.4, ρ = 1.0, Δt = 5.0)
-
-#     res(u, v) =  mass_term(u, v, 2.0 * ρ / Δt^2, dΩ)-
-#                  0.5 * res_(u, v)+
-#                  0.5 * res_(u⁻, v)+
-
-
-#     res(t, u⁻, vh) = (u, v) -> mass_term(u, v, 2.0 * ρ / Δt^2, dΩ) -
-#     mass_term(u⁻, v, 2.0 * ρ / Δt^2, dΩ) -
-#     mass_term(vh, v, 2.0 * ρ / Δt, dΩ) +
-#     0.5 * res_(physmodel, u, v, dΩ) +
-#     0.5 * res_(physmodel, u⁻, v, dΩ) +
-#     mass_term(u, v, αray * ρ / Δt, dΩ) -
-#     mass_term(u⁻, v, αray * ρ / Δt, dΩ)
-
-
-#     params=(; αray = αray, ρ = ρ, Δt = Δt)
-#     A,B,C= typeof(res), typeof(jac), typeof(params)
-#     new{A,B,C}(res,jac,params)
-# end
-# end
-
-# Midpoint Integrator 
-# -------------------
-# function residual(, (u, φ), (v, vφ), dΩ)
-
-# end
 
 
 end

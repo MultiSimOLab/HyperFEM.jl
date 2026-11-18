@@ -3,8 +3,6 @@ get_pvd(::AbstractPostProcessor) = @abstractmethod
 vtk_save(::AbstractPostProcessor) = @abstractmethod
 
 
-
-
 mutable struct PostProcessor{A,B,C} <:AbstractPostProcessor
     comp_model::A
     cache::B
@@ -65,85 +63,90 @@ function (obj::PostProcessor{<:StaticLinearModel,<:Any,<:Any})(Λ)
     obj.cache[1](obj, obj.cache[2]...)
 end
 
-function (obj::PostProcessor{<:DynamicNonlinearModel,<:Any,<:Any})(Λ)
+function (obj::PostProcessor{<:TransientModel,<:Any,<:Any})(t)
     obj.iter +=1
-    push!(obj.Λ, Λ)
+    push!(obj.Λ, t)
     obj.cache[1](obj, obj.cache[2]...)
 end
 
-
-function Cauchy(physmodel::ThermoElectroMechano, uh, φh, θh, Ω, dΩ, Λ=1.0)
-    DΨ = physmodel(Λ)
-    Kinematic_mec = Kinematics(Mechano)
-    Kinematic_elec = Kinematics(Electro)
-    F, _, _ = get_Kinematics(Kinematic_mec)
-    E = get_Kinematics(Kinematic_elec)
-    ∂Ψu = DΨ[2]
-    refL2 = ReferenceFE(lagrangian, Float64, 0)
-    ref = ReferenceFE(lagrangian, Float64, 1)
-    VL2 = FESpace(Ω, refL2, conformity=:L2)
-    V = FESpace(Ω, ref, conformity=:H1)
-    n1 = VectorValue(1.0, 0.0, 0.0)
-    n2 = VectorValue(0.0, 1.0, 0.0)
-    n3 = VectorValue(0.0, 0.0, 1.0)
-    σ11h = interpolate_everywhere(L2_Projection(n1 ⋅ ((∂Ψu ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)) * n1), dΩ, VL2), V)
-    σ12h = interpolate_everywhere(L2_Projection(n1 ⋅ ((∂Ψu ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)) * n2), dΩ, VL2), V)
-    σ13h = interpolate_everywhere(L2_Projection(n1 ⋅ ((∂Ψu ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)) * n3), dΩ, VL2), V)
-    σ22h = interpolate_everywhere(L2_Projection(n2 ⋅ ((∂Ψu ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)) * n2), dΩ, VL2), V)
-    σ23h = interpolate_everywhere(L2_Projection(n2 ⋅ ((∂Ψu ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)) * n3), dΩ, VL2), V)
-    σ33h = interpolate_everywhere(L2_Projection(n3 ⋅ ((∂Ψu ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)) * n3), dΩ, VL2), V)
-    ph = interpolate_everywhere(L2_Projection(tr ∘ (∂Ψu ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)), dΩ, VL2), V)
-    return (σ11h, σ12h, σ13h, σ22h, σ23h, σ33h, ph)
+function _get_cell_field_type(f::CellField, dΩ::Measure)
+  pts = get_cell_points(dΩ)
+  f_x = f(pts)
+  T = eltype(Gridap.Arrays.testitem(f_x))
+  return T
 end
 
-
-
-
-function Entropy(physmodel::ThermoElectroMechano, uh, φh, θh, Ω, dΩ, Λ=1.0)
-    DΨ = physmodel(Λ)
-    Kinematic_mec = Kinematics(Mechano)
-    Kinematic_elec = Kinematics(Electro)
-    F, _, _ = get_Kinematics(Kinematic_mec)
-    E = get_Kinematics(Kinematic_elec)
-    η = DΨ[11]
-    refL2 = ReferenceFE(lagrangian, Float64, 0)
-    ref = ReferenceFE(lagrangian, Float64, 1)
-    VL2 = FESpace(Ω, refL2, conformity=:L2)
-    V = FESpace(Ω, ref, conformity=:H1)
-    ηh = interpolate_everywhere(L2_Projection((η ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)), dΩ, VL2), V)
-    return ηh
+function _get_triangulation(dΩ::Measure)
+  get_triangulation(Gridap.CellData.get_cell_quadrature(dΩ))
 end
 
-function D0(physmodel::ThermoElectroMechano, uh, φh, θh, Ω, dΩ, Λ=1.0)
-    DΨ = physmodel(Λ)
-    Kinematic_mec = Kinematics(Mechano)
-    Kinematic_elec = Kinematics(Electro)
-    F, _, _ = get_Kinematics(Kinematic_mec)
-    E = get_Kinematics(Kinematic_elec)
-    ∂ΨE = DΨ[3]
-    refL2 = ReferenceFE(lagrangian, Float64, 0)
-    ref = ReferenceFE(lagrangian, Float64, 1)
-    VL2 = FESpace(Ω, refL2, conformity=:L2)
-    V = FESpace(Ω, ref, conformity=:H1)
-    n1 = VectorValue(-1.0, 0.0, 0.0)
-    n2 = VectorValue(0.0, -1.0, 0.0)
-    n3 = VectorValue(0.0, 0.0, -1.0)
-    D0_1h = interpolate_everywhere(L2_Projection(n1 ⋅(∂ΨE ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)), dΩ, VL2), V)
-    D0_2h = interpolate_everywhere(L2_Projection(n2 ⋅(∂ΨE ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)), dΩ, VL2), V)
-    D0_3h = interpolate_everywhere(L2_Projection(n3 ⋅(∂ΨE ∘ (F∘(∇(uh)'), E∘(∇(φh)), θh)), dΩ, VL2), V)
-    return (D0_1h,D0_2h,D0_3h)
+"""
+    interpolate_L2_field(x, dΩ, [Ω₂], [T]; [order=1])
+
+Interpolate an L2 field of order n-1 into an H1 field of order n.
+The field `x` is first projected onto a discontinuous space of order `order-1` defined
+over the triangulation of the measure `dΩ`, and then interpolated into a continuous
+space of order `order`.
+The type of the field is inferred from the cell field `x` and the measure `dΩ`.
+The `order` should match the order of the space from which `x` is derived, e.g. the
+order of `uh` if `x` is a function of `∇(uh)`. By default, `order=1`.
+Optionally, a destination triangulation `Ω₂` can be specified, being different
+from the underlying triangulation of `dΩ`.
+"""
+function interpolate_L2_field(x, dΩ::Measure, Ω₂::Triangulation=_get_triangulation(dΩ), T::Type=_get_cell_field_type(x, dΩ); order::Int=1)
+  order ≥ 1 || throw(ArgumentError("The order must be greater or equal than 1. Got $order"))
+  Ω₁ = get_triangulation(Gridap.CellData.get_cell_quadrature(dΩ))
+  refL2 = ReferenceFE(lagrangian, T, order - 1)
+  reffe = ReferenceFE(lagrangian, T, order)
+  VL2 = FESpace(Ω₁, refL2, conformity=:L2)
+  VH1 = FESpace(Ω₂, reffe, conformity=:H1)
+  interpolate_everywhere(L2_projection(x, VL2, dΩ), VH1)
 end
 
+"""
+    L2_projection(u, V, dΩ)
 
-
-
-
-
-
-function L2_Projection(Field, dΩ, VFE)
-    a(Fieldh, v) = ∫(Fieldh * v) * dΩ
-    l(v) = ∫(v * Field) * dΩ
-    op = AffineFEOperator(a, l, VFE, VFE)
-    return solve(op)
+Perform an L2 projection of a field `u` onto a finite element
+space `V` defined over the domain `Ω` with measure `dΩ`.
+"""
+function L2_projection(u, V, dΩ::Measure)
+  a(w, v) = ∫(w ⊙ v) * dΩ
+  l(v)    = ∫(v ⊙ u) * dΩ
+  op      = AffineFEOperator(a, l, V, V)
+  solve(op)
 end
 
+"""
+    component_LInf(u, direction, [Ω])::Float64
+
+Calculate the maximum absolute value of a component of a vector-valued field `u`.
+The `direction` can be a symbol (`:x`, `:y` or `:z`), a component index or a `VectorValue`.
+The field is evaluated at the nodes of a first order discontinuous space over `Ω`,
+so for higher order fields this is an approximation of the L-inf norm.
+By default, Ω is the triangulation where the function is defined.
+It could be useful to find the maximum displacement.
+
+# Examples
+    x_max = component_LInf(uh, :x)
+    y_max = component_LInf(uh, 2)
+    d_max = component_LInf(uh, VectorValue(1.0, 1.0, 0.0) / √2)
+"""
+function component_LInf(u, n::VectorValue, Ω::Triangulation=get_triangulation(u))
+  reffe = ReferenceFE(lagrangian, Float64, 1)
+  V = FESpace(Ω, reffe, conformity=:L2)
+  un = interpolate_everywhere(u ⋅ n, V)
+  norm(get_free_dof_values(un), Inf)
+end
+
+function component_LInf(u, i::Integer, Ω::Triangulation=get_triangulation(u))
+  D = num_point_dims(Ω)
+  1 ≤ i ≤ D || throw(ArgumentError("Component must be in 1:$D. Got $i"))
+  n = VectorValue(ntuple(j -> Float64(j == i), D))
+  component_LInf(u, n, Ω)
+end
+
+function component_LInf(u, direction::Symbol, Ω::Triangulation=get_triangulation(u))
+  i = findfirst(==(direction), (:x, :y, :z))
+  isnothing(i) && throw(ArgumentError("Direction must be either :x, :y or :z. Got $direction"))
+  component_LInf(u, i, Ω)
+end
