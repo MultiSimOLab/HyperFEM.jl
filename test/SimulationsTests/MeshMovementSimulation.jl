@@ -81,7 +81,7 @@ function mesh_movement_simulation(; backend=:lazy, verbose=false, interface_fiel
   Uu = TrialFESpace(Vu, Du_air, 1.0)
   TrialFESpace!(Uu, Du_air, 0.0)
 
-  DΨvacuum_mech = model_vacuum_mech(1.0)
+  DΨvacuum_mech = model_vacuum_mech()
   k = Kinematics(Mechano, Solid)
   F, H, J = get_Kinematics(k; Λ=1.0)
 

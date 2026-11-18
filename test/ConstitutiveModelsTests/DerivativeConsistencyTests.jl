@@ -287,7 +287,7 @@ end
   @test visco.branches[1].Δt[] == 0.25
 end
 
-@testset "Every constitutive model accepts the load factor Λ" begin
+@testset "The constitutive models are called without arguments; the magnetic ones take Λ" begin
   law = PM.EntropicElasticityLaw(θr=1.0, γ=0.7)
   thermo = PM.ThermalVolumetric(cv0=2.0, θr=1.0, α=0.1, κr=3.0, γ=0.5)
   diel = PM.IdealDielectric(ε=1.0)
@@ -305,9 +305,18 @@ end
             PM.ThermoElectroMechModel(PM.ThermalModel(Cv=2.0, θr=1.0, α=0.1), diel, nh, law),
             dc_govindjee(diel, nh))
   for m in models
-    @test m(1.0) isa Tuple
     @test m() isa Tuple
   end
+  # the magnetic models (and the magneto-mechanical models built from them) take the load factor, which scales
+  # the remanent field ℋᵣ = αr Λ N
+  F, ℋ, N = DC_F3.large, DC_E3, DC_N3
+  for mag in (PM.Magnetic(μ0=1.0, αr=0.4, χe=0.2),)
+    Ψ1, Ψ2 = mag(1.0)[1], mag(2.0)[1]
+    @test Ψ1(ℋ, N) != Ψ2(ℋ, N)
+  end
+  mm = PM.HardMagnetic(μ0=1.0, αr=0.4, χe=0.2, χr=8.0, βmok=1.0, βcoup=1.0) + PM.MooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0)
+  @test mm()[1](F, ℋ, N) == mm(1.0)[1](F, ℋ, N)
+  @test mm(2.0)[1](F, ℋ, N) != mm(1.0)[1](F, ℋ, N)
 end
 
 @testset "update_time_step! reaches the components of the thermo-mechanical models" begin
@@ -329,42 +338,4 @@ end
     update_time_step!(m, 0.25)
     @test branch.Δt[] == 0.25
   end
-end
-
-# A test model whose energy depends on the load factor: Λ × NeoHookean3D.
-struct DCLoadScaled <: PM.IsoElastic
-  m::PM.NeoHookean3D
-end
-function (obj::DCLoadScaled)(Λ::Float64=1.0)
-  Ψ, P, C = obj.m(Λ)
-  return (F -> Λ * Ψ(F), F -> Λ * P(F), F -> Λ * C(F))
-end
-
-@testset "The composed models forward Λ to their components" begin
-  law = PM.EntropicElasticityLaw(θr=1.0, γ=0.7)
-  thermo = PM.ThermalVolumetric(cv0=2.0, θr=1.0, α=0.1, κr=3.0, γ=0.5)
-  diel = PM.IdealDielectric(ε=1.0)
-  m = DCLoadScaled(PM.NeoHookean3D(λ=3.0, μ=1.0))
-  F = DC_F3.large
-  Ψm(Λ) = m(Λ)[1](F)
-  # each case: (wrapped model, arguments after F); the energy of the wrapper differs from Λ = 1 to Λ = 2 by
-  # (a multiple of) that of the component
-  cases = ((PM.HessianRegularization(m), ()),
-           (PM.Hessian∇JRegularization(m), (det(F) - 0.5,)),
-           (m + PM.VolumetricEnergy(λ=1.0), ()),
-           (PM.GeneralizedMaxwell(m), (I3D,)),
-           (diel + m, (DC_E3,)),
-           (PM.ThermalDeviatoric(m, law), (1.0,)),
-           (PM.ThermoMech_Bonet(thermo, m, law), (1.0,)),
-           (PM.ThermoElectroMech_Bonet(thermo, diel, m; mech=law, elec=law), (DC_E3, 1.0)),
-           (PM.ThermoMechModel(PM.ThermalModel(Cv=2.0, θr=1.0, α=0.1), m, law), (0.0,)),
-           (PM.ThermoElectroMechModel(PM.ThermalModel(Cv=2.0, θr=1.0, α=0.1), diel, m, law), (DC_E3, 0.0)),
-           (dc_govindjee(diel, m), (DC_E3, 0.0)))
-  for (w, rest) in cases
-    Ψ1 = w(1.0)[1](F, rest...)
-    Ψ2 = w(2.0)[1](F, rest...)
-    @test Ψ2 - Ψ1 ≈ Ψm(2.0) - Ψm(1.0)
-  end
-  e = PM.EnergyInterpolationScheme(m, PM.NeoHookean3D(λ=3.0, μ=1.0); p=3.0)
-  @test e(2.0)[1](1.0, F) - e(1.0)[1](1.0, F) ≈ Ψm(2.0) - Ψm(1.0)
 end

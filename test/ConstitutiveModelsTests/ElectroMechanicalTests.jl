@@ -100,7 +100,7 @@ end
   physelec = IdealDielectric(ε=1.0)
   physmodel = FlexoElectroModel(mechano=physmec, electro=physelec, κ=1000.0)
 
-  Ψ, ∂Ψu, ∂Ψφ, ∂Ψuu, ∂Ψφu, ∂Ψφφ, Φ = physmodel(1.0)
+  Ψ, ∂Ψu, ∂Ψφ, ∂Ψuu, ∂Ψφu, ∂Ψφφ, Φ = physmodel()
 
   F, _, _ = get_Kinematics(Kin_mec; Λ=1.0)
   E = get_Kinematics(Kin_elec; Λ=1.0)

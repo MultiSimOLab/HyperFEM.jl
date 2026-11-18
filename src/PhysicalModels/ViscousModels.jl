@@ -12,7 +12,7 @@ using ..TensorAlgebra
 Viscous branch with an incompressible viscous strain (multiplicative split `C = Uvᵀ Ce Uv`): elastic model
 `elasto` (used through `SecondPiola`) and relaxation time `τ`. The state variable at each point is the viscous
 stretch `Uv` and the multiplier `λα` of the incompressibility constraint, `VectorValue(Uv..., λα)`. The functor
-`model(Λ=1.0)` returns `(Ψ, ∂Ψ/∂F, ∂²Ψ/∂F²)` as functions of `(F, Fn, A)`, with `Fn` the deformation gradient
+`model()` returns `(Ψ, ∂Ψ/∂F, ∂²Ψ/∂F²)` as functions of `(F, Fn, A)`, with `Fn` the deformation gradient
 of the previous step and `A` the state; the time step is set with `update_time_step!`.
 
 The stress `∂Ψ/∂F` returned by the functor is the algorithmic stress: the first Piola–Kirchhoff stress with
@@ -29,7 +29,7 @@ struct ViscousIncompressible{E<:Elasto} <: Visco
   end
 end
 
-function (obj::ViscousIncompressible)(Λ::Float64=1.0)
+function (obj::ViscousIncompressible)()
   Ψe, Se, ∂Se∂Ce   = SecondPiola(obj.elasto)
   Ψ(F, Fn, A)      = Energy(obj, Ψe, Se, ∂Se∂Ce, F, Fn, A)
   ∂Ψ∂F(F, Fn, A)   = Piola(obj, Se, ∂Se∂Ce, F, Fn, A)
@@ -101,8 +101,8 @@ end
 @inline _sum_branches(f, gs::Tuple, As::Tuple, acc) =
   _sum_branches(f, Base.tail(gs), Base.tail(As), acc + f(first(gs), first(As)))
 
-function (obj::NVisco)(Λ::Float64=1.0)
-  DΨv   = map(b -> b(Λ), obj)
+function (obj::NVisco)()
+  DΨv   = map(b -> b(), obj)
   Ψα    = map(d -> d[1], DΨv)
   ∂ΨαF  = map(d -> d[2], DΨv)
   ∂ΨαFF = map(d -> d[3], DΨv)
@@ -145,7 +145,7 @@ end
     GeneralizedMaxwell(longterm, branches...)
 
 Generalised Maxwell model: an elastic long-term model plus any number of viscous branches
-(`ViscousIncompressible`, `ViscousPolyconvex`). The functor `model(Λ=1.0)` returns `(Ψ, ∂Ψ/∂F, ∂²Ψ/∂F²)` as
+(`ViscousIncompressible`, `ViscousPolyconvex`). The functor `model()` returns `(Ψ, ∂Ψ/∂F, ∂²Ψ/∂F²)` as
 functions of `(F, Fn, A...)` (one state per branch; `(F, n, Fn, A...)` with an anisotropic long-term model).
 
 The stress `∂Ψ/∂F` returned by the functor is the algorithmic stress: the first Piola–Kirchhoff stress with
@@ -163,18 +163,18 @@ struct GeneralizedMaxwell{E<:Elasto,B<:NVisco} <: ViscoElastic{E}
   end
 end
 
-function (obj::GeneralizedMaxwell{<:IsoElastic})(Λ::Float64=1.0)
-  Ψe, ∂ΨeF, ∂ΨeFF = obj.longterm(Λ)
-  Ψv, ∂ΨvF, ∂ΨvFF = obj.branches(Λ)
+function (obj::GeneralizedMaxwell{<:IsoElastic})()
+  Ψe, ∂ΨeF, ∂ΨeFF = obj.longterm()
+  Ψv, ∂ΨvF, ∂ΨvFF = obj.branches()
   Ψ(F, Fn, A::Vararg{Any,N})     where N = Ψe(F) + Ψv(F, Fn, A...)
   ∂Ψ∂F(F, Fn, A::Vararg{Any,N})  where N = ∂ΨeF(F) + ∂ΨvF(F, Fn, A...)
   ∂Ψ∂FF(F, Fn, A::Vararg{Any,N}) where N = ∂ΨeFF(F) + ∂ΨvFF(F, Fn, A...)
   (Ψ, ∂Ψ∂F, ∂Ψ∂FF)
 end
 
-function (obj::GeneralizedMaxwell{<:AnisoElastic})(Λ::Float64=1.0)
-  Ψe, ∂ΨeF, ∂ΨeFF = obj.longterm(Λ)
-  Ψv, ∂ΨvF, ∂ΨvFF = obj.branches(Λ)
+function (obj::GeneralizedMaxwell{<:AnisoElastic})()
+  Ψe, ∂ΨeF, ∂ΨeFF = obj.longterm()
+  Ψv, ∂ΨvF, ∂ΨvFF = obj.branches()
   Ψ(F, n, Fn, A::Vararg{Any,N})     where N = Ψe(F, n) + Ψv(F, Fn, A...)
   ∂Ψ∂F(F, n, Fn, A::Vararg{Any,N})  where N = ∂ΨeF(F, n) + ∂ΨvF(F, Fn, A...)
   ∂Ψ∂FF(F, n, Fn, A::Vararg{Any,N}) where N = ∂ΨeFF(F, n) + ∂ΨvFF(F, Fn, A...)

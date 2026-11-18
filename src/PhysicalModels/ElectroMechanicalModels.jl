@@ -63,9 +63,9 @@ function (+)(Model1::Mechano, Model2::Electro)
   ElectroMechModel(Model2, Model1)
 end
 
-function (obj::ElectroMechModel{<:Electro,<:IsoElastic})(Λ::Float64=1.0)
-  Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano(Λ)
-  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro(Λ)
+function (obj::ElectroMechModel{<:Electro,<:IsoElastic})()
+  Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano()
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro()
   Ψ(F, E)     = Ψm(F)     + Ψem(F, E)
   ∂Ψ∂F(F, E)  = ∂Ψm∂F(F)  + ∂Ψem∂F(F, E)
   ∂Ψ∂E(F, E)  =             ∂Ψem∂E(F, E)
@@ -75,9 +75,9 @@ function (obj::ElectroMechModel{<:Electro,<:IsoElastic})(Λ::Float64=1.0)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE)
 end
 
-function (obj::ElectroMechModel{<:Electro,<:AnisoElastic})(Λ::Float64=1.0)
-  Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano(Λ)
-  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro(Λ)
+function (obj::ElectroMechModel{<:Electro,<:AnisoElastic})()
+  Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano()
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro()
   Ψ(F, E, N)     = Ψm(F, N)     + Ψem(F, E)
   ∂Ψ∂F(F, E, N)  = ∂Ψm∂F(F, N)  + ∂Ψem∂F(F, E)
   ∂Ψ∂E(F, E, N)  =                ∂Ψem∂E(F, E)
@@ -87,9 +87,9 @@ function (obj::ElectroMechModel{<:Electro,<:AnisoElastic})(Λ::Float64=1.0)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE)
 end
 
-function (obj::ElectroMechModel{<:Electro,<:ViscoElastic{<:IsoElastic}})(Λ::Float64=1.0)
-  Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano(Λ)
-  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro(Λ)
+function (obj::ElectroMechModel{<:Electro,<:ViscoElastic{<:IsoElastic}})()
+  Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano()
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro()
   Ψ(F, E, Fn, A...)     = Ψm(F, Fn, A...)     + Ψem(F, E)
   ∂Ψ∂F(F, E, Fn, A...)  = ∂Ψm∂F(F, Fn, A...)  + ∂Ψem∂F(F, E)
   ∂Ψ∂E(F, E, Fn, A...)  =                       ∂Ψem∂E(F, E)
@@ -99,9 +99,9 @@ function (obj::ElectroMechModel{<:Electro,<:ViscoElastic{<:IsoElastic}})(Λ::Flo
   return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE)
 end
 
-function (obj::ElectroMechModel{<:Electro,<:ViscoElastic{<:AnisoElastic}})(Λ::Float64=1.0)
-  Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano(Λ)
-  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro(Λ)
+function (obj::ElectroMechModel{<:Electro,<:ViscoElastic{<:AnisoElastic}})()
+  Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano()
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro()
   Ψ(F, E, n, Fn, A...)     = Ψm(F, n, Fn, A...)     + Ψem(F, E)
   ∂Ψ∂F(F, E, n, Fn, A...)  = ∂Ψm∂F(F, n, Fn, A...)  + ∂Ψem∂F(F, E)
   ∂Ψ∂E(F, E, n, Fn, A...)  =                          ∂Ψem∂E(F, E)
@@ -147,7 +147,7 @@ struct FlexoElectroModel{EM<:ElectroMechano} <: FlexoElectro{EM}
     new{ElectroMechModel{E,M}}(physmodel, κ)
   end
 
-  function (obj::FlexoElectroModel)(Λ::Float64=1.0)
+  function (obj::FlexoElectroModel)()
     e₁ = VectorValue(1.0, 0.0, 0.0)
     e₂ = VectorValue(0.0, 1.0, 0.0)
     e₃ = VectorValue(0.0, 0.0, 1.0)
@@ -157,7 +157,7 @@ struct FlexoElectroModel{EM<:ElectroMechano} <: FlexoElectro{EM}
     f3(δϕ) = δϕ ⊗ e₃
     Φ(ϕ₁, ϕ₂, ϕ₃) = (f1 ∘ (ϕ₁) + f2 ∘ (ϕ₂) + f3 ∘ (ϕ₃))
 
-    Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE = obj.electromechano(Λ)
+    Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE = obj.electromechano()
     return Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE, Φ
   end
 end

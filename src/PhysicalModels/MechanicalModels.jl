@@ -32,7 +32,7 @@ function tangent(obj::Volumetric)
   ∂∂Ψ(I3D)[1]
 end
 
-function (obj::VolumetricEnergy)(Λ::Float64=1.0)
+function (obj::VolumetricEnergy)()
   λ = obj.λ
   J(F) = det(F)
   H(F) = det(F) * inv(F)'
@@ -64,7 +64,7 @@ struct CoerciveVolumetric <: Volumetric
   end
 end
 
-function (obj::CoerciveVolumetric)(::Float64=1.0)
+function (obj::CoerciveVolumetric)()
   κ = obj.κ
   J(F) = det(F)
   H(F) = det(F) * inv(F)'
@@ -104,7 +104,7 @@ _lnJ(J) = J > 0 ? log(J) : oftype(J, NaN)
 _∂H∂F(F::TensorValue{2,2}) = _∂H∂F_2D()
 _∂H∂F(F::TensorValue{3,3}) = ×ᵢ⁴(F)
 
-function (obj::LogBarrier)(::Float64=1.0)
+function (obj::LogBarrier)()
   κ, p = obj.κ, obj.p
   J(F) = det(F)
   H(F) = det(F) * inv(F)'
@@ -163,16 +163,16 @@ end
 
 _symmetrize(C) = 0.5 * (C + C')
 
-function (obj::HessianRegularization{Nothing})(Λ::Float64=1.0)
-  Ψs, ∂Ψs, ∂2Ψs = obj.mechano(Λ)
+function (obj::HessianRegularization{Nothing})()
+  Ψs, ∂Ψs, ∂2Ψs = obj.mechano()
   δ, sym = obj.δ, obj.symmetrize
   # extra arguments (the fibre direction of an anisotropic model) are passed through
   ∂2Ψ(F, args...) = (C = ∂2Ψs(F, args...); regularize_hessian(sym ? _symmetrize(C) : C, δ))
   return (Ψs, ∂Ψs, ∂2Ψ)
 end
 
-function (obj::HessianRegularization{TangentSwitch})(Λ::Float64=1.0)
-  Ψs, ∂Ψs, ∂2Ψs = obj.mechano(Λ)
+function (obj::HessianRegularization{TangentSwitch})()
+  Ψs, ∂Ψs, ∂2Ψs = obj.mechano()
   δ, sym, switch = obj.δ, obj.symmetrize, obj.switch
   ∂2Ψ(F, args...) = (C = ∂2Ψs(F, args...); is_projected(switch) ? regularize_hessian(sym ? _symmetrize(C) : C, δ) : C)
   return (Ψs, ∂Ψs, ∂2Ψ)
@@ -192,8 +192,8 @@ struct Hessian∇JRegularization <: Mechano
     new(mechano, δ, κ)
   end
 
-  function (obj::Hessian∇JRegularization)(Λ::Float64=1.0)
-    Ψs, ∂Ψs, ∂2Ψs = obj.mechano(Λ)
+  function (obj::Hessian∇JRegularization)()
+    Ψs, ∂Ψs, ∂2Ψs = obj.mechano()
     δ, κ = obj.δ, obj.κ
 
     J(F) = det(F)
@@ -219,9 +219,9 @@ struct EnergyInterpolationScheme <: IsoElastic
     new(p, model1, model2)
   end
 
-  function (obj::EnergyInterpolationScheme)(Λ::Float64=1.0)
-    Ψs, ∂Ψs, ∂2Ψs = obj.model1(Λ)
-    Ψv, ∂Ψv, ∂2Ψv = obj.model2(Λ)
+  function (obj::EnergyInterpolationScheme)()
+    Ψs, ∂Ψs, ∂2Ψs = obj.model1()
+    Ψv, ∂Ψv, ∂2Ψv = obj.model2()
     p = obj.p
 
     Ψ(ρ, F) = ρ^p * Ψs(F) + (1 - ρ^p) * Ψv(F)
@@ -244,9 +244,9 @@ struct ComposedIsoElastic <: IsoElastic
   function ComposedIsoElastic(model1::IsoElastic, model2::IsoElastic)
     new(model1, model2)
   end
-  function (obj::ComposedIsoElastic)(Λ::Float64=1.0)
-    Ψ1, ∂Ψu1, ∂Ψuu1 = obj.Model1(Λ)
-    Ψ2, ∂Ψu2, ∂Ψuu2 = obj.Model2(Λ)
+  function (obj::ComposedIsoElastic)()
+    Ψ1, ∂Ψu1, ∂Ψuu1 = obj.Model1()
+    Ψ2, ∂Ψu2, ∂Ψuu2 = obj.Model2()
     Ψ(x) = Ψ1(x) + Ψ2(x)
     ∂Ψ(x) = ∂Ψu1(x) + ∂Ψu2(x)
     ∂∂Ψ(x) = ∂Ψuu1(x) + ∂Ψuu2(x)
@@ -265,9 +265,9 @@ struct ComposedAnisoElastic <: AnisoElastic
   function ComposedAnisoElastic(model1::IsoElastic, model2::AnisoElastic)
     new(model1, model2)
   end
-  function (obj::ComposedAnisoElastic)(Λ::Float64=1.0)
-    DΨ1 = obj.Model1(Λ)
-    DΨ2 = obj.Model2(Λ)
+  function (obj::ComposedAnisoElastic)()
+    DΨ1 = obj.Model1()
+    DΨ2 = obj.Model2()
     Ψ, ∂Ψ, ∂∂Ψ = map((ψ1, ψ2) -> (x, N...) -> ψ1(x) + ψ2(x, N...), DΨ1, DΨ2)
     return (Ψ, ∂Ψ, ∂∂Ψ)
   end
@@ -314,7 +314,7 @@ Compressible Yeoh model in 3D
 \\qquad I_1 = F:F,\\quad J = \\det F
 ```
 
-The functor `model(Λ=1.0)` returns `(Ψ, ∂Ψ/∂F, ∂²Ψ/∂F²)`; `ln J` is regularised below `J = 0.01` (`logreg`)
+The functor `model()` returns `(Ψ, ∂Ψ/∂F, ∂²Ψ/∂F²)`; `ln J` is regularised below `J = 0.01` (`logreg`)
 in the energy and in its derivatives.
 """
 struct Yeoh3D <: IsoElastic
@@ -326,7 +326,7 @@ struct Yeoh3D <: IsoElastic
     new(λ, C10, C20, C30)
   end
 
-  function (obj::Yeoh3D)(Λ::Float64=1.0)
+  function (obj::Yeoh3D)()
 
     λ, C10, C20, C30 = obj.λ, obj.C10, obj.C20, obj.C30
 
@@ -362,7 +362,7 @@ struct LinearElasticity2D <: IsoElastic
     new(λ, μ, ρ)
   end
 
-  function (obj::LinearElasticity2D)(Λ::Float64=1.0)
+  function (obj::LinearElasticity2D)()
     λ, μ = obj.λ, obj.μ
     δᵢₖδⱼₗ, δᵢₗδⱼₖ, δᵢⱼδₖₗ = I2D ⊗ᵢₖʲˡ I2D, I2D ⊗ᵢₗʲᵏ I2D, I2D ⊗ I2D
     ε(F) = 0.5(F + F') - I2D
@@ -382,7 +382,7 @@ struct LinearElasticity3D <: IsoElastic
     new(λ, μ, ρ)
   end
 
-  function (obj::LinearElasticity3D)(Λ::Float64=1.0)
+  function (obj::LinearElasticity3D)()
     λ, μ = obj.λ, obj.μ
     δᵢₖδⱼₗ, δᵢₗδⱼₖ, δᵢⱼδₖₗ = I3D ⊗ᵢₖʲˡ I3D, I3D ⊗ᵢₗʲᵏ I3D, I3D ⊗ I3D
     ε(F) = 0.5(F + F') - I3D
@@ -402,7 +402,7 @@ struct NeoHookean3D <: IsoElastic
     new(λ, μ, ρ)
   end
 
-  function (obj::NeoHookean3D)(Λ::Float64=1.0)
+  function (obj::NeoHookean3D)()
     λ, μ = obj.λ, obj.μ
     J(F) = det(F)
     H(F) = det(F) * inv(F)'
@@ -431,7 +431,7 @@ struct Gent2D <: IsoElastic
     new(λ, μ, Jm, γ, ρ)
   end
 
-  function (obj::Gent2D)(Λ::Float64=1.0)
+  function (obj::Gent2D)()
     λ, μ, Jm, γ, ρ = obj.λ, obj.μ, obj.Jm, obj.γ, obj.ρ
 
     J(F) = det(F)
@@ -469,7 +469,7 @@ struct MooneyRivlin3D <: IsoElastic
     new(λ, μ1, μ2, ρ)
   end
 
-  function (obj::MooneyRivlin3D)(Λ::Float64=1.0)
+  function (obj::MooneyRivlin3D)()
     λ, μ1, μ2 = obj.λ, obj.μ1, obj.μ2
     J(F) = det(F)
     H(F) = det(F) * inv(F)'
@@ -501,7 +501,7 @@ struct MooneyRivlin2D <: IsoElastic
     new(λ, μ1, μ2, ρ)
   end
 
-  function (obj::MooneyRivlin2D)(Λ::Float64=1.0)
+  function (obj::MooneyRivlin2D)()
     λ, μ1, μ2 = obj.λ, obj.μ1, obj.μ2
     J(F) = det(F)
     H(F) = det(F) * inv(F)'
@@ -530,7 +530,7 @@ struct NonlinearMooneyRivlin3D <: IsoElastic
     new(λ, μ1, μ2, α1, α2, ρ)
   end
 
-  function (obj::NonlinearMooneyRivlin3D)(Λ::Float64=1.0)
+  function (obj::NonlinearMooneyRivlin3D)()
     λ, μ1, μ2, α1, α2 = obj.λ, obj.μ1, obj.μ2, obj.α1, obj.α2
     J(F) = det(F)
     H(F) = det(F) * inv(F)'
@@ -565,7 +565,7 @@ struct NonlinearMooneyRivlin2D <: IsoElastic
     new(λ, μ1, μ2, α1, α2, ρ)
   end
 
-  function (obj::NonlinearMooneyRivlin2D)(Λ::Float64=1.0)
+  function (obj::NonlinearMooneyRivlin2D)()
     λ, μ1, μ2, α1, α2 = obj.λ, obj.μ1, obj.μ2, obj.α1, obj.α2
     J(F) = det(F)
     H(F) = det(F) * inv(F)'
@@ -603,7 +603,7 @@ struct NonlinearMooneyRivlin2D_CV <: IsoElastic
     new(λ, μ1, μ2, α1, α2, γ, ρ)
   end
 
-  function (obj::NonlinearMooneyRivlin2D_CV)(Λ::Float64=1.0)
+  function (obj::NonlinearMooneyRivlin2D_CV)()
     λ, μ1, μ2, α1, α2, γ = obj.λ, obj.μ1, obj.μ2, obj.α1, obj.α2, obj.γ
     J(F) = det(F)
     H(F) = det(F) * inv(F)'
@@ -638,7 +638,7 @@ struct NonlinearMooneyRivlin_CV <: IsoElastic
     new(λ, μ1, μ2, α1, α2, γ, ρ)
   end
 
-  function (obj::NonlinearMooneyRivlin_CV)(Λ::Float64=1.0)
+  function (obj::NonlinearMooneyRivlin_CV)()
     λ, μ1, μ2, α1, α2, γ = obj.λ, obj.μ1, obj.μ2, obj.α1, obj.α2, obj.γ
     J(F) = det(F)
     H(F) = det(F) * inv(F)'
@@ -676,7 +676,7 @@ struct NonlinearNeoHookean_CV <: IsoElastic
     new(λ, μ, α, γ, ρ)
   end
 
-  function (obj::NonlinearNeoHookean_CV)(Λ::Float64=1.0)
+  function (obj::NonlinearNeoHookean_CV)()
     λ, μ, α, γ = obj.λ, obj.μ, obj.α, obj.γ
     J(F) = det(F)
     H(F) = det(F) * inv(F)'
@@ -708,7 +708,7 @@ struct NonlinearIncompressibleMooneyRivlin2D_CV <: IsoElastic
     new(λ, μ, α, γ, ρ)
   end
 
-  function (obj::NonlinearIncompressibleMooneyRivlin2D_CV)(Λ::Float64=1.0)
+  function (obj::NonlinearIncompressibleMooneyRivlin2D_CV)()
     λ, μ, α, γ = obj.λ, obj.μ, obj.α, obj.γ
     J(F) = det(F)
     H(F) = det(F) * inv(F)'
@@ -770,7 +770,7 @@ struct EightChain <: IsoElastic
   EightChain(; μ::Float64, N::Float64) = new(μ, N)
 end
 
-function (obj::EightChain)(::Float64=1.0)
+function (obj::EightChain)()
   (; μ, N) = obj
   α = (1/2, 1/20, 11/1050, 19/7000, 519/673750)
   β = 1 / N
@@ -795,7 +795,7 @@ struct TransverseIsotropy3D <: AnisoElastic
   end
 
 
-  function (obj::TransverseIsotropy3D)(Λ::Float64=1.0)
+  function (obj::TransverseIsotropy3D)()
     J(F) = det(F)
     H(F) = det(F) * inv(F)'
     I4(F, N) = (F * N) ⋅ (F * N)
@@ -829,7 +829,7 @@ struct TransverseIsotropy2D <: AnisoElastic
     new(μ, α1, α2, ρ)
   end
 
-  function (obj::TransverseIsotropy2D)(Λ::Float64=1.0)
+  function (obj::TransverseIsotropy2D)()
     J(F) = det(F)
     H(F) = det(F) * inv(F)'
     I4(F, N) = (F * N) ⋅ (F * N)
@@ -870,7 +870,7 @@ struct HGO_4Fibers <: AnisoElastic
     new(c1, c2)
   end
 
-  function (obj::HGO_4Fibers)(Λ::Float64=1.0)
+  function (obj::HGO_4Fibers)()
     c1, c2 = obj.c1, obj.c2
 
     Ψ(F, N1, N2, N3, N4) = begin
@@ -919,7 +919,7 @@ struct HGO_1Fiber <: AnisoElastic
     new(c1, c2)
   end
 
-  function (obj::HGO_1Fiber)(Λ::Float64=1.0)
+  function (obj::HGO_1Fiber)()
     c1, c2 = obj.c1, obj.c2
 
     Ψ(F, N1) = begin
@@ -951,7 +951,7 @@ struct IncompressibleNeoHookean3D <: IsoElastic
     new(λ, μ, ρ, δ)
   end
 
-  function (obj::IncompressibleNeoHookean3D)(Λ::Float64=1.0)
+  function (obj::IncompressibleNeoHookean3D)()
     λ, μ, δ = obj.λ, obj.μ, obj.δ
     J_(F) = det(F)
     H(F) = det(F) * inv(F)'
@@ -995,7 +995,7 @@ struct IncompressibleNeoHookean2D <: IsoElastic
     new(λ, μ, ρ, δ)
   end
 
-  function (obj::IncompressibleNeoHookean2D)(Λ::Float64=1.0)
+  function (obj::IncompressibleNeoHookean2D)()
     λ, μ, δ = obj.λ, obj.μ, obj.δ
     J_(F) = det(F)
     H(F) = det(F) * inv(F)'
@@ -1036,7 +1036,7 @@ struct IncompressibleNeoHookean2D_CV <: IsoElastic
     new(λ, μ, γ, ρ)
   end
 
-  function (obj::IncompressibleNeoHookean2D_CV)(Λ::Float64=1.0)
+  function (obj::IncompressibleNeoHookean2D_CV)()
     λ, μ, γ = obj.λ, obj.μ, obj.γ
     J(F) = det(F)
     H(F) = det(F) * inv(F)'
@@ -1067,7 +1067,7 @@ struct ARAP2D_regularized <: IsoElastic
     new(μ, ρ, δ)
   end
 
-  function (obj::ARAP2D_regularized)(Λ::Float64=1.0)
+  function (obj::ARAP2D_regularized)()
 
     μ, δ = obj.μ, obj.δ
     J_(F) = det(F)
@@ -1107,7 +1107,7 @@ struct ARAP2D <: IsoElastic
     new(μ, ρ)
   end
 
-  function (obj::ARAP2D)(Λ::Float64=1.0)
+  function (obj::ARAP2D)()
     μ = obj.μ
     J(F) = det(F)
     H(F) = det(F) * inv(F)'
@@ -1135,7 +1135,7 @@ struct NonlinearARAP2D <: IsoElastic
     new(μ, p, ρ)
   end
 
-  function (obj::NonlinearARAP2D)(Λ::Float64=1.0)
+  function (obj::NonlinearARAP2D)()
     μ = obj.μ
     p = obj.p
 
@@ -1176,7 +1176,7 @@ Neo-Hooke hyperelastic model
   μ::Float64
 end
 
-function (obj::IsochoricNeoHookean3D)(::Float64=1.0)
+function (obj::IsochoricNeoHookean3D)()
   W(I) = obj.μ / 2 * (I - 3)
   ∂W∂I(I) = obj.μ / 2
   Ψ(F) = W(I1iso(F))

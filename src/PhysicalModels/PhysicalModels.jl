@@ -106,9 +106,12 @@ export Hessian∇JRegularization
 """
     PhysicalModel
 
-Supertype of the constitutive models. A model is a functor: `model(Λ=1.0)` returns the energy density and its
+Supertype of the constitutive models. A model is a functor: `model()` returns the energy density and its
 derivatives as functions of the kinematic fields (for a mechanical model, `(Ψ, ∂Ψ/∂F, ∂²Ψ/∂F²)` as functions of
-`F`). `Λ` is the load factor; the models that do not depend on it accept it and ignore it.
+`F`). The magnetic models (`Magnetic`, `IdealMagnetic`, `HardMagnetic`, … and the magneto-mechanical models
+built from them) take the load factor, `model(Λ=1.0)`, which scales the remanent field `ℋᵣ = αr Λ N`.
+A material parameter that has to be ramped is a mutable field of the model (e.g. `αr` of the magnetic models)
+updated between steps.
 
 Many mechanical models store a reference density `ρ` (keyword argument, `0.0` by default). The model does not use
 it: it is kept for the user, e.g. as the coefficient of the inertial term, `mass_term(u, v, model.ρ, dΩ)`.

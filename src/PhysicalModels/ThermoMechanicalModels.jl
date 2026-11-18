@@ -44,10 +44,10 @@ struct ThermalVolumetric{T<:Thermo} <: ThermoMechano{T,Volumetric}
   end
 end
 
-function (obj::ThermalVolumetric)(Λ::Float64=1.0)
+function (obj::ThermalVolumetric)()
   (; Cv, θr, α, κ) = obj.thermo
   cv0 = Cv  # FIXME
-  U, ∂U∂F, ∂∂U∂FF = obj.mechano(Λ)
+  U, ∂U∂F, ∂∂U∂FF = obj.mechano()
   κr = tangent(obj.mechano)
   f, df, ddf = obj.law()
   ζr = 1/df(θr)
@@ -80,8 +80,8 @@ end
 # No thermal component: the time step goes to the mechanical model only.
 update_time_step!(obj::ThermalDeviatoric, Δt::Float64) = update_time_step!(obj.mechano, Δt)
 
-function (obj::ThermalDeviatoric{<:IsoElastic})(Λ::Float64=1.0)
-  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano(Λ)
+function (obj::ThermalDeviatoric{<:IsoElastic})()
+  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano()
   f, df, ddf = obj.law()
   Ψ(F,θ)      = Ψm(F) * f(θ)
   ∂Ψ∂F(F,θ)   = ∂Ψm∂F(F) * f(θ)
@@ -106,7 +106,7 @@ Thermo-mechanical model in the temperature increment `δθ = θ - θr`:
 
 with `Ψm` the mechanical model, `Ψt` the thermal model (`ThermalModel`, which gives `θr`), `Ψtm` the
 thermo-mechanical coupling and `f` the thermal law (`ThermalLaw`, which gives `f`, `f'` and `f''`). The law must
-have the same reference temperature as the thermal model. The functor `model(Λ=1.0)` returns
+have the same reference temperature as the thermal model. The functor `model()` returns
 `(Ψ, ∂Ψ/∂F, ∂Ψ/∂θ, ∂²Ψ/∂F², ∂²Ψ/∂θ², ∂²Ψ/∂F∂θ, η)` as functions of `(F, δθ)`, with `η = -∂Ψ/∂θ`.
 """
 struct ThermoMechModel{T<:Thermo,M<:Mechano,L<:ThermalLaw} <: ThermoMechano{T,M}
@@ -142,10 +142,10 @@ function _check_reference_temperature(thermo, law)
   nothing
 end
 
-function (obj::ThermoMechModel)(Λ::Float64=1.0)
-  Ψt, ∂Ψt_θ, ∂Ψt_θθ = obj.thermo(Λ)
-  Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano(Λ)
-  Ψtm, ∂Ψtm_u, ∂Ψtm_θ, ∂Ψtm_uu, ∂Ψtm_uθ, ∂Ψtm_θθ = _getCoupling(obj.thermo, obj.mechano, Λ)
+function (obj::ThermoMechModel)()
+  Ψt, ∂Ψt_θ, ∂Ψt_θθ = obj.thermo()
+  Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano()
+  Ψtm, ∂Ψtm_u, ∂Ψtm_θ, ∂Ψtm_uu, ∂Ψtm_uθ, ∂Ψtm_θθ = _getCoupling(obj.thermo, obj.mechano)
   fθ, dfθ, ddfθ = obj.law()
   θr = obj.thermo.θr
   f(δθ) = fθ(δθ + θr)
@@ -177,9 +177,9 @@ struct ThermoMech_Bonet{M<:Mechano, LE<:ThermalLaw, LV<:ThermalLaw} <: ThermoMec
   end
 end
 
-function (obj::ThermoMech_Bonet{<:IsoElastic})(Λ::Float64=1.0)
-  Ψv, ∂Ψv∂F, ∂Ψv∂θ, ∂∂Ψv∂FF, ∂∂Ψv∂θθ, ∂∂Ψv∂Fθ = obj.thermo(Λ)
-  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano(Λ)
+function (obj::ThermoMech_Bonet{<:IsoElastic})()
+  Ψv, ∂Ψv∂F, ∂Ψv∂θ, ∂∂Ψv∂FF, ∂∂Ψv∂θθ, ∂∂Ψv∂Fθ = obj.thermo()
+  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano()
   f, ∂f, ∂∂f = obj.lawel()
   Ψ(F, θ)       =  Ψv(F,θ)      + f(θ)*Ψm(F)
   ∂Ψ∂F(F, θ)    =  ∂Ψv∂F(F,θ)   + f(θ)*∂Ψm∂F(F)
@@ -190,9 +190,9 @@ function (obj::ThermoMech_Bonet{<:IsoElastic})(Λ::Float64=1.0)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂θθ, ∂∂Ψ∂Fθ)
 end
 
-function (obj::ThermoMech_Bonet{<:AnisoElastic})(Λ::Float64=1.0)
-  Ψv, ∂Ψv∂F, ∂Ψv∂θ, ∂∂Ψv∂FF, ∂∂Ψv∂θθ, ∂∂Ψv∂Fθ = obj.thermo(Λ)
-  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano(Λ)
+function (obj::ThermoMech_Bonet{<:AnisoElastic})()
+  Ψv, ∂Ψv∂F, ∂Ψv∂θ, ∂∂Ψv∂FF, ∂∂Ψv∂θθ, ∂∂Ψv∂Fθ = obj.thermo()
+  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano()
   f, ∂f, ∂∂f = obj.lawel()
   Ψ(F, θ, N)       =  Ψv(F,θ)      + f(θ)*Ψm(F, N)
   ∂Ψ∂F(F, θ, N)    =  ∂Ψv∂F(F,θ)   + f(θ)*∂Ψm∂F(F, N)
@@ -203,10 +203,10 @@ function (obj::ThermoMech_Bonet{<:AnisoElastic})(Λ::Float64=1.0)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂θθ, ∂∂Ψ∂Fθ)
 end
 
-function (obj::ThermoMech_Bonet{<:ViscoElastic{<:IsoElastic}})(Λ::Float64=1.0)
-  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo(Λ)
-  Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm(Λ)
-  Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches(Λ)
+function (obj::ThermoMech_Bonet{<:ViscoElastic{<:IsoElastic}})()
+  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
+  Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm()
+  Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches()
   fe, ∂fe, ∂∂fe = obj.lawel()
   fv, ∂fv, ∂∂fv = obj.lawvis()
   Ψ(F, θ, X...)       =  Ψt(F, θ)      + fe(θ)*Ψe(F)      + fv(θ)*Ψv(F, X...)
@@ -218,10 +218,10 @@ function (obj::ThermoMech_Bonet{<:ViscoElastic{<:IsoElastic}})(Λ::Float64=1.0)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂θθ, ∂∂Ψ∂Fθ)
 end
 
-function (obj::ThermoMech_Bonet{<:ViscoElastic{<:AnisoElastic}})(Λ::Float64=1.0)
-  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo(Λ)
-  Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm(Λ)
-  Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches(Λ)
+function (obj::ThermoMech_Bonet{<:ViscoElastic{<:AnisoElastic}})()
+  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
+  Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm()
+  Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches()
   fe, ∂fe, ∂∂fe = obj.lawel()
   fv, ∂fv, ∂∂fv = obj.lawvis()
   Ψ(F, θ, N, X...)       =  Ψt(F, θ)      + fe(θ)*Ψe(F, N)      + fv(θ)*Ψv(F, X...)
@@ -258,9 +258,9 @@ struct ThermoMech_EntropicPolyconvex{T<:Thermo,M<:Mechano} <: ThermoMechano{T,M}
     new{T,M}(thermo, mechano, β, G, ϕ, s)
   end
 
-  function (obj::ThermoMech_EntropicPolyconvex)(Λ::Float64=1.0)
-    Ψt, _, _ = obj.thermo(Λ)
-    Ψm, _, _ = obj.mechano(Λ)
+  function (obj::ThermoMech_EntropicPolyconvex)()
+    Ψt, _, _ = obj.thermo()
+    Ψm, _, _ = obj.mechano()
     θr = obj.thermo.θr
     Cv = obj.thermo.Cv
     α = obj.thermo.α
@@ -300,7 +300,7 @@ struct ThermoMech_EntropicPolyconvex{T<:Thermo,M<:Mechano} <: ThermoMechano{T,M}
 end
 
 
-function _getCoupling(term::Thermo, mec::Mechano, Λ::Float64)
+function _getCoupling(term::Thermo, mec::Mechano)
   J(F) = det(F)
   H(F) = det(F) * inv(F)'
   ∂Ψtm_∂J(F, δθ) = -6.0 * term.α * J(F) * δθ

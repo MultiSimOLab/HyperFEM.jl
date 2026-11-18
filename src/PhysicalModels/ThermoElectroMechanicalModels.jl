@@ -29,7 +29,7 @@ Thermo-electro-mechanical model in the temperature increment `δθ = θ - θr`:
 ```
 
 with the same ingredients as [`ThermoMechModel`](@ref) plus the electro-mechanical model `Ψem`. The functor
-`model(Λ=1.0)` returns `(Ψ, ∂Ψ/∂F, ∂Ψ/∂E, ∂Ψ/∂θ, ∂²Ψ/∂F², ∂²Ψ/∂E², ∂²Ψ/∂θ², ∂²Ψ/∂E∂F, ∂²Ψ/∂F∂θ, ∂²Ψ/∂E∂θ, η)`
+`model()` returns `(Ψ, ∂Ψ/∂F, ∂Ψ/∂E, ∂Ψ/∂θ, ∂²Ψ/∂F², ∂²Ψ/∂E², ∂²Ψ/∂θ², ∂²Ψ/∂E∂F, ∂²Ψ/∂F∂θ, ∂²Ψ/∂E∂θ, η)`
 as functions of `(F, E, δθ)`.
 """
 struct ThermoElectroMechModel{T<:Thermo,E<:Electro,M<:Mechano,L<:ThermalLaw} <: ThermoElectroMechano{T,E,M}
@@ -53,11 +53,11 @@ end
 ThermoElectroMechModel(thermo::Thermo, electro::Electro, mechano::Mechano; kwargs...) =
   _missing_thermal_law("ThermoElectroMechModel(thermo, electro, mechano, law)")
 
-function (obj::ThermoElectroMechModel)(Λ::Float64=1.0)
-  Ψt, ∂Ψt_θ, ∂Ψt_θθ = obj.thermo(Λ)
-  Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano(Λ)
-  Ψem, ∂Ψem_u, ∂Ψem_φ, ∂Ψem_uu, ∂Ψem_φu, ∂Ψem_φφ = obj.electro(Λ)
-  Ψtm, ∂Ψtm_u, ∂Ψtm_θ, ∂Ψtm_uu, ∂Ψtm_uθ, ∂Ψtm_θθ = _getCoupling(obj.thermo, obj.mechano, Λ)
+function (obj::ThermoElectroMechModel)()
+  Ψt, ∂Ψt_θ, ∂Ψt_θθ = obj.thermo()
+  Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano()
+  Ψem, ∂Ψem_u, ∂Ψem_φ, ∂Ψem_uu, ∂Ψem_φu, ∂Ψem_φφ = obj.electro()
+  Ψtm, ∂Ψtm_u, ∂Ψtm_θ, ∂Ψtm_uu, ∂Ψtm_uθ, ∂Ψtm_θθ = _getCoupling(obj.thermo, obj.mechano)
   fθ, dfθ, ddfθ = obj.law()
   θr = obj.thermo.θr
   f(δθ) = fθ(δθ + θr)
@@ -94,7 +94,7 @@ Thermo-electro-mechanical model of Govindjee type in the temperature increment `
 with `W = Ψm + Ψem` (mechanical and electro-mechanical energies), `Ψer = α θr (J - 1)`,
 `ΨL1 = Cv θr (1 - β) (θ/θr (1 - ln(θ/θr)) - 1)` and `ΨL3 = g(δθ) - g(0) - g'(0) δθ`. `thermo` is a
 `ThermalModel` (gives `Cv`, `θr` and `α`). `fθ`, `gθ` and their first and second derivatives are functions
-of `δθ`; the derivatives of the model are analytical. The functor `model(Λ=1.0)` returns
+of `δθ`; the derivatives of the model are analytical. The functor `model()` returns
 `(Ψ, ∂Ψ/∂F, ∂Ψ/∂E, ∂Ψ/∂θ, ∂²Ψ/∂F², ∂²Ψ/∂E², ∂²Ψ/∂θ², ∂²Ψ/∂E∂F, ∂²Ψ/∂F∂θ, ∂²Ψ/∂E∂θ, η)` as functions of
 `(F, E, δθ)`, with `η = -∂Ψ/∂θ`.
 """
@@ -119,9 +119,9 @@ end
 ThermoElectroMech_Govindjee(; thermo::Thermo, electro::Electro, mechano::Mechano, kwargs...) =
   ThermoElectroMech_Govindjee(thermo, electro, mechano; kwargs...)
 
-function (obj::ThermoElectroMech_Govindjee)(Λ::Float64=1.0)
-  Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano(Λ)
-  Ψem, ∂Ψem_u, ∂Ψem_φ, ∂Ψem_uu, ∂Ψem_φu, ∂Ψem_φφ = obj.electro(Λ)
+function (obj::ThermoElectroMech_Govindjee)()
+  Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano()
+  Ψem, ∂Ψem_u, ∂Ψem_φ, ∂Ψem_uu, ∂Ψem_φu, ∂Ψem_φφ = obj.electro()
   (; Cv, θr, α) = obj.thermo
   (; fθ, dfdθ, d2fdθ2, gθ, dgdθ, d2gdθ2, β) = obj
   g0, dg0 = gθ(0.0), dgdθ(0.0)
@@ -181,10 +181,10 @@ function ThermoElectroMech_Bonet(thermo::ThermalVolumetric, electro::ThermoElect
   ThermoElectroMech_Bonet{E,M}(thermo,electro.electro,mechano,el,vis,electro.law)
 end
 
-function (obj::ThermoElectroMech_Bonet{<:Electro,<:IsoElastic})(Λ::Float64=1.0)
-  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo(Λ)
-  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano(Λ)
-  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂∂Ψem∂EE = obj.electro(Λ)
+function (obj::ThermoElectroMech_Bonet{<:Electro,<:IsoElastic})()
+  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
+  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano()
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂∂Ψem∂EE = obj.electro()
   fe, dfe, ddfe = obj.lawel()
   felec, dfelec, ddfelec = obj.lawelec()
 
@@ -202,10 +202,10 @@ function (obj::ThermoElectroMech_Bonet{<:Electro,<:IsoElastic})(Λ::Float64=1.0)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂EE, ∂∂Ψ∂θθ, ∂∂Ψ∂EF, ∂∂Ψ∂Fθ, ∂∂Ψ∂Eθ)
 end
 
-function (obj::ThermoElectroMech_Bonet{<:Electro,<:AnisoElastic})(Λ::Float64=1.0)
-  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo(Λ)
-  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano(Λ)
-  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂∂Ψem∂EE = obj.electro(Λ)
+function (obj::ThermoElectroMech_Bonet{<:Electro,<:AnisoElastic})()
+  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
+  Ψm, ∂Ψm∂F, ∂∂Ψm∂FF = obj.mechano()
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂∂Ψem∂EE = obj.electro()
   fe, dfe, ddfe = obj.lawel()
   felec, dfelec, ddfelec = obj.lawelec()
 
@@ -223,11 +223,11 @@ function (obj::ThermoElectroMech_Bonet{<:Electro,<:AnisoElastic})(Λ::Float64=1.
   return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂EE, ∂∂Ψ∂θθ, ∂∂Ψ∂EF, ∂∂Ψ∂Fθ, ∂∂Ψ∂Eθ)
 end
 
-function (obj::ThermoElectroMech_Bonet{<:Electro,<:ViscoElastic{<:IsoElastic}})(Λ::Float64=1.0)
-  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo(Λ)
-  Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm(Λ)
-  Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches(Λ)
-  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂∂Ψem∂EE = obj.electro(Λ)
+function (obj::ThermoElectroMech_Bonet{<:Electro,<:ViscoElastic{<:IsoElastic}})()
+  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
+  Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm()
+  Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches()
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂∂Ψem∂EE = obj.electro()
   fe, dfe, ddfe = obj.lawel()
   fv, dfv, ddfv = obj.lawvis()
   felec, dfelec, ddfelec = obj.lawelec()
@@ -246,11 +246,11 @@ function (obj::ThermoElectroMech_Bonet{<:Electro,<:ViscoElastic{<:IsoElastic}})(
   return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂θ, ∂∂Ψ∂FF, ∂∂Ψ∂EE, ∂∂Ψ∂θθ, ∂∂Ψ∂EF, ∂∂Ψ∂Fθ, ∂∂Ψ∂Eθ)
 end
 
-function (obj::ThermoElectroMech_Bonet{<:Electro,<:ViscoElastic{<:AnisoElastic}})(Λ::Float64=1.0)
-  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo(Λ)
-  Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm(Λ)
-  Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches(Λ)
-  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂∂Ψem∂EE = obj.electro(Λ)
+function (obj::ThermoElectroMech_Bonet{<:Electro,<:ViscoElastic{<:AnisoElastic}})()
+  Ψt, ∂Ψt∂F, ∂Ψt∂θ, ∂∂Ψt∂FF, ∂∂Ψt∂θθ, ∂∂Ψt∂Fθ = obj.thermo()
+  Ψe, ∂Ψe∂F, ∂∂Ψe∂FF = obj.mechano.longterm()
+  Ψv, ∂Ψv∂F, ∂∂Ψv∂FF = obj.mechano.branches()
+  Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂∂Ψem∂EE = obj.electro()
   fe, dfe, ddfe = obj.lawel()
   fv, dfv, ddfv = obj.lawvis()
   felec, dfelec, ddfelec = obj.lawelec()

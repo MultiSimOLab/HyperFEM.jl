@@ -16,7 +16,7 @@ struct MagnetoMechModel{G<:Magneto,M<:Mechano} <: MagnetoMechano{G,M}
   end
 
   function (obj::MagnetoMechModel{<:Magneto,<:IsoElastic})(Λ::Float64=1.0)
-    Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano(Λ)
+    Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano()
     Ψmm, ∂Ψmm_u, ∂Ψmm_φ, ∂Ψmm_uu, ∂Ψmm_φu, ∂Ψmm_φφ = _getCoupling(obj.magneto, obj.mechano, Λ)
 
     Ψ(F, ℋ₀, N) = Ψm(F) + Ψmm(F, ℋ₀, N)
@@ -30,7 +30,7 @@ struct MagnetoMechModel{G<:Magneto,M<:Mechano} <: MagnetoMechano{G,M}
   end
 
     function (obj::MagnetoMechModel{<:Magneto,<:AnisoElastic})(Λ::Float64=1.0)
-    Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano(Λ)
+    Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano()
     Ψmm, ∂Ψmm_u, ∂Ψmm_φ, ∂Ψmm_uu, ∂Ψmm_φu, ∂Ψmm_φφ = _getCoupling(obj.magneto, obj.mechano, Λ)
 
     Ψ(F, ℋ₀, N) = Ψm(F,N) + Ψmm(F, ℋ₀, N)
