@@ -5,6 +5,8 @@ using Test
 using LinearAlgebra
 using Random
 using StaticArrays
+using ForwardDiff
+using Gridap.TensorValues: contracted_product  # Gridap's ⋅², which HyperFEM redefines between fourth-order tensors
 
 
 digits1(D) = [Float64(i) for i in 1:D]
@@ -56,11 +58,73 @@ end
                           1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0;
                           5.3 2.0 3.1 1.9 5.4 9.8 0.4 8.8 3.1] * 1e-3))
   @test sqrt(×ᵢ⁴(A) ⊙ ×ᵢ⁴(A)) == 0.033763886032268264
-  @test norm(A × B) == 6.246230863488799e-5
+  @test norm(A × B) == 6.246230863488798e-5
   @test sqrt((C × B) ⊙ (C × B)) == 2.4491455542698976e-6
   @test sqrt((B × C) ⊙ (B × C)) == 1.104276381618298e-6
   @test sqrt((D × A) ⊙ (D × A)) == 0.00012378691368638284
-  @test norm(get_array(A) × get_array(B))== 6.246230863488799e-5
+
+  Random.seed!(1)
+  ε(i, j, k) = (i - j) * (j - k) * (k - i) ÷ 2
+  R = 1:3
+  rT() = TensorValue{3,3}(Tuple(randn(9)))
+  rv() = VectorValue{3}(Tuple(randn(3)))
+  A, B, C, A1, A2, B1, B2, Σ = (rT() for _ in 1:8)
+  F = one(A) + 0.3 * rT()
+  H = FourthOrderTensorValue{3}(Tuple(randn(81)))
+  W = ThirdOrderTensorValue{3,3,3}(Tuple(randn(27)))
+  v, w, v1, v2, w1, w2 = (rv() for _ in 1:6)
+  α = randn()
+  I3 = one(A)
+
+  # definitions in index notation (Bonet et al. 2015, Eq. A.3)
+  X = FourthOrderTensorValue{3}(Tuple(sum(ε(i, k, m) * ε(j, l, n) * A[m, n] for m in R, n in R) for i in R, j in R, k in R, l in R))
+  @test ×ᵢ⁴(A) == X
+  @test A × B ≈ TensorValue{3,3}(Tuple(sum(ε(i, k, l) * ε(j, m, n) * A[k, m] * B[l, n] for k in R, l in R, m in R, n in R) for i in R, j in R))
+  @test H × A ≈ FourthOrderTensorValue{3}(Tuple(sum(H[i, j, m, n] * X[m, n, k, l] for m in R, n in R) for i in R, j in R, k in R, l in R))
+  @test A × H ≈ FourthOrderTensorValue{3}(Tuple(sum(X[i, j, m, n] * H[m, n, k, l] for m in R, n in R) for i in R, j in R, k in R, l in R))
+  @test W × A ≈ ThirdOrderTensorValue{3,3,3}(Tuple(sum(W[e, m, n] * X[m, n, i, j] for m in R, n in R) for e in R, i in R, j in R))
+
+  # bitwise identical to the contraction with ×ᵢ⁴ in Gridap
+  @test Tuple(A × B) === Tuple(contracted_product(Val(2), ×ᵢ⁴(A), B))
+  @test Tuple(H × A) === Tuple(contracted_product(Val(2), H, ×ᵢ⁴(A)))
+  @test Tuple(A × H) === Tuple(contracted_product(Val(2), ×ᵢ⁴(A), H))
+  @test Tuple(W × A) === Tuple(contracted_product(Val(2), W, ×ᵢ⁴(A)))
+
+  # properties (Bonet et al. 2015, Eqs. A.5-A.19)
+  lcross(v, A) = TensorValue{3,3}(Tuple(sum(ε(i, k, l) * v[k] * A[l, j] for k in R, l in R) for i in R, j in R))  # (A.1)
+  rcross(A, v) = TensorValue{3,3}(Tuple(sum(ε(j, k, l) * A[i, k] * v[l] for k in R, l in R) for i in R, j in R))  # (A.2)
+  @test A × B ≈ B × A                                                           # (A.5)
+  @test (A × B)' ≈ A' × B'                                                      # (A.6)
+  @test A × (B1 + B2) ≈ A × B1 + A × B2                                         # (A.7)
+  @test α * (A × B) ≈ (α * A) × B                                               # (A.8)
+  @test (A × B) ⊙ C ≈ (B × C) ⊙ A ≈ (A × C) ⊙ B                                # (A.9)
+  @test A × I3 ≈ tr(A) * I3 - A'                                                # (A.10)
+  @test I3 × I3 == 2 * I3                                                       # (A.11)
+  @test (A × A) ⊙ A ≈ 6 * det(A)                                                # (A.12)
+  @test 0.5 * (A × A) ≈ det(A) * inv(A)'                                        # (A.13)
+  @test (v1 ⊗ v2) × (w1 ⊗ w2) ≈ (v1 × w1) ⊗ (v2 × w2)                           # (A.14)
+  @test v × (A ⋅ w) ≈ lcross(v, A) ⋅ w                                          # (A.15)
+  @test A × (v ⊗ w) ≈ -rcross(lcross(v, A), w)                                  # (A.16)
+  @test (A × B) ⋅ (v × w) ≈ (A ⋅ v) × (B ⋅ w) + (B ⋅ v) × (A ⋅ w)               # (A.17)
+  @test (A1 × A2) ⋅ (B1 × B2) ≈ (A1 ⋅ B1) × (A2 ⋅ B2) + (A1 ⋅ B2) × (A2 ⋅ B1)   # (A.18)
+  @test (A1 ⋅ B) × (A2 ⋅ B) ≈ (A1 × A2) ⋅ (det(B) * inv(B)')                    # (A.19)
+  @test (A × H)' ≈ H' × A
+
+  # derivatives: ∂f[i,j]/∂F[k,l], and the bilinear forms of Bonet et al. 2015, Eq. (24)
+  jac(f, F) = FourthOrderTensorValue{3}(Tuple(ForwardDiff.jacobian(x -> collect(Tuple(f(TensorValue{3,3}(Tuple(x))))), collect(Tuple(F)))))
+  cof(F) = 0.5 * (F × F)
+  @test jac(cof, F) ≈ ×ᵢ⁴(F)
+  @test jac(G -> Σ × G, F) ≈ ×ᵢ⁴(Σ)
+  @test jac(G -> (H ⋅² cof(G)) × G, F) ≈ F × (H × F) + ×ᵢ⁴(H ⋅² cof(F))   # Ψ_H = H : cof(F)
+  du, dv = rT(), rT()
+  @test dv ⊙ (F × (H × F)) ⊙ du ≈ (dv × F) ⊙ H ⊙ (du × F)
+  @test dv ⊙ ×ᵢ⁴(Σ) ⊙ du ≈ Σ ⊙ (dv × du)
+
+  # element types
+  A32 = TensorValue{3,3,Float32}(Tuple(randn(Float32, 9)))
+  @test eltype(×ᵢ⁴(A32)) == Float32
+  @test eltype(A32 × A32) == Float32
+  @test eltype(A32 × A) == Float64
 end
 
 
