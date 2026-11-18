@@ -367,7 +367,7 @@ struct LinearElasticity2D <: IsoElastic
     δᵢₖδⱼₗ, δᵢₗδⱼₖ, δᵢⱼδₖₗ = I2D ⊗ᵢₖʲˡ I2D, I2D ⊗ᵢₗʲᵏ I2D, I2D ⊗ I2D
     ε(F) = 0.5(F + F') - I2D
     ∂Ψuu(F) = μ * (δᵢₖδⱼₗ + δᵢₗδⱼₖ) + λ * δᵢⱼδₖₗ
-    ∂Ψu(F) = ∂Ψuu(F) ⊙ (F - I2D)
+    ∂Ψu(F) = ∂Ψuu(F) ⋅² (F - I2D)
     Ψ(F) = μ * sum(ε(F) .* ε(F)) + 0.5 * λ * tr(ε(F))^2
     return (Ψ, ∂Ψu, ∂Ψuu)
   end
@@ -387,7 +387,7 @@ struct LinearElasticity3D <: IsoElastic
     δᵢₖδⱼₗ, δᵢₗδⱼₖ, δᵢⱼδₖₗ = I3D ⊗ᵢₖʲˡ I3D, I3D ⊗ᵢₗʲᵏ I3D, I3D ⊗ I3D
     ε(F) = 0.5(F + F') - I3D
     ∂Ψuu(F) = μ * (δᵢₖδⱼₗ + δᵢₗδⱼₖ) + λ * δᵢⱼδₖₗ
-    ∂Ψu(F) = ∂Ψuu(F) ⊙ (F - I3D)
+    ∂Ψu(F) = ∂Ψuu(F) ⋅² (F - I3D)
     Ψ(F) = μ * sum(ε(F) .* ε(F)) + 0.5 * λ * tr(ε(F))^2
     return (Ψ, ∂Ψu, ∂Ψuu)
   end

@@ -2,7 +2,6 @@
 #
 # The tensors are stored with full indices (Gridap ≥ 0.20). Gridap provides the products
 # (`⊗`, `⋅`, `⋅²`, `⊙` between tensors of the same order) for all the orders. HyperFEM adds:
-#   - `⊙` between tensors of different orders: all the indices of the operand of lower order;
 #   - the products in index notation that the operators above cannot write;
 #   - `+`, `-` and the scaling of high-order tensors, and `A ⊗ B`, which are slower in Gridap;
 #   - the transpose of third- and fourth-order tensors, and the cross products.
@@ -11,7 +10,7 @@
 #   a ⊗ b    outer product
 #   a ⋅ b    single contraction: last index of `a` with the first index of `b`
 #   a ⋅² b   double contraction: last two indices of `a` with the first two indices of `b`
-#   a ⊙ b    full contraction: all the indices of the operand of lower order
+#   a ⊙ b    full contraction: tensors of the same order (Gridap)
 #   a × b    cross product (3D)
 #   a * b    same as `a ⋅ b` for second-order tensors (to be removed)
 
@@ -102,18 +101,6 @@ Contraction of the second index of `A` with the second index of `H`: `R[i,j,k,l]
 
 
 # =====================
-# Full contraction between tensors of different orders
-# =====================
-# Gridap 0.20 defines the first two, but marks them to be removed.
-
-Gridap.TensorValues.inner(H::FourthOrderTensorValue{D}, A::TensorValue{D,D}) where {D} = H ⋅² A
-Gridap.TensorValues.inner(A::TensorValue{D,D}, H::FourthOrderTensorValue{D}) where {D} = A ⋅² H
-Gridap.TensorValues.inner(W::ThirdOrderTensorValue{D,D,D}, A::TensorValue{D,D}) where {D} = W ⋅² A
-Gridap.TensorValues.inner(W::ThirdOrderTensorValue{D,D,D}, v::VectorValue{D}) where {D} = W ⋅ v
-Gridap.TensorValues.inner(v::VectorValue{D}, W::ThirdOrderTensorValue{D,D,D}) where {D} = v ⋅ W
-
-
-# =====================
 # Transpose
 # =====================
 # Gridap returns the tensor unchanged.
@@ -129,7 +116,7 @@ i.e. the cyclic index shift `Wᵀ[i,j,k] = W[k,i,j]`. Applied twice, it is not t
 """
     transpose(H::FourthOrderTensorValue)
 
-Major transpose of a fourth-order tensor, `Hᵀ[i,j,k,l] = H[k,l,i,j]`, such that `A ⊙ Hᵀ ⊙ B = B ⊙ H ⊙ A`.
+Major transpose of a fourth-order tensor, `Hᵀ[i,j,k,l] = H[k,l,i,j]`, such that `A ⊙ (Hᵀ ⋅² B) = B ⊙ (H ⋅² A)`.
 """
 @inline @generated function Base.transpose(H::FourthOrderTensorValue{D}) where {D}
   components = [component(:tH, (k, l, i, j), D) for l in 1:D for k in 1:D for j in 1:D for i in 1:D]
