@@ -14,7 +14,6 @@ import Base: +
 import Gridap.CellData: CellState, update_state!
 
 export Yeoh3D
-export PlaneStressIncompressible_I1PD 
 export Gent2D
 export NeoHookean3D
 export IsochoricNeoHookean3D
@@ -61,7 +60,6 @@ export ThermoMech_EntropicPolyconvex
 export FlexoElectroModel
 export ThermoElectroMech_Bonet
 export ThermoElectroMech_Govindjee
-export ThermoElectroMech_PINNs
 export MagnetoMechModel
 export GeneralizedMaxwell
 export ViscousIncompressible
@@ -105,6 +103,19 @@ export getIsoInvariants
 export HessianRegularization
 export Hessian∇JRegularization
 
+"""
+    PhysicalModel
+
+Supertype of the constitutive models. A model is a functor: `model()` returns the energy density and its
+derivatives as functions of the kinematic fields (for a mechanical model, `(Ψ, ∂Ψ/∂F, ∂²Ψ/∂F²)` as functions of
+`F`). The magnetic models (`Magnetic`, `IdealMagnetic`, `HardMagnetic`, … and the magneto-mechanical models
+built from them) take the load factor, `model(Λ=1.0)`, which scales the remanent field `ℋᵣ = αr Λ N`.
+A material parameter that has to be ramped is a mutable field of the model (e.g. `αr` of the magnetic models)
+updated between steps.
+
+Many mechanical models store a reference density `ρ` (keyword argument, `0.0` by default). The model does not use
+it: it is kept for the user, e.g. as the coefficient of the inertial term, `mass_term(u, v, model.ρ, dΩ)`.
+"""
 abstract type PhysicalModel end
 abstract type Mechano <: PhysicalModel end
 abstract type Electro <: PhysicalModel end
@@ -155,7 +166,6 @@ include("MagnetoMechanicalModels.jl")
 
 include("ThermoElectroMechanicalModels.jl")
 
-include("PINNs.jl")
 
 
 # ============================================

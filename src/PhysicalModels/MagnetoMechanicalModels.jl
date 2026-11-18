@@ -16,7 +16,7 @@ struct MagnetoMechModel{G<:Magneto,M<:Mechano} <: MagnetoMechano{G,M}
   end
 
   function (obj::MagnetoMechModel{<:Magneto,<:IsoElastic})(Λ::Float64=1.0)
-    Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano(Λ)
+    Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano()
     Ψmm, ∂Ψmm_u, ∂Ψmm_φ, ∂Ψmm_uu, ∂Ψmm_φu, ∂Ψmm_φφ = _getCoupling(obj.magneto, obj.mechano, Λ)
 
     Ψ(F, ℋ₀, N) = Ψm(F) + Ψmm(F, ℋ₀, N)
@@ -30,7 +30,7 @@ struct MagnetoMechModel{G<:Magneto,M<:Mechano} <: MagnetoMechano{G,M}
   end
 
     function (obj::MagnetoMechModel{<:Magneto,<:AnisoElastic})(Λ::Float64=1.0)
-    Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano(Λ)
+    Ψm, ∂Ψm_u, ∂Ψm_uu = obj.mechano()
     Ψmm, ∂Ψmm_u, ∂Ψmm_φ, ∂Ψmm_uu, ∂Ψmm_φu, ∂Ψmm_φφ = _getCoupling(obj.magneto, obj.mechano, Λ)
 
     Ψ(F, ℋ₀, N) = Ψm(F,N) + Ψmm(F, ℋ₀, N)
@@ -116,7 +116,7 @@ function _getCoupling(mag::HardMagnetic, ::Mechano, Λ::Float64=1.0)
 
   ∂Ψtorq_∂HH(F, ℋ₀, N) = (μ * (1 + χt) / J(F)) * (I3D ⊗ᵢₖʲˡ (ℋᵣ(N) ⊗ ℋ₀ + ℋ₀ ⊗ ℋᵣ(N)))
   ∂Ψtorq_∂HJ(F, ℋ₀, N) = -(μ * (1 + χt) / J(F)^2) * (Hℋᵣ(F, N) ⊗ ℋ₀ + Hℋ₀(F, ℋ₀) ⊗ ℋᵣ(N))
-  ∂Ψtorq_∂JJ(F, ℋ₀, N) = (μ * (1 + χt) / J(F)^3) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
+  ∂Ψtorq_∂JJ(F, ℋ₀, N) = (2 * μ * (1 + χt) / J(F)^3) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
 
   ∂Ψtorq_∂uu(F, ℋ₀, N) = (F × (∂Ψtorq_∂HH(F, ℋ₀, N) × F)) +
                          H(F) ⊗ (∂Ψtorq_∂HJ(F, ℋ₀, N) × F) +
@@ -125,7 +125,7 @@ function _getCoupling(mag::HardMagnetic, ::Mechano, Λ::Float64=1.0)
                          ×ᵢ⁴(∂Ψtorq_∂H(F, ℋ₀, N) + ∂Ψtorq_∂J(F, ℋ₀, N) * F)
 
 
-  ∂Ψtorq_∂ℋ₀H(F, ℋ₀, N) = (μ / (J(F))) * ((I3D ⊗ᵢₖʲ Hℋᵣ(F, N)) + (H(F)' ⊗ Hℋᵣ(F, N))) * (1 + χt)
+  ∂Ψtorq_∂ℋ₀H(F, ℋ₀, N) = (μ / (J(F))) * ((I3D ⊗ᵢₖʲ Hℋᵣ(F, N)) + (H(F)' ⊗ ℋᵣ(N))) * (1 + χt)
   ∂Ψtorq_∂ℋ₀J(F, ℋ₀, N) = (-μ / (J(F))^2.0) * (H(F)' * Hℋᵣ(F, N)) * (1 + χt)
 
   ∂Ψtorq_∂φu(F, ℋ₀, N) = (∂Ψtorq_∂ℋ₀H(F, ℋ₀, N) × F) + (∂Ψtorq_∂ℋ₀J(F, ℋ₀, N) ⊗ H(F))
@@ -195,7 +195,7 @@ function _getCoupling(mag::HardMagnetic2D, ::Mechano, Λ::Float64=1.0)
 
   ∂Ψtorq_∂HH(F, ℋ₀, N) = (μ * (1 + χt) / J(F)) * (I2D ⊗ᵢₖʲˡ (ℋᵣ(N) ⊗ ℋ₀ + ℋ₀ ⊗ ℋᵣ(N)))
   ∂Ψtorq_∂HJ(F, ℋ₀, N) = -(μ * (1 + χt) / J(F)^2) * (Hℋᵣ(F, N) ⊗ ℋ₀ + Hℋ₀(F, ℋ₀) ⊗ ℋᵣ(N))
-  ∂Ψtorq_∂JJ(F, ℋ₀, N) = (μ * (1 + χt) / J(F)^3) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
+  ∂Ψtorq_∂JJ(F, ℋ₀, N) = (2 * μ * (1 + χt) / J(F)^3) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
 
   ∂Ψtorq_∂uu(F, ℋ₀, N) = _∂H∂F_2D()' ⋅² ∂Ψtorq_∂HH(F, ℋ₀, N) ⋅² _∂H∂F_2D() +
                          _∂H∂F_2D()' ⋅² (∂Ψtorq_∂HJ(F, ℋ₀, N) ⊗ H(F)) +
@@ -203,7 +203,7 @@ function _getCoupling(mag::HardMagnetic2D, ::Mechano, Λ::Float64=1.0)
                          ∂Ψtorq_∂JJ(F, ℋ₀, N) * (H(F) ⊗ H(F)) +
                          ∂Ψtorq_∂J(F, ℋ₀, N) * _∂H∂F_2D()
 
-  ∂Ψtorq_∂ℋ₀H(F, ℋ₀, N) = (μ / (J(F))) * ((I2D ⊗ᵢₖʲ Hℋᵣ(F, N)) + (H(F)' ⊗ Hℋᵣ(F, N))) * (1 + χt)
+  ∂Ψtorq_∂ℋ₀H(F, ℋ₀, N) = (μ / (J(F))) * ((I2D ⊗ᵢₖʲ Hℋᵣ(F, N)) + (H(F)' ⊗ ℋᵣ(N))) * (1 + χt)
   ∂Ψtorq_∂ℋ₀J(F, ℋ₀, N) = (-μ / (J(F))^2.0) * (H(F)' * Hℋᵣ(F, N)) * (1 + χt)
 
 

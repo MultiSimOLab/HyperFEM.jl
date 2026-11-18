@@ -12,6 +12,11 @@ where `F` is the deformation gradient, `J` is the jacobian and `Cᵥ` is the vis
 - `μ::Float64`: Shear modulus.
 - `τ::Float64`: Relaxation time.
 - `Δt::Base.RefValue{Float64}`: `Reference` to the time step.
+
+The stress `∂Ψ/∂F` returned by the functor is the algorithmic stress: the first Piola–Kirchhoff stress with
+the viscous internal variable fixed at the value given by the return mapping of the step. It is not the total
+derivative `dΨ/dF` of the returned energy (which would include `∂Ψ/∂(internal variable)` times its
+derivative); the tangent `∂²Ψ/∂F²` is the consistent tangent, the derivative of that stress.
 """
 struct ViscousPolyconvex <: Visco
   μ::Float64
@@ -20,7 +25,7 @@ struct ViscousPolyconvex <: Visco
   ViscousPolyconvex(; μ::Real, τ::Real) = new(Float64(μ), Float64(τ), Ref(0.0))
 end
 
-function (obj::ViscousPolyconvex)(::Float64=0.0)
+function (obj::ViscousPolyconvex)()
   Ψ(F, Fn, A)      = energy(obj, F, Fn, A)
   ∂Ψ∂F(F, Fn, A)   = first_piola(obj, F, Fn, A)
   ∂Ψ∂F∂F(F, Fn, A) = tangent(obj, F, Fn, A)

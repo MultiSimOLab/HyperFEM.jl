@@ -23,4 +23,8 @@ using Test
     include("ThermalLawsTests.jl")
   end
 
+  @time begin
+    include("DerivativeConsistencyTests.jl")
+  end
+
 end

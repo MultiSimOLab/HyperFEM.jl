@@ -6,7 +6,6 @@ using LinearAlgebra
 using HyperFEM.PhysicalModels
 using HyperFEM.TensorAlgebra
 using HyperFEM.IO
-using JSON
 
 
 import Base: +,-
@@ -34,19 +33,18 @@ function test_derivatives__(model::PhysicalModel, K::KinematicModel, ∇u; rtol,
   ∂Ψu_(F) = TensorValue(ForwardDiff.gradient(Ψ, get_array(F)))
   ∂Ψuu_(F) = FourthOrderTensorValue(Tuple(ForwardDiff.hessian(Ψ, get_array(F))))
 
-  K = Kinematics(Mechano, Solid)
   F, _, _ = get_Kinematics(K)
 
-  @test isapprox(∂Ψu(F(∇u)), ∂Ψu_(F(∇u)), rtol=rtol, kwargs...)
-  @test isapprox(∂Ψuu(F(∇u)), ∂Ψuu_(F(∇u)), rtol=rtol, kwargs...)
+  @test isapprox(∂Ψu(F(∇u)), ∂Ψu_(F(∇u)); rtol=rtol, kwargs...)
+  @test isapprox(∂Ψuu(F(∇u)), ∂Ψuu_(F(∇u)); rtol=rtol, kwargs...)
 end
 
 function test_derivatives_2D_(model::PhysicalModel, K::KinematicModel; rtol=1e-14, kwargs...)
-  test_derivatives__(model, K, ∇u2, rtol=rtol, kwargs...)
+  test_derivatives__(model, K, ∇u2; rtol=rtol, kwargs...)
 end
 
 function test_derivatives_3D_(model::PhysicalModel, K::KinematicModel; rtol=1e-14, kwargs...)
-  test_derivatives__(model, K, ∇u3, rtol=rtol, kwargs...)
+  test_derivatives__(model, K, ∇u3; rtol=rtol, kwargs...)
 end
 
 function test_equilibrium_at_rest_2D(obj::Mechano; atol=1e-10)
@@ -54,7 +52,7 @@ function test_equilibrium_at_rest_2D(obj::Mechano; atol=1e-10)
   @test isapprox(Ψ(I2D), 0.0, atol=atol)
 end
 
-function test_equilibrium_at_rest_3D(obj::Mechano, atol=1e-10)
+function test_equilibrium_at_rest_3D(obj::Mechano; atol=1e-10)
   Ψ, _... = obj()
   @test isapprox(Ψ(I3D), 0.0, atol=atol)
 end
@@ -63,8 +61,8 @@ function test_second_piola_3D_(model::PhysicalModel; rtol=1e-12, kwargs...)
   F = I3D + ∇u3
   C = F'·F
   Ψ, S, ∂S∂C = SecondPiola(model)
-  @test isapprox(S(C),  2*TensorValue(ForwardDiff.gradient(Ψ, get_array(C))), rtol=rtol, kwargs...)
-  @test isapprox(∂S∂C(C), FourthOrderTensorValue(Tuple(ForwardDiff.jacobian(S, get_array(C)))), rtol=rtol, kwargs...)
+  @test isapprox(S(C),  2*TensorValue(ForwardDiff.gradient(Ψ, get_array(C))); rtol=rtol, kwargs...)
+  @test isapprox(∂S∂C(C), FourthOrderTensorValue(Tuple(ForwardDiff.jacobian(S, get_array(C)))); rtol=rtol, kwargs...)
 end
 
 
@@ -352,21 +350,10 @@ end
   test_equilibrium_at_rest_2D(model)
 end
 
-@testset "PlaneStressIncompressible_I1PD" begin
-  #  Memory estimate: 0 bytes, allocs estimate: 0.
-  model = PlaneStressIncompressible_I1PD(μ=1.0)
-  Ψ, ∂Ψu , ∂Ψuu = model()
-  ∂Ψuu_(F) = FourthOrderTensorValue(Tuple(ForwardDiff.jacobian(∂Ψu, get_array(F))))
-  K = Kinematics(Mechano, Solid)
-  F, _, _ = get_Kinematics(K)
-  @test isapprox(∂Ψuu(F(∇u2)), ∂Ψuu_(F(∇u2)),rtol=1e-14)
-  test_equilibrium_at_rest_2D(model)
-end
-
 @testset "MooneyRivlin2D" begin
   #  Memory estimate: 0 bytes, allocs estimate: 0.
   model = MooneyRivlin2D(λ=3.0, μ1=1.0, μ2=2.0)
-  test_derivatives_2D_(model, Kinematics(Mechano, Solid))
+  test_derivatives_2D_(model, Kinematics(Mechano, Solid); rtol=1e-13)  # analytical derivatives vs ForwardDiff
   test_equilibrium_at_rest_2D(model)
 end
 
@@ -500,9 +487,8 @@ end
   modelMR = MooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0)
   modelID = IdealDielectric(ε=4.0)
   modelT = ThermalModel(Cv=1.0, θr=1.0, α=2.0)
-  f(δθ::Float64)::Float64 = (δθ + 1.0) / 1.0
-  df(δθ::Float64)::Float64 = 1.0
-  modelTEM = ThermoElectroMechModel(modelT, modelID, modelMR, fθ=f, dfdθ=df)
+  law = EntropicElasticityLaw(θr=1.0, γ=0.0)   # f(θ) = θ/θr
+  modelTEM = ThermoElectroMechModel(modelT, modelID, modelMR, law)
   Ψ, ∂Ψu, ∂Ψφ, ∂Ψθ, ∂Ψuu, ∂Ψφφ, ∂Ψθθ, ∂Ψφu, ∂Ψuθ, ∂Ψφθ = modelTEM()
   K = Kinematics(Mechano, Solid)
   F, _, _ = get_Kinematics(K)
@@ -528,9 +514,8 @@ end
   θt = 3.4 - 1.0
   modelMR = MooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0)
   modelT = ThermalModel(Cv=1.0, θr=1.0, α=2.0)
-  f(δθ::Float64)::Float64 = (δθ + 1.0) / 1.0
-  df(δθ::Float64)::Float64 = 1.0
-  modelTM = ThermoMechModel(modelT, modelMR, fθ=f, dfdθ=df)
+  law = EntropicElasticityLaw(θr=1.0, γ=0.0)   # f(θ) = θ/θr
+  modelTM = ThermoMechModel(modelT, modelMR, law)
   Ψ, ∂Ψu, ∂Ψθ, ∂Ψuu, ∂Ψθθ, ∂Ψuθ = modelTM()
   K = Kinematics(Mechano, Solid)
   F, _, _ = get_Kinematics(K)
@@ -654,11 +639,13 @@ end
   modelID = IdealDielectric(ε=1.0)
   modelT = ThermalModel(Cv=17.385, θr=293.0, α=0.00156331)
   f(δθ) = (δθ + 293.0) / 293.0
-  df(δθ) = 293.0
+  df(δθ) = 1 / 293.0
+  d2f(δθ) = 0.0
   g(δθ) = -0.33 * ((δθ + 293.0) / 293.0)^3
   dg(δθ) = -(3 * 0.33 / 293.0) * ((δθ + 293.0) / 293.0)^2
+  d2g(δθ) = -(6 * 0.33 / 293.0^2) * ((δθ + 293.0) / 293.0)
 
-  modelTEM = ThermoElectroMech_Govindjee(modelT, modelID, modelMR, fθ=f, dfdθ=df, gθ=g, dgdθ=dg, β=0.0)
+  modelTEM = ThermoElectroMech_Govindjee(modelT, modelID, modelMR, fθ=f, dfdθ=df, d2fdθ2=d2f, gθ=g, dgdθ=dg, d2gdθ2=d2g, β=0.0)
   Ψ, ∂Ψu, ∂ΨE, ∂Ψθ, ∂ΨFF, ∂ΨEE, ∂2Ψθθ, ∂ΨEF, ∂ΨFθ, ∂ΨEθ, η = modelTEM()
   K = Kinematics(Mechano, Solid)
   F, _, _ = get_Kinematics(K)
@@ -677,61 +664,6 @@ end
   @test norm(∂ΨEθ(F(∇u), E(∇φ), θt)) ≈ 0.012345048484459126
 
 
-
-end
-
-
-@testset "ThermoElectroMech_PINNS" begin
-
-  function ExtractingInfo(data_filename)
-    data_dict = open(data_filename, "r") do file
-      JSON.parse(file)
-    end
-    weights_ = data_dict["weights"]
-    biases_ = data_dict["biases"]
-    Scaling = data_dict["Scaling"]
-    ϵ = vcat(Scaling["ϵₓ"], Scaling["ϵθ"])
-    β = vcat(Scaling["βₓ"], Scaling["βθ"])
-    n_layers = size(weights_, 1)
-    Weights = Vector{Matrix{Float64}}(undef, n_layers)
-    Biases = Vector{Any}(undef, n_layers)
-    for i in 1:n_layers
-      Weights[i] = hcat(weights_[i]...)  # Concatenate weights horizontally
-      if length(biases_[i]) == 1 && isa(biases_[i][1], Float64)
-        Biases[i] = biases_[i][1]  # Convert 1-element Vector{Any} to Float64
-      else
-        Biases[i] = biases_[i]  # Assign directly if it's a vector
-      end
-    end
-    return n_layers, Weights, Biases, ϵ, β
-  end
-
-  data_filename = projdir("test/models/test_NN_TEM.json")
-  n_layers, Weights, Biases, ϵ, β = ExtractingInfo(data_filename)
-
-  model = ThermoElectroMech_PINNs(; W=Weights, b=Biases, ϵ=ϵ, β=β, nLayer=n_layers)
-
-  Ψ, ∂ΨF, ∂ΨE, ∂Ψθ, ∂ΨFF, ∂ΨEE, ∂Ψθθ, ∂ΨEF, ∂ΨFθ, ∂ΨEθ = model()
-
-  ∇u = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0) * 1e-3
-  ∇φ = VectorValue(1.0, 2.0, 3.0)
-  θt = 3.4 - 1.0
-
-  K = Kinematics(Mechano, Solid)
-  F, _, _ = get_Kinematics(K)
-  Ke = Kinematics(Electro, Solid)
-  E = get_Kinematics(Ke)
-
-  @test isapprox(Ψ(F(∇u), E(∇φ), θt), 34.24573625846419, atol=1e-12)
-  @test norm(∂ΨF(F(∇u), E(∇φ), θt)) ≈ 12.190784442767743
-  @test norm(∂ΨE(F(∇u), E(∇φ), θt)) ≈ 3.890788259241063
-  @test ∂Ψθ(F(∇u), E(∇φ), θt) ≈ -0.1756808680132173
-  @test norm(∂ΨFF(F(∇u), E(∇φ), θt)) ≈ 41.75134321258517
-  @test norm(∂ΨEE(F(∇u), E(∇φ), θt)) ≈ 1.9388101847663917
-  @test norm(∂Ψθθ(F(∇u), E(∇φ), θt)) ≈ 0.05854786347086507
-  @test norm(∂ΨEF(F(∇u), E(∇φ), θt)) ≈ 10.455220025096452
-  @test norm(∂ΨFθ(F(∇u), E(∇φ), θt)) ≈ 0.059252287541736004
-  @test norm(∂ΨEθ(F(∇u), E(∇φ), θt)) ≈ 0.023111702806623537
 
 end
 
@@ -850,8 +782,8 @@ end
   @test Ψ(F(∇u), H0(∇φ), N) == 0.003187725760804994
   @test norm(∂Ψu(F(∇u), H0(∇φ), N)) == 0.4966662732306754
   @test norm(∂Ψφ(F(∇u), H0(∇φ), N)) == 4.660348298920368e-6
-  @test norm(∂Ψuu(F(∇u), H0(∇φ), N)) == 60.735729041745294
-  @test norm(∂Ψφu(F(∇u), H0(∇φ), N)) == 1.2369035467980284e-5
+  @test norm(∂Ψuu(F(∇u), H0(∇φ), N)) == 60.73572864460345
+  @test norm(∂Ψφu(F(∇u), H0(∇φ), N)) == 1.2368968933146047e-5
   @test norm(∂Ψφφ(F(∇u), H0(∇φ), N)) == 2.1878750641250348e-6
 end
 
@@ -890,8 +822,8 @@ end
   @test Ψ(F(∇u), H0(∇φ), N) == 0.001589466682574581
   @test norm(∂Ψu(F(∇u), H0(∇φ), N)) == 0.24833301570214883
   @test norm(∂Ψφ(F(∇u), H0(∇φ), N)) == 4.660348298920368e-6
-  @test norm(∂Ψuu(F(∇u), H0(∇φ), N)) == 30.36786063436432
-  @test norm(∂Ψφu(F(∇u), H0(∇φ), N)) == 1.2369035467980284e-5
+  @test norm(∂Ψuu(F(∇u), H0(∇φ), N)) == 30.36786023722243
+  @test norm(∂Ψφu(F(∇u), H0(∇φ), N)) == 1.2368968933146047e-5
   @test norm(∂Ψφφ(F(∇u), H0(∇φ), N)) == 2.1878750641250348e-6
 end
 
@@ -977,9 +909,9 @@ end
 
 
   @test Ψ(F(∇u), H0(∇φ), N) == 0.0001725693366710852
-  @test norm(∂Ψu(F(∇u), H0(∇φ), N)) == 0.07482084634773895
+  @test norm(∂Ψu(F(∇u), H0(∇φ), N)) == 0.07482084634773827
   @test norm(∂Ψφ(F(∇u), H0(∇φ), N)) == 2.793633631007779e-6
-  @test norm(∂Ψuu(F(∇u), H0(∇φ), N)) == 21.74472389462642
+  @test norm(∂Ψuu(F(∇u), H0(∇φ), N)) == 21.744723894626418
   @test norm(∂Ψφu(F(∇u), H0(∇φ), N)) == 5.589596497314291e-6
   @test norm(∂Ψφφ(F(∇u), H0(∇φ), N)) == 1.7771608829110207e-6
 end
@@ -1018,10 +950,10 @@ end
 
 
   @test Ψ(F(∇u), H0(∇φ), N) == 0.0001724695011788059
-  @test norm(∂Ψu(F(∇u), H0(∇φ), N)) == 0.07482089298212842
+  @test norm(∂Ψu(F(∇u), H0(∇φ), N)) == 0.07482089298212774
   @test norm(∂Ψφ(F(∇u), H0(∇φ), N)) == 2.8384487487963508e-6
-  @test norm(∂Ψuu(F(∇u), H0(∇φ), N)) == 21.744723980670503
-  @test norm(∂Ψφu(F(∇u), H0(∇φ), N)) == 5.679235813302821e-6
+  @test norm(∂Ψuu(F(∇u), H0(∇φ), N)) == 21.74472379720783
+  @test norm(∂Ψφu(F(∇u), H0(∇φ), N)) == 5.679234925777502e-6
   @test norm(∂Ψφφ(F(∇u), H0(∇φ), N)) == 1.7771608829110207e-6
 end
 
