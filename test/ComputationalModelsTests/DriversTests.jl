@@ -23,7 +23,7 @@ function drivers_test_problem()
   V = TestFESpace(Ω, reffe, bc, conformity=:H1)
   U = TrialFESpace(V, bc, 0.0)
   res(Λ) = (u, v) -> ∫(∇(v)' ⊙ (∂Ψ∂F ∘ (F ∘ ∇(u)')))dΩ
-  jac(Λ) = (u, du, v) -> ∫(∇(v)' ⊙ ((∂Ψ∂FF ∘ (F ∘ ∇(u)')) ⊙ ∇(du)'))dΩ
+  jac(Λ) = (u, du, v) -> ∫(∇(v)' ⊙ ((∂Ψ∂FF ∘ (F ∘ ∇(u)')) ⋅² ∇(du)'))dΩ
   (; res, jac, U, V, bc)
 end
 
