@@ -18,10 +18,12 @@ components are stored in column-major order (first index fastest).
 
 For linear algebra (inverse, eigenvalues, linear systems), a fourth-order tensor is a D²×D² matrix,
 the linear map on second-order tensors, with rows `(i,j)` and columns `(k,l)`. Both hold the same
-components in the same order, so the conversion is the constructor applied to the components:
+components in the same order. `flat_tensor`, `flat_smatrix` and `flat_matrix` give the matrix
+(a third-order tensor gives the D×D² matrix, rows `i` and columns `(j,k)`), and the constructor applied
+to the components goes back:
 
 ```julia
-M = TensorValue(Tuple(H))              # TensorValue{D²,D²}
+M = flat_tensor(H)                     # TensorValue{D²,D²}; flat_smatrix(H), flat_matrix(H)
 H = FourthOrderTensorValue(Tuple(M))   # from a TensorValue{D²,D²}, SMatrix or Matrix (e.g. a ForwardDiff Hessian)
 W = ThirdOrderTensorValue(Tuple(M))    # from a D×D² matrix (e.g. a ForwardDiff Jacobian)
 H = FourthOrderTensorValue(1.:81...)   # also from the components
@@ -110,7 +112,9 @@ keep their order, so a 9×9 matrix and the corresponding fourth-order tensor hol
 | `transpose_IJK_KIJ`              | `W'`             | `Wₖᵢⱼ`                          |
 | `H * G` (fourth-order)           | `H ⋅² G`         | `Σ Hᵢⱼₘₙ Gₘₙₖₗ`                 |
 
-`×ᵢ⁴`, `IIsym`, `cof` and `push_forward_C_to_F` keep their names. The cross products keep their
+`×ᵢ⁴`, `IIsym` and `push_forward_C_to_F` keep their names. `cof`, `logreg`, `∂log∂J` and `∂∂log∂JJ`
+moved to `PhysicalModels` (`Kinematics.jl`) and are no longer exported; `Tensorize` is removed.
+The cross products keep their
 implementation and will be revised separately.
 
 ### Renamed or removed constants

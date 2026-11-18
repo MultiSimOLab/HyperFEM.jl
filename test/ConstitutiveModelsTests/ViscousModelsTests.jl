@@ -2,6 +2,7 @@
 using Gridap.TensorValues
 using Gridap.Arrays
 using HyperFEM, HyperFEM.TensorAlgebra
+using HyperFEM.PhysicalModels: cof
 using StaticArrays
 using Test
 using ForwardDiff

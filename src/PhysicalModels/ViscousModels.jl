@@ -305,7 +305,7 @@ function JacobianReturnMapping(γα, Ce, Se, Se_trial, ∂Se∂Ce, C, λα)
   ∂res2_∂Ce = Ge
   res = [get_array(res1)[:]; res2]
   ∂res = MMatrix{10,10}(zeros(10, 10))  # TODO: It'd be nice to use hvcat: ∂res = [∂res1_Ce ∂res1_∂λα; ∂res2_∂Ce 0.0]
-  ∂res[1:9, 1:9] = get_array(TensorValue(Tuple(∂res1_∂Ce)))
+  ∂res[1:9, 1:9] = flat_smatrix(∂res1_∂Ce)
   ∂res[1:9, 10] = get_array(∂res1_∂λα)[:]
   ∂res[10, 1:9] = (get_array(∂res2_∂Ce)[:])'
   return res, ∂res
@@ -368,10 +368,10 @@ function ∂Ce_∂C(::ViscousIncompressible, γα, ∂Se∂Ce_, invUvn, Ce, Ce_t
   # Derivative of {Ce,λα} with respect to C
   #------------------------------------------   
   K = MMatrix{10,10}(zeros(10, 10))
-  K[1:9, 1:9] = get_array(TensorValue(Tuple(K11)))
+  K[1:9, 1:9] = flat_smatrix(K11)
   K[1:9, 10] = get_array(K12)[:]
   K[10, 1:9] = get_array(K21)[:]  # There is no need to transpose the vector
-  F = [get_array(TensorValue(Tuple(F1))); (get_array(F2)[:])']
+  F = [flat_smatrix(F1); (get_array(F2)[:])']
   ∂u∂C = K \ F
   ∂Ce∂C = ∂u∂C[SOneTo(9), SOneTo(9)]  # Static slice (SMatrix), not a Matrix
   return FourthOrderTensorValue(Tuple(∂Ce∂C))
@@ -428,7 +428,7 @@ function ViscousTangentOperator(obj::ViscousIncompressible,
   DCe_DC = ∂Ce_∂C(obj, γα, ∂Se∂Ce_, invUvn, Ce, Ce_trial, λα, F)
   DCe_DC_Uvfixed = ∂Ce_∂C_Uvfixed(invUv)
   DCe_DinvUv = ∂Ce_∂invUv(C, invUv)
-  DinvUv_DC = FourthOrderTensorValue(Tuple(inv(TensorValue(Tuple(DCe_DinvUv))))) ⋅² (DCe_DC - DCe_DC_Uvfixed)
+  DinvUv_DC = FourthOrderTensorValue(Tuple(inv(flat_tensor(DCe_DinvUv)))) ⋅² (DCe_DC - DCe_DC_Uvfixed)
   DCDF = F' ⊗ᵢₖʲˡ I3D + I3D ⊗ᵢₗʲᵏ F'
   #------------------------------------------
   # 0.5*δC_{Uvfixed}:DSe[ΔC]
@@ -624,8 +624,8 @@ function ViscousDissipation(obj::ViscousIncompressible,
   Se = Se_(Ce)
   Ge = cof(Ce)
   ∂Se∂Ce = ∂Se∂Ce_(Ce)
-  α = 1.e3abs(tr(TensorValue(Tuple(∂Se∂Ce))))  # Ensure invertibility of the elasticity tensor.
-  invCCe = FourthOrderTensorValue(Tuple(inv(TensorValue(Tuple(2*∂Se∂Ce + α*Ge⊗Ge)))))
+  α = 1.e3abs(tr(flat_tensor(∂Se∂Ce)))  # Ensure invertibility of the elasticity tensor.
+  invCCe = FourthOrderTensorValue(Tuple(inv(flat_tensor(2*∂Se∂Ce + α*Ge⊗Ge))))
   ∂Se = -1/τ * (Se - λα*Ge)
   Dvis = -Se ⊙ (invCCe ⋅² ∂Se)
   Dvis

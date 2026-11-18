@@ -100,6 +100,6 @@ end
 """
     regularize_hessian(H::FourthOrderTensorValue, δ) -> FourthOrderTensorValue
 
-Same as for the D²×D² matrix of `H`, `TensorValue(Tuple(H))`.
+Same as for the D²×D² matrix of `H`, `flat_tensor(H)`.
 """
-regularize_hessian(H::FourthOrderTensorValue, δ::Real) = FourthOrderTensorValue(Tuple(regularize_hessian(TensorValue(Tuple(H)), δ)))
+regularize_hessian(H::FourthOrderTensorValue, δ::Real) = FourthOrderTensorValue(Tuple(regularize_hessian(flat_tensor(H), δ)))
