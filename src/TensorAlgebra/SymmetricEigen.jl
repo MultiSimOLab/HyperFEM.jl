@@ -40,23 +40,10 @@ end
   return true
 end
 
-# Unchecked element access to the MMatrix scratch buffers of `_sym_eigen`, through the raw pointer
-# (what StaticArrays does for `a[i, j]` under `@inbounds`). `Pkg.test` runs with --check-bounds=yes,
-# which ignores `@inbounds`: the BoundsError path of `a[i, j]` then references the buffer, which
-# escapes and is heap allocated. Through these helpers there is no such path, so `_sym_eigen` stays
-# allocation-free whatever the bounds-checking mode. Callers guarantee 1 <= i, j <= N.
-@inline _uget(a::MMatrix{N,N,T}, i::Int, j::Int) where {N,T} =
-  GC.@preserve a unsafe_load(Base.unsafe_convert(Ptr{T}, pointer_from_objref(a)), (j - 1) * N + i)
-@inline function _uset!(a::MMatrix{N,N,T}, x, i::Int, j::Int) where {N,T}
-  GC.@preserve a unsafe_store!(Base.unsafe_convert(Ptr{T}, pointer_from_objref(a)), convert(T, x), (j - 1) * N + i)
-  return nothing
-end
-
 """
     _sym_eigen(A::SMatrix{N,N}) -> (λ::SVector{N}, Q::SMatrix{N,N})
 
 Eigenvalues and eigenvectors of the symmetric matrix `A` by the cyclic Jacobi method (A = Q Λ Qᵀ).
-Allocation-free, also with --check-bounds=yes (see `_uget`).
 """
 function _sym_eigen(A::SMatrix{N,N,T}; maxsweeps::Int=50) where {N,T}
   a = MMatrix{N,N,T}(A)
@@ -64,37 +51,36 @@ function _sym_eigen(A::SMatrix{N,N,T}; maxsweeps::Int=50) where {N,T}
   for _ in 1:maxsweeps
     off = zero(T)
     fro = zero(T)
-    for q in 1:N, p in 1:N
-      apq = _uget(a, p, q)
-      fro += apq^2
-      p < q && (off += apq^2)
+    @inbounds for q in 1:N, p in 1:N
+      fro += a[p, q]^2
+      p < q && (off += a[p, q]^2)
     end
     off <= eps(T)^2 * fro && break
-    for p in 1:N-1, q in p+1:N
-      apq = _uget(a, p, q)
+    @inbounds for p in 1:N-1, q in p+1:N
+      apq = a[p, q]
       iszero(apq) && continue
-      θ = (_uget(a, q, q) - _uget(a, p, p)) / (2apq)
+      θ = (a[q, q] - a[p, p]) / (2apq)
       t = iszero(θ) ? one(T) : sign(θ) / (abs(θ) + sqrt(θ^2 + 1))
       c = 1 / sqrt(t^2 + 1)
       s = t * c
       for k in 1:N   # columns p, q
-        akp, akq = _uget(a, k, p), _uget(a, k, q)
-        _uset!(a, c * akp - s * akq, k, p)
-        _uset!(a, s * akp + c * akq, k, q)
+        akp, akq = a[k, p], a[k, q]
+        a[k, p] = c * akp - s * akq
+        a[k, q] = s * akp + c * akq
       end
       for k in 1:N   # rows p, q
-        apk, aqk = _uget(a, p, k), _uget(a, q, k)
-        _uset!(a, c * apk - s * aqk, p, k)
-        _uset!(a, s * apk + c * aqk, q, k)
+        apk, aqk = a[p, k], a[q, k]
+        a[p, k] = c * apk - s * aqk
+        a[q, k] = s * apk + c * aqk
       end
       for k in 1:N   # eigenvectors
-        vkp, vkq = _uget(v, k, p), _uget(v, k, q)
-        _uset!(v, c * vkp - s * vkq, k, p)
-        _uset!(v, s * vkp + c * vkq, k, q)
+        vkp, vkq = v[k, p], v[k, q]
+        v[k, p] = c * vkp - s * vkq
+        v[k, q] = s * vkp + c * vkq
       end
     end
   end
-  return SVector{N,T}(ntuple(i -> _uget(a, i, i), Val(N))), SMatrix{N,N,T}(Tuple(v))
+  return SVector{N,T}(ntuple(i -> a[i, i], Val(N))), SMatrix{N,N,T}(v)
 end
 
 """
