@@ -653,6 +653,6 @@ function ViscousDissipation(obj::ViscousIncompressible,
   α = 1.e3abs(tr(flat_tensor(∂Se∂Ce)))  # Ensure invertibility of the elasticity tensor.
   invCCe = FourthOrderTensorValue(Tuple(inv(flat_tensor(2*∂Se∂Ce + α*Ge⊗Ge))))
   ∂Se = -1/τ * (Se - λα*Ge)
-  Dvis = -Se ⊙ (invCCe ⊙ ∂Se)
+  Dvis = -Se ⊙ (invCCe ⋅² ∂Se)
   Dvis
 end

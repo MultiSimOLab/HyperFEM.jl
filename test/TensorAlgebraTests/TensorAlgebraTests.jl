@@ -2,6 +2,7 @@ using Gridap.TensorValues
 using Gridap.Arrays
 using HyperFEM.TensorAlgebra
 using Test
+using ForwardDiff
 using LinearAlgebra
 using Random
 using StaticArrays
@@ -154,12 +155,6 @@ end
   @test inner(G,G) == 204.0
   @test inner(A,A) == 30.0
   @test inner(V,V) == 61.0
-  @test inner(H,A) == TensorValue(90.0, 100.0, 110.0, 120.0)
-  @test inner(G,A) == VectorValue(50.0, 60.0)
-  @test inner(G,V) == TensorValue(35.0, 46.0, 57.0, 68.0)
-  @test H ⊙ A     == TensorValue(90.0, 100.0, 110.0, 120.0)
-  @test G ⊙ A     == VectorValue(50.0, 60.0)
-  @test G ⊙ V     == TensorValue(35.0, 46.0, 57.0, 68.0)
 end
 
 
@@ -198,7 +193,7 @@ end
     @test 𝕀 == fourth([Float64(i == k && j == l) for i in 1:D, j in 1:D, k in 1:D, l in 1:D])
     @test Tuple(flat_tensor(𝕀)) == Tuple(one(TensorValue{D^2,D^2,Float64}))  # the identity matrix
     A = TensorValue{D,D}(digits2(D)...)
-    @test 𝕀 ⊙ A == A
+    @test 𝕀 ⋅² A == A
   end
 end
 
@@ -273,10 +268,10 @@ end
     g = reverse(h)
     G = fourth(g)
     @test H ⋅² G == fourth([sum(h[i, j, m, n] * g[m, n, k, l] for m in r, n in r) for i in r, j in r, k in r, l in r])
-    @test Tuple(H ⋅² G) == Tuple(flat_tensor(H) ⋅ flat_tensor(G))  # the product of the D²×D² matrices
-    @test H ⋅² A == H ⊙ A
+    @test H ⋅² G == FourthOrderTensorValue(Tuple(flat_tensor(H) ⋅ flat_tensor(G)))  # the product of the D²×D² matrices
+    @test H ⋅² A == TensorValue{D,D}([sum(h[i, j, m, n] * a[m, n] for m in r, n in r) for i in r, j in r]...)
     @test A ⋅² H == TensorValue{D,D}([sum(a[m, n] * h[m, n, i, j] for m in r, n in r) for i in r, j in r]...)
-    @test W ⋅² A == W ⊙ A
+    @test W ⋅² A == VectorValue([sum(w[i, m, n] * a[m, n] for m in r, n in r) for i in r]...)
   end
   @test 𝕀2D ⋅² 𝕀2D == 𝕀2D
 end
@@ -285,10 +280,10 @@ end
 @testset "IIsym" begin
   A  = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0)
   B  = TensorValue(1.0, 4.0, 2.0, 5.0, 3.0, 6.0, 8.0, 7.0, 9.0)
-  # 1. IIsym(I3D) ⊙ B yields the symmetric part 0.5 * (B + Bᵀ)
-  @test IIsym(I3D) ⊙ B == 0.5 * (B + B')
-  # 2. IIsym(A) ⊙ B yields 0.5 * (A ⋅ B ⋅ Aᵀ + A ⋅ Bᵀ ⋅ Aᵀ)
-  @test IIsym(A) ⊙ B ≈ 0.5 * (A ⋅ B ⋅ A' + A ⋅ B' ⋅ A')
+  # 1. IIsym(I3D) ⋅² B yields the symmetric part 0.5 * (B + Bᵀ)
+  @test IIsym(I3D) ⋅² B == 0.5 * (B + B')
+  # 2. IIsym(A) ⋅² B yields 0.5 * (A ⋅ B ⋅ Aᵀ + A ⋅ Bᵀ ⋅ Aᵀ)
+  @test IIsym(A) ⋅² B ≈ 0.5 * (A ⋅ B ⋅ A' + A ⋅ B' ⋅ A')
   # 3. IIsym(I3D) == ½ (δᵢₖδⱼₗ + δᵢₗδⱼₖ)
   @test IIsym(I3D) == 0.5 * (I3D ⊗ᵢₖʲˡ I3D + I3D ⊗ᵢₗʲᵏ I3D)
   @test I3D ⊗ᵢₖʲˡ I3D == 𝕀3D

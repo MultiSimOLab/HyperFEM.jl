@@ -65,9 +65,7 @@ function add_tensor_operations_benchmarks!(SUITE, D)
   end
 
   group = SUITE["Tensor algebra"]["inner"][dim]
-  for (label, a, b) in (("1⊙1", v, u), ("2⊙2", A, B), ("3⊙3", W, W), ("4⊙4", H, H),
-("2⊙1", A, v), ("1⊙2", v, A), ("3⊙1", W, v), ("1⊙3", v, W), ("3⊙2", W, A),
-("4⊙2", H, A), ("2⊙4", A, H))
+  for (label, a, b) in (("1⊙1", v, u), ("2⊙2", A, B), ("3⊙3", W, W), ("4⊙4", H, H))
     add_tensor_benchmark!(group, label, ⊙, a, b)
   end
 

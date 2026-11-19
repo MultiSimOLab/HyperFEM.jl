@@ -26,14 +26,14 @@ const I3D = _identity2(3)
 """
     𝕀2D::FourthOrderTensorValue{2}
 
-Fourth-order identity tensor in 2D, `𝕀2D[i,j,k,l] = δᵢₖδⱼₗ`, such that `𝕀2D ⊙ A = A`.
+Fourth-order identity tensor in 2D, `𝕀2D[i,j,k,l] = δᵢₖδⱼₗ`, such that `𝕀2D ⋅² A = A`.
 """
 const 𝕀2D = _identity4(2)
 
 """
     𝕀3D::FourthOrderTensorValue{3}
 
-Fourth-order identity tensor in 3D, `𝕀3D[i,j,k,l] = δᵢₖδⱼₗ`, such that `𝕀3D ⊙ A = A`.
+Fourth-order identity tensor in 3D, `𝕀3D[i,j,k,l] = δᵢₖδⱼₗ`, such that `𝕀3D ⋅² A = A`.
 """
 const 𝕀3D = _identity4(3)
 
