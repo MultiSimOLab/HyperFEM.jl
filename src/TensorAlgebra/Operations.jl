@@ -277,15 +277,18 @@ Fourth-order tensor of the cross product with `A`, `×ᵢ⁴(A)[i,j,k,l] = ε[i,
   end
 end
 
+"Tensors of order 2 to 4 in 3D with all their components stored."
+const FullTensorValue3D{T} = Union{TensorValue{3,3,T},ThirdOrderTensorValue{3,3,3,T},FourthOrderTensorValue{3,T}}
+
 """
     cross_contraction(A::TensorValue{3,3}, T)   # ×ᵢ⁴(A) ⋅² T
     contraction_cross(T, A::TensorValue{3,3})   # T ⋅² ×ᵢ⁴(A)
 
 Double contraction of `×ᵢ⁴(A)` with the tensor `T` (of order 2 to 4), without the zero terms of `×ᵢ⁴(A)`.
+Only for the tensors with all their components stored (not the symmetric ones).
 """
-@inline @generated function cross_contraction(A::TensorValue{3,3,TA}, B::MultiValue{S,TB}) where {TA,TB,S}
+@inline @generated function cross_contraction(A::TensorValue{3,3,TA}, B::FullTensorValue3D{TB}) where {TA,TB}
   o = length(size(B))
-  all(==(3), size(B)) && o >= 2 || return :(throw(DimensionMismatch("cross_contraction expects 3D tensors of order ≥ 2")))
   components = map(CartesianIndices(ntuple(_ -> 3, o))) do I
     i, j, K = I[1], I[2], Tuple(I)[3:end]
     terms = Tuple{Int,Expr}[]
@@ -303,9 +306,8 @@ Double contraction of `×ᵢ⁴(A)` with the tensor `T` (of order 2 to 4), witho
   end
 end
 
-@inline @generated function contraction_cross(B::MultiValue{S,TB}, A::TensorValue{3,3,TA}) where {TA,TB,S}
+@inline @generated function contraction_cross(B::FullTensorValue3D{TB}, A::TensorValue{3,3,TA}) where {TA,TB}
   o = length(size(B))
-  all(==(3), size(B)) && o >= 2 || return :(throw(DimensionMismatch("contraction_cross expects 3D tensors of order ≥ 2")))
   components = map(CartesianIndices(ntuple(_ -> 3, o))) do I
     I_ = Tuple(I)
     F, k, l = I_[1:end-2], I_[end-1], I_[end]

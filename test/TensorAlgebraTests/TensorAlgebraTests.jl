@@ -122,9 +122,26 @@ end
 
   # element types
   A32 = TensorValue{3,3,Float32}(Tuple(randn(Float32, 9)))
+  H32 = FourthOrderTensorValue{3}(Tuple(randn(Float32, 81)))
+  W32 = ThirdOrderTensorValue{3,3,3}(Tuple(randn(Float32, 27)))
   @test eltype(×ᵢ⁴(A32)) == Float32
   @test eltype(A32 × A32) == Float32
+  @test eltype(H32 × A32) == Float32
+  @test eltype(A32 × H32) == Float32
+  @test eltype(W32 × A32) == Float32
   @test eltype(A32 × A) == Float64
+
+  # type inference and no allocations (the function barrier avoids counting the globals)
+  allocations(f, args...) = (f(args...); @allocated f(args...))
+  for (f, args) in ((×ᵢ⁴, (A,)), (×, (A, B)), (×, (H, A)), (×, (A, H)), (×, (W, A)))
+    @inferred f(args...)
+    @test allocations(f, args...) == 0
+  end
+
+  # only the tensors with all their components stored
+  S = SymTensorValue{3}(Tuple(randn(6)))
+  @test_throws MethodError TensorAlgebra.cross_contraction(A, S)
+  @test_throws MethodError TensorAlgebra.contraction_cross(S, A)
 end
 
 
