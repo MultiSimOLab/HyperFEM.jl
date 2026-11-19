@@ -7,6 +7,7 @@ index_path = joinpath(@__DIR__, "src", "index.md")
 readme_content = read(readme_path, String)
 header_start = findfirst("# Multiphysics", readme_content)
 readme_content = header_start !== nothing ? readme_content[header_start.start:end] : readme_content
+readme_content = replace(readme_content, "docs/src/assets/" => "assets/")  # README paths are relative to the repo root
 readme_content = replace(readme_content, r"(<p align=\"center\"><img.*?</p>)" => s"```@raw html\n\1\n```")
 write(index_path, readme_content)
 
