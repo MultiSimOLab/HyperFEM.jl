@@ -101,8 +101,8 @@ function thirdmedium_contact_simulation(; backend=:lazy, uy_max=0.15, nsteps=15,
   res(Λ) = (u, v) -> ∫(∇(v)' ⊙ (∂Ψs∂F ∘ Fu(u)))dΩsolid +
                      ∫(∇(v)' ⊙ (∂Ψc∂F ∘ Fu(u)))dΩcontact +
                      ∫(cJ * wres(u, v))dΓsk
-  jac(Λ) = (u, du, v) -> ∫(∇(v)' ⊙ ((∂Ψs∂FF ∘ Fu(u)) ⊙ ∇(du)'))dΩsolid +
-                         ∫(∇(v)' ⊙ ((∂Ψc∂FF ∘ Fu(u)) ⊙ ∇(du)'))dΩcontact +
+  jac(Λ) = (u, du, v) -> ∫(∇(v)' ⊙ ((∂Ψs∂FF ∘ Fu(u)) ⋅² ∇(du)'))dΩsolid +
+                         ∫(∇(v)' ⊙ ((∂Ψc∂FF ∘ Fu(u)) ⋅² ∇(du)'))dΩcontact +
                          ∫(cJ * wjac(u, du, v))dΓsk
   # Energy whose first variation is the residual (w ≡ 1): solid, third medium (with the barrier), regularisation
   en(Λ) = u -> ∫(Ψs ∘ Fu(u))dΩsolid + ∫(Ψc ∘ Fu(u))dΩcontact + ∫(0.5 * cJ * wres(u, u))dΓsk

@@ -39,14 +39,15 @@ type-stable and allocates.
 | `a ⊗ b` | outer product      | none                                                           |
 | `a ⋅ b`  | single contraction | the last index of `a` with the first index of `b`              |
 | `a ⋅² b` | double contraction | the last two indices of `a` with the first two indices of `b`  |
-| `a ⊙ b` | full contraction   | all the indices of the operand of lower order                  |
+| `a ⊙ b` | full contraction   | all the indices of two tensors of the same order               |
 | `a × b`  | cross product (3D) | the last two indices of `a` with the first two indices of `b`  |
 | `a'`     | transpose          | `W'[i,j,k] = W[k,i,j]`, `H'[i,j,k,l] = H[k,l,i,j]`             |
 | `a * b`  | same as `a ⋅ b`    | second-order tensors only, to be removed                       |
 
 `⊗`, `⋅`, `⋅²` and `⊙` between tensors of the same order are Gridap's. `⋅²` (`\cdot\^2`) is the
-alias of Gridap's `double_contraction`. HyperFEM adds `⊙` between tensors of different orders,
-the transposes, the norm of high-order tensors and the cross products. It also redefines, with the
+alias of Gridap's `double_contraction`. `⊙` requires tensors of the same order: between tensors of
+different orders, use `⋅` or `⋅²`.
+HyperFEM adds the transposes, the norm of high-order tensors and the cross products. It also redefines, with the
 same results, the operations that are slower in Gridap for 81 components: `+`, `-` and the scaling
 of high-order tensors, and `A ⊗ B` of second-order tensors.
 
@@ -102,7 +103,7 @@ keep their order, so a 9×9 matrix and the corresponding fourth-order tensor hol
 | `⊗₁₃²⁴`                          | `⊗ᵢₖʲˡ`          | `Aᵢₖ Bⱼₗ`                       |
 | `⊗₁₄²³`                          | `⊗ᵢₗʲᵏ`          | `Aᵢₗ Bⱼₖ`                       |
 | `⊙₁₂₃³`, `⊙₁¹²³`                 | `⋅`              | `Σ Wᵢⱼₘ vₘ`, `Σ vₘ Wₘᵢⱼ`        |
-| `⊙₁₂₃²³`, `⊙₁₂₃₄³⁴`              | `⋅²` (or `⊙`)    | `Σ Wᵢₘₙ Aₘₙ`, `Σ Hᵢⱼₘₙ Aₘₙ`     |
+| `⊙₁₂₃²³`, `⊙₁₂₃₄³⁴`              | `⋅²`             | `Σ Wᵢₘₙ Aₘₙ`, `Σ Hᵢⱼₘₙ Aₘₙ`     |
 | `contraction_IP_PJKL`            | `⋅`              | `Σ Aᵢₘ Hₘⱼₖₗ`                   |
 | `contraction_IP_JPKL`            | `⊗ᵢₘʲᵐᵏˡ`        | `Σ Aᵢₘ Hⱼₘₖₗ`                   |
 | `contraction_IJK_KLP`            | `⋅`              | `Σ Wᵢⱼₘ Wₘₖₗ`                   |
