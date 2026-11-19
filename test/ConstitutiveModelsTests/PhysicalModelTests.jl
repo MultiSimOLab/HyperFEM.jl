@@ -468,7 +468,7 @@ end
   K = Kinematics(Mechano, Solid)
   F, _, _ = get_Kinematics(K)
   @test Ψ(F(∇u), N) == 2.5259068330070704
-  @test norm(∂Ψu(F(∇u), N)) == 309.14297430663385
+  @test norm(∂Ψu(F(∇u), N)) == 309.1429743066338
   @test norm(∂Ψuu(F(∇u), N)) == 81316.15339475962
   @test isapprox(Ψ(I3D, N), 0.0, atol=1e-10)
 end
@@ -496,14 +496,14 @@ end
   E = get_Kinematics(Ke)
 
   @test (Ψ(F(∇u), E(∇φ), θt)) == -95.74389746463744
-  @test norm(∂Ψu(F(∇u), E(∇φ), θt)) == 185.1315441384458
+  @test norm(∂Ψu(F(∇u), E(∇φ), θt)) == 185.13154413844578
   @test norm(∂Ψφ(F(∇u), E(∇φ), θt)) == 50.00690431860902
   @test norm(∂Ψθ(F(∇u), E(∇φ), θt)) == 28.91912594899454
   @test norm(∂Ψuu(F(∇u), E(∇φ), θt)) == 429.9957659123366
   @test norm(∂Ψφφ(F(∇u), E(∇φ), θt)) == 23.679055285771508
   @test norm(∂Ψθθ(F(∇u), E(∇φ), θt)) == 0.29411764705882354
   @test norm(∂Ψφu(F(∇u), E(∇φ), θt)) == 132.7243219000811
-  @test norm(∂Ψuθ(F(∇u), E(∇φ), θt)) == 58.281073490042175
+  @test norm(∂Ψuθ(F(∇u), E(∇φ), θt)) == 58.28107349004217
   @test norm(∂Ψφθ(F(∇u), E(∇φ), θt)) == 14.707913034885005
 end
 

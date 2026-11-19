@@ -114,8 +114,11 @@ keep their order, so a 9×9 matrix and the corresponding fourth-order tensor hol
 
 `×ᵢ⁴`, `IIsym` and `push_forward_C_to_F` keep their names. `cof`, `logreg`, `∂log∂J` and `∂∂log∂JJ`
 moved to `PhysicalModels` (`Kinematics.jl`) and are no longer exported; `Tensorize` is removed.
-The cross products keep their
-implementation and will be revised separately.
+The cross products (Bonet et al. 2015, Appendix) are generated from their definition, `×ᵢ⁴(A)[i,j,k,l] = εᵢₖₘ εⱼₗₙ Aₘₙ`,
+`A × B = ×ᵢ⁴(A) ⋅² B`, `H × A = H ⋅² ×ᵢ⁴(A)`, `A × H = ×ᵢ⁴(A) ⋅² H` and `W × A = W ⋅² ×ᵢ⁴(A)`, with the nonzero terms
+only: bitwise identical to the same contraction in Gridap, 3-10× faster. `A × B` and `A × H` differ from the former
+hand-written code in the last bit (summation order). The methods `cross(::SMatrix, ::SMatrix)` and `outer(::SVector, ::SVector)`
+are removed (type piracy of `LinearAlgebra` and `StaticArrays`).
 
 ### Renamed or removed constants
 
