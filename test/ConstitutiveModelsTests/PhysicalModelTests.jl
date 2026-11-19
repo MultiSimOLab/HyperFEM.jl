@@ -23,6 +23,8 @@ cof(a::SMatrix) = det(a) * inv(a)'  # cof is required by SecondPiola to work wit
 
 const ∇u2 = TensorValue(1.0, 2.0, 3.0, 4.0) * 1e-3
 const ∇u3 = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0) * 1e-3
+const F2D = ∇u2 + I2D
+const F3D = ∇u3 + I3D
 const μParams = [6456.9137547089595, 896.4633794151492,
   1.999999451256222, 1.9999960497608036, 11747.646562400318,
   0.7841068624959612, 1.5386288924587603]
@@ -64,6 +66,11 @@ function test_second_piola_3D_(model::PhysicalModel; rtol=1e-12, kwargs...)
   @test isapprox(S(C),  2*TensorValue(ForwardDiff.gradient(Ψ, get_array(C))); rtol=rtol, kwargs...)
   @test isapprox(∂S∂C(C), FourthOrderTensorValue(Tuple(ForwardDiff.jacobian(S, get_array(C)))); rtol=rtol, kwargs...)
 end
+
+include("TypeStabilityHelpers.jl")
+
+test_type_stability_2D(model::Mechano, args...) = test_type_stability__(model, F2D, args...)
+test_type_stability_3D(model::Mechano, args...) = test_type_stability__(model, F3D, args...)
 
 
 
@@ -190,6 +197,7 @@ end
   @test Ψ(F(∇u3), (M1, M2, M3, M4)) == 0.0005561006012767033
   @test isapprox(norm(∂Ψ∂F(F(∇u3), (M1, M2, M3, M4))), norm(∂Ψ∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-14)
   @test isapprox(norm(∂Ψ∂F∂F(F(∇u3), (M1, M2, M3, M4))), norm(∂Ψ∂F∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-14)
+  test_type_stability_3D(model, (M1, M2, M3, M4))
 end
 
 @testset "HGO_4Fibers" begin
@@ -216,6 +224,7 @@ end
   @test Ψ(F(∇u3), M1, M2, M3, M4) == 0.0005561006012767033
   @test isapprox(norm(∂Ψ∂F(F(∇u3), M1, M2, M3, M4)), norm(∂Ψ∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-14)
   @test isapprox(norm(∂Ψ∂F∂F(F(∇u3), M1, M2, M3, M4)), norm(∂Ψ∂F∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-14)
+  test_type_stability_3D(model, M1, M2, M3, M4)
 end
 
 
@@ -248,6 +257,7 @@ end
   @test Ψ(F(∇u3), M1, M2, M3, M4) == 23.21318362353833
   @test isapprox(norm(∂Ψ∂F(F(∇u3), M1, M2, M3, M4)), norm(∂Ψ∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-10)
   @test isapprox(norm(∂Ψ∂F∂F(F(∇u3), M1, M2, M3, M4)), norm(∂Ψ∂F∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-10)
+  test_type_stability_3D(model, M1, M2, M3, M4)
 end
 
 
@@ -268,6 +278,7 @@ end
   @test Ψ(F(∇u3), N) == Ψ1(F(∇u3)) + Ψ2(F(∇u3), N)
   @test norm(∂Ψu(F(∇u3), N)) == norm(∂Ψu1(F(∇u3)) + ∂Ψu2(F(∇u3), N))
   @test norm(∂Ψuu(F(∇u3), N)) == norm(∂Ψuu1(F(∇u3)) + ∂Ψuu2(F(∇u3), N))
+  test_type_stability_3D(model, N)
 end
 
 
@@ -292,6 +303,7 @@ end
   @test Ψ(F(∇u3), [N1, N2]) == Ψ1(F(∇u3)) + Ψ2(F(∇u3), [N1]) + Ψ3(F(∇u3), [N2])
   @test isapprox(norm(∂Ψu(F(∇u3), [N1, N2])), norm(∂Ψu1(F(∇u3)) + ∂Ψu2(F(∇u3), N1) + ∂Ψu3(F(∇u3), N2)), rtol=1e-14)
   @test isapprox(norm(∂Ψuu(F(∇u3), [N1, N2])), norm(∂Ψuu1(F(∇u3)) + ∂Ψuu2(F(∇u3), N1) + ∂Ψuu3(F(∇u3), N2)), rtol=1e-14)
+  test_type_stability_3D(model, [N1, N2])
 end
 
 
@@ -301,6 +313,7 @@ end
   model = NonlinearMooneyRivlin_CV(λ=3.0, μ1=1.0, μ2=1.0, α1=2.0, α2=1.0, γ=6.0)
   test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-13)
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 
@@ -309,6 +322,7 @@ end
   model = NonlinearNeoHookean_CV(λ=3.0, μ=1.0, α=2.0, γ=6.0)
   test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-13)
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 
@@ -317,6 +331,7 @@ end
   test_derivatives_3D_(model, Kinematics(Mechano,Solid), rtol=1e-12)
   test_second_piola_3D_(model)
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 
@@ -325,6 +340,7 @@ end
   model = LinearElasticity2D(λ=3.0, μ=1.0)
   test_derivatives_2D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_2D(model)
+  test_type_stability_2D(model)
 end
 
 
@@ -333,6 +349,7 @@ end
   model = LinearElasticity3D(λ=3.0, μ=1.0)
   test_derivatives_3D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 
@@ -341,6 +358,7 @@ end
   model = NeoHookean3D(λ=3.0, μ=1.0)
   test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-13)
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 @testset "Gent2D" begin
@@ -348,6 +366,7 @@ end
   model = Gent2D(λ=3.0, μ=1.0, Jm=1000.0, γ=1.0)
   test_derivatives_2D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_2D(model)
+  test_type_stability_2D(model)
 end
 
 @testset "MooneyRivlin2D" begin
@@ -355,6 +374,7 @@ end
   model = MooneyRivlin2D(λ=3.0, μ1=1.0, μ2=2.0)
   test_derivatives_2D_(model, Kinematics(Mechano, Solid); rtol=1e-13)  # analytical derivatives vs ForwardDiff
   test_equilibrium_at_rest_2D(model)
+  test_type_stability_2D(model)
 end
 
 @testset "MooneyRivlin3D" begin
@@ -362,6 +382,7 @@ end
   model = MooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0)
   test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-13)
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 
@@ -370,6 +391,7 @@ end
   model = NonlinearMooneyRivlin2D(λ=(μParams[1] + μParams[2]) * 1e2, μ1=μParams[1], μ2=μParams[2], α1=μParams[3], α2=μParams[4])
   test_derivatives_2D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_2D(model)
+  test_type_stability_2D(model)
 end
 
 
@@ -378,6 +400,7 @@ end
   model = Yeoh3D(λ=3.0, C10=1.0, C20=1.0, C30=1.0)
   test_derivatives_3D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 
@@ -386,6 +409,7 @@ end
   model = NonlinearMooneyRivlin2D_CV(λ=(μParams[1] + μParams[2]) * 1e2, μ1=μParams[1], μ2=μParams[2], α1=μParams[3], α2=μParams[4], γ=μParams[4])
   test_derivatives_2D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_2D(model, atol=1e-9)
+  test_type_stability_2D(model)
 end
 
 
@@ -394,6 +418,7 @@ end
   model = NonlinearMooneyRivlin3D(λ=(μParams[1] + μParams[2]) * 1e2, μ1=μParams[1], μ2=μParams[2], α1=μParams[3], α2=μParams[4])
   test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-13)
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 
@@ -402,6 +427,7 @@ end
   model = IncompressibleNeoHookean2D(λ=(μParams[1] + μParams[2]) * 1e2, μ=μParams[1])
   test_derivatives_2D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_2D(model)
+  test_type_stability_2D(model)
 end
 
 @testset "IncompressibleNeoHookean2D_CV" begin
@@ -409,6 +435,7 @@ end
   model = IncompressibleNeoHookean2D_CV(λ=(μParams[1] + μParams[2]) * 1e2, μ=μParams[1], γ=3.0)
   test_derivatives_2D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_2D(model)
+  test_type_stability_2D(model)
 end
 
 
@@ -417,6 +444,7 @@ end
   model = NonlinearIncompressibleMooneyRivlin2D_CV(λ=(μParams[1] + μParams[2]) * 1e2, μ=μParams[1], α=μParams[3], γ=3.0)
   test_derivatives_2D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_2D(model)
+  test_type_stability_2D(model)
 end
 
 
@@ -425,6 +453,7 @@ end
   model = EightChain(μ=μParams[1], N=μParams[2])
   test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-13)
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 
@@ -451,6 +480,7 @@ end
   @test norm(∂Ψu(F(∇u), N)) == 100.64088114687468
   @test norm(∂Ψuu(F(∇u), N)) == 46792.35008576098
   @test isapprox(Ψ(I2D, N), 0.0, atol=1e-10)
+  test_type_stability_2D(model, N)
 end
 
 
@@ -471,6 +501,7 @@ end
   @test norm(∂Ψu(F(∇u), N)) == 309.1429743066338
   @test norm(∂Ψuu(F(∇u), N)) == 81316.15339475962
   @test isapprox(Ψ(I3D, N), 0.0, atol=1e-10)
+  test_type_stability_3D(model, N)
 end
 
 
