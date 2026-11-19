@@ -1,6 +1,6 @@
 name = "HyperFEM"
 uuid = "ddbf423a-3df4-409e-9685-3dc416cae46c"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["MultiSimOLab"]
 
 [deps]
@@ -41,8 +41,8 @@ GridapGmsh = "0.7"
 GridapPETSc = "0.5"
 HyperFEMKernels = "0.2.4"
 IterativeSolvers = "0.9"
-LinearAlgebra = "1.12"
-PartitionedArrays = "≥0.3"
+LinearAlgebra = "1"
+PartitionedArrays = "0.3"
 SparseArrays = "1"
 Printf = "1"
 StaticArrays = "1.9"
