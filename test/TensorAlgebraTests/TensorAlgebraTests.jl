@@ -140,8 +140,9 @@ end
 
   # only the tensors with all their components stored
   S = SymTensorValue{3}(Tuple(randn(6)))
-  @test_throws MethodError TensorAlgebra.cross_contraction(A, S)
-  @test_throws MethodError TensorAlgebra.contraction_cross(S, A)
+  @test_throws ArgumentError TensorAlgebra.cross_contraction(A, S)
+  @test_throws ArgumentError TensorAlgebra.contraction_cross(S, A)
+  @test_throws DimensionMismatch TensorAlgebra.cross_contraction(A, VectorValue(1.0, 2.0, 3.0))
 end
 
 
