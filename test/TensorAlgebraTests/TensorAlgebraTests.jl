@@ -241,10 +241,15 @@ end
   @test sqrt_sym(I3D) ≈ I3D
   B = TensorValue(4.0, 1.0, 1.0, 3.0)
   @test isapprox(sqrt_sym(B), TensorValue(sqrt(get_array(B))), rtol=1e-12)
-  # Allocation-free check disabled: 160 bytes on some CI Julia versions, 0 on others (fixed in a separate PR)
-  # allocs(A) = @allocated sqrt_sym(A)
-  # allocs(A)
-  # @test allocs(A) == 0
+  # No allocations. Skipped when bounds checking is forced (Pkg.test runs with --check-bounds=yes), as for
+  # regularize_hessian: @inbounds is then ignored and the MMatrix scratch arrays of _sym_eigen can escape to
+  # the heap through the BoundsError path (80-160 bytes, depending on the Julia version).
+  forced_boundscheck = Base.JLOptions().check_bounds == 1
+  allocs(A) = @allocated sqrt_sym(A)
+  for X in (A, B)
+    allocs(X)
+    @test allocs(X) == 0 skip = forced_boundscheck
+  end
 end
 
 
