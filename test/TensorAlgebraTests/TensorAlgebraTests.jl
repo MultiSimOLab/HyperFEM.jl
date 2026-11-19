@@ -6,7 +6,6 @@ using ForwardDiff
 using LinearAlgebra
 using Random
 using StaticArrays
-using ForwardDiff
 using Gridap.TensorValues: contracted_product  # Gridap's ⋅², which HyperFEM redefines between fourth-order tensors
 
 
@@ -118,8 +117,8 @@ end
   @test jac(G -> Σ × G, F) ≈ ×ᵢ⁴(Σ)
   @test jac(G -> (H ⋅² cof(G)) × G, F) ≈ F × (H × F) + ×ᵢ⁴(H ⋅² cof(F))   # Ψ_H = H : cof(F)
   du, dv = rT(), rT()
-  @test dv ⊙ (F × (H × F)) ⊙ du ≈ (dv × F) ⊙ H ⊙ (du × F)
-  @test dv ⊙ ×ᵢ⁴(Σ) ⊙ du ≈ Σ ⊙ (dv × du)
+  @test dv ⊙ ((F × (H × F)) ⋅² du) ≈ (dv × F) ⊙ (H ⋅² (du × F))
+  @test dv ⊙ (×ᵢ⁴(Σ) ⋅² du) ≈ Σ ⊙ (dv × du)
 
   # element types
   A32 = TensorValue{3,3,Float32}(Tuple(randn(Float32, 9)))
