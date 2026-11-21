@@ -154,11 +154,12 @@ HyperFEM.ComputationalModels.nls_iterations(s::FailingNewton) = HyperFEM.Computa
     r = run_backends(b -> stokes_simulation(; backend=b))
     for (b, x) in r
       @testset "$b" begin
-        @test norm(x) ≈ 4199.925167995936
+        @test norm(x) ≈ 4199.925167995936 rtol=1e-7
       end
     end
-    # saddle point: the kernel's sparsity pattern stores the (empty) p-p block, which changes the pivoting of
-    # the LU; matrix and vector agree to 1e-16, the solutions to ~1e-7
+    # saddle point with ~1e8 amplification of rounding: differences of ~1e-16 in the matrix (assembly order,
+    # backend) or in the LU (UMFPACK/BLAS version, platform) move the norm by ~1e-8 and the solution vector
+    # by up to ~1e-7; hence rtol=1e-7 against the reference and 1e-6 between backends
     agree(r, identity; rtol=1e-6)
   end
 
