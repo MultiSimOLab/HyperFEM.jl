@@ -18,6 +18,10 @@ permissions: # needed to allow julia-actions/cache to delete old caches that it 
 jobs:
   test:
     name: Tests
+    permissions:
+      actions: write
+      contents: read
+      id-token: write  # Codecov upload with OIDC
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     strategy:
@@ -46,7 +50,7 @@ jobs:
         if: matrix.version == '1'
         with:
           files: lcov.info
-          token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true  # GitHub OIDC identity: no upload token needed
           fail_ci_if_error: false
 
   lowest-gridap: # downgrade compatibility: the lowest Gridap allowed by [compat] must still work
