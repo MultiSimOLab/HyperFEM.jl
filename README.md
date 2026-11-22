@@ -2,8 +2,8 @@
 
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://multisimolab.github.io/HyperFEM.jl/stable/)
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://multisimolab.github.io/HyperFEM.jl/dev/)
-[![Build Status](https://github.com/MultiSimOLab/HyperFEM/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MultiSimOLab/HyperFEM/actions/workflows/ci.yml?branch=main)
-[![Coverage](https://codecov.io/gh/jmartfrut/HyperFEM.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/jmartfrut/HyperFEM.jl)
+[![Build Status](https://github.com/MultiSimOLab/HyperFEM.jl/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MultiSimOLab/HyperFEM.jl/actions/workflows/ci.yml?branch=main)
+[![Coverage](https://codecov.io/gh/MultiSimOLab/HyperFEM.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/MultiSimOLab/HyperFEM.jl)
 
 # Multiphysics Simulation of Multifunctional Soft Materials
 
