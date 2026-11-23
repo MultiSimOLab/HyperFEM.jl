@@ -5,6 +5,32 @@ using LinearAlgebra
 using SparseArrays
 using Test
 
+@testset "Helper functions" begin
+  @test :update_displacements! ∈ names(HyperFEM)
+  @test :update_velocity! ∈ names(HyperFEM)
+
+  geom = CartesianDiscreteModel((0.0, 1.0, 0.0, 1.0), (2, 2))
+  reffe = ReferenceFE(lagrangian, Float64, 1)
+  V = TestFESpace(geom, reffe, conformity=:H1, dirichlet_tags="boundary")
+  U = TrialFESpace(V, 1.0)
+  U⁻ = TrialFESpace(V, 0.0)
+  Uv = TrialFESpace(V, 1.5)
+  uh⁺ = FEFunction(U, zero_free_values(U))
+  uh⁻ = FEFunction(U⁻, zero_free_values(U⁻))
+  vh = FEFunction(Uv, zero_free_values(Uv))
+
+  @test get_dirichlet_dof_values(uh⁺) == [1.0 for _ ∈ 1:8]
+  @test get_dirichlet_dof_values(uh⁻) == [0.0 for _ ∈ 1:8]
+  @test get_dirichlet_dof_values(vh) == [2.0 for _ ∈ 1:8]
+
+  update_velocity!(vh, uh⁺, uh⁻, 0.5)
+  update_displacements!(uh⁻, uh⁺)
+
+  @test get_dirichlet_dof_values(uh⁺) == [1.0 for _ ∈ 1:8]
+  @test get_dirichlet_dof_values(uh⁻) == [1.0 for _ ∈ 1:8]
+  @test get_dirichlet_dof_values(vh) ≈ [2.5 for _ ∈ 1:8]
+end
+
 # Small 2D hyperelastic block stretched by a Dirichlet condition
 function drivers_test_problem()
   geometry = CartesianDiscreteModel((0, 2, 0, 1), (4, 2))
