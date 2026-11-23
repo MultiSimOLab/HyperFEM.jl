@@ -1,4 +1,5 @@
 using Gridap
+using GridapGmsh
 using Gridap.FESpaces
 using ForwardDiff
 

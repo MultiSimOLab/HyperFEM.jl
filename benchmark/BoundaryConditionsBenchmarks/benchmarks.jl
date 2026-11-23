@@ -2,6 +2,7 @@
 # solid–vacuum problems, a coupling with a field living only on the faces of the interface, on the
 # mesh of the mesh-movement simulation (test_BC2.msh: air domain, 2D, order 1).
 using Gridap.FESpaces
+using GridapGmsh
 
 function interface_coupling_setup()
   geomodel = GmshDiscreteModel(projdir("test/models/test_BC2.msh"))
