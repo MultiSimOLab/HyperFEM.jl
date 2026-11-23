@@ -484,8 +484,10 @@ Compressible Gent model in 3D, with the volumetric energy of `Gent2D`:
 \\qquad I_1 = \\mathrm{tr}(F^T F),\\quad J = \\det F.
 ```
 
-`Jm` limits the chain extensibility (`I₁ - 3 < Jm`); for `Jm → ∞` the isochoric part tends to the neo-Hookean
-`μ/2 (I₁ - 3)`. Stress-free in the reference configuration.
+`Jm` limits the chain extensibility: the model requires `I₁ - 3 < Jm` (beyond it `Ψ` throws a `DomainError`
+and the derivatives are meaningless). For `Jm → ∞` the isochoric part tends to the neo-Hookean `μ/2 (I₁ - 3)`.
+Stress-free in the reference configuration, with shear modulus `μ` and first Lamé parameter `2λγ² + 2μ/Jm`:
+`λ` is not the Lamé parameter (with `γ = 1`, the same `λ` as in `NeoHookean3D` doubles it).
 """
 struct Gent3D <: IsoElastic
   λ::Float64

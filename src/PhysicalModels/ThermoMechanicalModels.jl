@@ -106,7 +106,7 @@ Thermo-mechanical model in the temperature increment `δθ = θ - θr`:
 
 with `Ψm` the mechanical model, `Ψt` the thermal model (`ThermalModel`, which gives `θr`), `Ψtm` the
 thermo-mechanical coupling `Ψtm(F, δθ) = -3α (J² - 1) δθ` (`α` of the thermal model, a stress per unit
-temperature: the thermal expansion coefficient is `2α/K`, see [`ThermalModel`](@ref)) and `f` the thermal law
+temperature: the thermal expansion coefficient at the reference temperature is `2α/K`, see [`ThermalModel`](@ref)) and `f` the thermal law
 (`ThermalLaw`, which gives `f`, `f'` and `f''`). The law must
 have the same reference temperature as the thermal model. The functor `model()` returns
 `(Ψ, ∂Ψ/∂F, ∂Ψ/∂θ, ∂²Ψ/∂F², ∂²Ψ/∂θ², ∂²Ψ/∂F∂θ, η)` as functions of `(F, δθ)`, with `η = -∂Ψ/∂θ`.

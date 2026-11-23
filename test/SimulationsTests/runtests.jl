@@ -167,13 +167,15 @@ HyperFEM.ComputationalModels.nls_iterations(s::FailingNewton) = HyperFEM.Computa
         @test s.θmid ≈ 0.1                              # steady temperature increment, linear in x
         @test isapprox(norm(s.x), 0.888263590916, rtol=1e-10)
         @test isapprox(s.ux_hot, 0.00852869187021, rtol=1e-10)
-        # α of ThermalModel is a stress per unit temperature: expansion coefficient 2α/K (K = λ + 2μ/3); the
-        # clamped end restrains the free expansion α_th ⟨δθ⟩ L of the bar a little
-        α_th = 2 * 0.5 / (10.0 + 2 * 1.0 / 3)
-        @test 0.85 < s.ux_hot / (α_th * 0.1 * 1.0) < 1.0
       end
     end
     agree(r, s -> s.x)
+    # α of ThermalModel is a stress per unit temperature: the expansion coefficient at the reference temperature is
+    # 2α/K (K = λ + 2μ/3). With a small temperature increment the bar expands α_th ⟨δθ⟩ L (with δθ = 0.2 it expands
+    # ~9 % less: the entropic law f(θ) = θ/θr stiffens the material as it heats)
+    α_th = 2 * 0.5 / (10.0 + 2 * 1.0 / 3)
+    small = thermo_mechanical_simulation(; θhot=0.002)
+    @test isapprox(small.ux_hot / (α_th * 0.001 * 1.0), 1.0, rtol=0.02)
   end
 
   @testset "Stokes" begin

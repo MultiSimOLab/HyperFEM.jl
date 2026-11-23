@@ -6,7 +6,7 @@ using HyperFEM: jacobian, solve!
 # heated at x = L (temperature increment ramped with the load factor), with the ThermoMechModel weak forms. The
 # steady temperature increment is linear in x (exact with P1 elements) and the heated bar expands.
 # Returns the free values of (u, δθ) and the axial displacement of the heated end.
-function thermo_mechanical_simulation(; backend=:lazy, verbose=false)
+function thermo_mechanical_simulation(; backend=:lazy, θhot=0.2, verbose=false)
   L, w = 1.0, 0.2
   geometry = CartesianDiscreteModel((0, L, 0, w, 0, w), (8, 2, 2))
   labels = get_face_labeling(geometry)
@@ -23,7 +23,7 @@ function thermo_mechanical_simulation(; backend=:lazy, verbose=false)
 
   Du = BoundaryConditions(BoundaryCondition("cold", [0.0, 0.0, 0.0]))
   Dθ = BoundaryConditions(BoundaryCondition("cold", 0.0, EvolutionFunctions.constant()),
-                          BoundaryCondition("hot", 0.2, EvolutionFunctions.ramp()))
+                          BoundaryCondition("hot", θhot, EvolutionFunctions.ramp()))
   D_bc = MultiFieldBC([Du, Dθ])
 
   reffeu = ReferenceFE(lagrangian, VectorValue{3,Float64}, order)
