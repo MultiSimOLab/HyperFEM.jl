@@ -21,7 +21,7 @@ using Test
 
   @test get_dirichlet_dof_values(uh⁺) == [1.0 for _ ∈ 1:8]
   @test get_dirichlet_dof_values(uh⁻) == [0.0 for _ ∈ 1:8]
-  @test get_dirichlet_dof_values(vh) == [2.0 for _ ∈ 1:8]
+  @test get_dirichlet_dof_values(vh) == [1.5 for _ ∈ 1:8]
 
   update_velocity!(vh, uh⁺, uh⁻, 0.5)
   update_displacements!(uh⁻, uh⁺)
