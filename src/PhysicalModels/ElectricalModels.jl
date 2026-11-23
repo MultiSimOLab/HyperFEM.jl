@@ -11,8 +11,7 @@ struct IdealDielectric <: Electro
 end
 
 function (obj::IdealDielectric)()
-  J(F) = det(F)
-  H(F) = det(F) * inv(F)'
+  J, H = det, cof
 
   # Energy #
   HE(F, E) = H(F) * E

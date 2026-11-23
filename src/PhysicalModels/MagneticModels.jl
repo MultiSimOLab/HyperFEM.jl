@@ -47,8 +47,7 @@ end
 
 function (obj::IdealMagnetic)(Λ::Float64=1.0)
   (; μ, χe) = obj
-  J(F) = det(F)
-  H(F) = J(F) * inv(F)'
+  J, H = det, cof
 
   # Energy #
   Hℋ₀(F, ℋ₀) = H(F) * ℋ₀
@@ -90,8 +89,7 @@ end
 
 function (obj::IdealMagnetic2D)(Λ::Float64=1.0)
   (; μ, χe) = obj
-  J(F) = det(F)
-  H(F) = J(F) * inv(F)'
+  J, H = det, cof
 
   # Energy #
   Hℋ₀(F, ℋ₀) = H(F) * ℋ₀
@@ -136,8 +134,7 @@ end
 
 function (obj::HardMagnetic)(Λ::Float64=1.0)
   (; μ, χe) = obj
-  J(F) = det(F)
-  H(F) = J(F) * inv(F)'
+  J, H = det, cof
 
   # Energy #
   Hℋ₀(F, ℋ₀) = H(F) * ℋ₀
@@ -186,8 +183,7 @@ end
 
 function (obj::HardMagnetic2D)(Λ::Float64=1.0)
   (; μ, χe) = obj
-  J(F) = det(F)
-  H(F) = J(F) * inv(F)'
+  J, H = det, cof
 
   # Energy #
   Hℋ₀(F, ℋ₀) = H(F) * ℋ₀

@@ -52,10 +52,10 @@ function (obj::ThermalVolumetric)()
   f, df, ddf = obj.law()
   ζr = 1/df(θr)
   ξr = 1/(θr*ζr*ddf(θr))
-  J(F) = det(F)
+  J, H = det, cof
   ηr(F) = cv0*ξr + 3*α*κr*(J(F) - 1)
   ∂ηr∂J(F) = 3*α*κr
-  ∂ηr∂F(F) = ∂ηr∂J(F)*cof(F)
+  ∂ηr∂F(F) = ∂ηr∂J(F)*H(F)
   ∂∂ηr∂FF(F) = ×ᵢ⁴(∂ηr∂J(F)*F)
   Ψ(F,θ)      = U(F)      -ηr(F)*ζr*(f(θ) - 1)
   ∂Ψ∂F(F,θ)   = ∂U∂F(F)   -∂ηr∂F(F)*ζr*(f(θ) - 1)
@@ -268,8 +268,7 @@ struct ThermoMech_EntropicPolyconvex{T<:Thermo,M<:Mechano} <: ThermoMechano{T,M}
     ϕ = obj.ϕ
     s = obj.s
 
-    J(F) = det(F)
-    H(F) = det(F) * inv(F)'
+    J, H = det, cof
     I1(F) = tr(F' * F)
     I2(F) = tr(H(F)' * H(F))
     I3(F) = J(F)
@@ -300,8 +299,7 @@ end
 
 
 function _getCoupling(term::Thermo, mec::Mechano)
-  J(F) = det(F)
-  H(F) = det(F) * inv(F)'
+  J, H = det, cof
   ∂Ψtm_∂J(F, δθ) = -6.0 * term.α * J(F) * δθ
   ∂Ψtm_u(F, δθ) = ∂Ψtm_∂J(F, δθ) * H(F)
   ∂Ψtm_θ(F, δθ) = -3.0 * term.α * (J(F)^2.0 - 1.0)

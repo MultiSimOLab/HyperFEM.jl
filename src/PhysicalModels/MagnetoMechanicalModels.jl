@@ -70,8 +70,7 @@ function _getCoupling(mag::HardMagnetic, ::Mechano, Λ::Float64=1.0)
 
 
   (; μ, χr, χt, βcoup, βmok) = mag  # αr is a reference. Accessing it will dereference the internal value.
-  J(F) = det(F)
-  H(F) = det(F) * inv(F)'
+  J, H = det, cof
  
 
   #-------------------------------------------------------------------------------------
@@ -151,8 +150,7 @@ function _getCoupling(mag::HardMagnetic2D, ::Mechano, Λ::Float64=1.0)
   # delay crack propagation, Journal of the Mechanics and Physics of Solids,
 
   (; μ, χr, χt, βcoup, βmok) = mag  # αr is a reference. Accessing it will dereference the internal value.
-  J(F) = det(F)
-  H(F) = det(F) * inv(F)'
+  J, H = det, cof
  
   # #-------------------------------------------------------------------------------------
   # # FIRST TERM

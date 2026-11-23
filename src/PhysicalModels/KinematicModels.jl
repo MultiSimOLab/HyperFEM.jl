@@ -14,8 +14,7 @@ struct Kinematics{T1,T2} <: KinematicModel
     metrics
 
     function Kinematics(::Type{Mechano}, ::Type{Solid}; F::Function=(∇u) -> one(∇u) + ∇u)
-        J(F) = det(F)
-        H(F) = det(F) * inv(F)'
+        J, H = det, cof
         metrics = (F, H, J)
         new{Mechano,Solid}(metrics)
     end
@@ -78,8 +77,7 @@ struct EvolutiveKinematics{T} <: KinematicModel
     function EvolutiveKinematics(::Type{Mechano}; F::Function=(t) -> ((∇u) -> one(∇u) + ∇u))
         # F_(∇u) = one(∇u) + ∇u
         # F(t) = (∇u)->(Fmapping(t) ∘ F_)(∇u) 
-        J(F) = det(F)
-        H(F) = det(F) * inv(F)'
+        J, H = det, cof
         metrics = (F, H, J)
         new{Mechano}(metrics)
     end
