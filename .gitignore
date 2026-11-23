@@ -4,6 +4,7 @@ debug/
 data/sims/
 docs/build/
 docs/src/index.md
+docs/src/tutorials.md
 **/.DS_Store
 .vscode/
 
