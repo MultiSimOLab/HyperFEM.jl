@@ -560,6 +560,26 @@ end
 end
 
 
+@testset "ThermoMechModel: expansion coefficient 2α/K" begin
+  # α of ThermalModel is a stress per unit temperature: with the coupling -3α (J² - 1) δθ, the free thermal
+  # expansion at the reference temperature has coefficient 2α/K (K = λ + 2μ/3 for NeoHookean3D). Homogeneous free
+  # expansion F = s I under a small temperature increment: find s with zero stress (bisection on P₁₁).
+  λ, μ, α = 10.0, 1.0, 0.5
+  model = ThermoMechModel(ThermalModel(Cv=1.0, θr=1.0, α=α, κ=1.0), NeoHookean3D(λ=λ, μ=μ), EntropicElasticityLaw(θr=1.0, γ=0.0))
+  P = model()[2]
+  δθ = 1e-5
+  stress(s) = P(s * I3D, δθ)[1]
+  lo, hi = 0.99, 1.01
+  @test stress(lo) < 0 < stress(hi)
+  for _ in 1:200
+    mid = (lo + hi) / 2
+    stress(mid) > 0 ? (hi = mid) : (lo = mid)
+  end
+  s = (lo + hi) / 2
+  @test norm(P(s * I3D, δθ)) < 1e-10                 # homogeneous, isotropic: the whole stress vanishes
+  @test isapprox((s - 1) / δθ, 2α / (λ + 2μ / 3), rtol=1e-3)
+end
+
 @testset "ThermoMech_EntropicPolyconvex" begin
   #   63.3 μs      Histogram: log(frequency) by time       169 μs <
   #  Memory estimate: 4.28 KiB, allocs estimate: 89
@@ -1202,25 +1222,4 @@ end
     @test allocated_after_warmup(return_mapping, maxwell(nh, 4).branches, F, I3, A...) == 0
     @test allocated_after_warmup(return_mapping, maxwell(nh + ti, 4), F, N1, I3, A...) == 0
   end
-end
-
-
-@testset "ThermoMechModel: expansion coefficient 2α/K" begin
-  # α of ThermalModel is a stress per unit temperature: with the coupling -3α (J² - 1) δθ, the free thermal
-  # expansion at the reference temperature has coefficient 2α/K (K = λ + 2μ/3 for NeoHookean3D). Homogeneous free
-  # expansion F = s I under a small temperature increment: find s with zero stress (bisection on P₁₁).
-  λ, μ, α = 10.0, 1.0, 0.5
-  model = ThermoMechModel(ThermalModel(Cv=1.0, θr=1.0, α=α, κ=1.0), NeoHookean3D(λ=λ, μ=μ), EntropicElasticityLaw(θr=1.0, γ=0.0))
-  P = model()[2]
-  δθ = 1e-5
-  stress(s) = P(s * I3D, δθ)[1]
-  lo, hi = 0.99, 1.01
-  @test stress(lo) < 0 < stress(hi)
-  for _ in 1:200
-    mid = (lo + hi) / 2
-    stress(mid) > 0 ? (hi = mid) : (lo = mid)
-  end
-  s = (lo + hi) / 2
-  @test norm(P(s * I3D, δθ)) < 1e-10                 # homogeneous, isotropic: the whole stress vanishes
-  @test isapprox((s - 1) / δθ, 2α / (λ + 2μ / 3), rtol=1e-3)
 end
