@@ -178,6 +178,13 @@ function (obj::HessianRegularization{TangentSwitch})()
   return (Ψs, ∂Ψs, ∂2Ψ)
 end
 
+# the state, the time step and the dissipation are those of the regularized model (e.g. a viscous one)
+update_time_step!(obj::HessianRegularization, Δt::Float64) = update_time_step!(obj.mechano, Δt)
+Gridap.CellData.CellState(obj::HessianRegularization, args...; kwargs...) = CellState(obj.mechano, args...; kwargs...)
+initialize_state(obj::HessianRegularization) = initialize_state(obj.mechano)
+Gridap.CellData.update_state!(obj::HessianRegularization, state, args...; kwargs...) = update_state!(obj.mechano, state, args...; kwargs...)
+Dissipation(obj::HessianRegularization) = Dissipation(obj.mechano)
+
 
 struct Hessian∇JRegularization <: Mechano
   mechano::Mechano

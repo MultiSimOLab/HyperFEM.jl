@@ -236,8 +236,9 @@ function Gridap.CellData.update_state!(model::PhysicalModel, vars...; backend=:l
   throw(ArgumentError("update_state!: $(nameof(typeof(model))) has internal variables, but no method of it takes " *
     "the $(length(vars)) positional arguments it received (state included), so the state would not be updated. " *
     "If it was reached through another model, check the arguments against that model's method: (A, F, Fn) for " *
-    "mechanical models, (A, F, E, Fn) for electro-mechanical, (A, F, θ, Fn) for thermo-mechanical and " *
-    "(A, F, E, θ, Fn) for thermo-electro-mechanical models."))
+    "mechanical models ((A, F, n, Fn) if anisotropic, with the fibre direction n), (A, F, E, Fn) for " *
+    "electro-mechanical, (A, F, θ, Fn) for thermo-mechanical and (A, F, E, θ, Fn) for thermo-electro-mechanical " *
+    "models."))
 end
 
 """
