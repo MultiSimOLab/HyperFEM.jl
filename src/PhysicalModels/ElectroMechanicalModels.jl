@@ -41,7 +41,7 @@ _projected(s::TangentSwitch) = is_projected(s)
 function (obj::ElectroMechHessianRegularization)(args...; kwargs...)
   Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE = obj.model(args...; kwargs...)
   δ, sym, switch = obj.δ, obj.symmetrize, obj.switch
-  function ∂Ψ∂FFr(F, E, vars...)
+  function ∂Ψ∂FFr(F, E, vars::Vararg{Any,K}) where {K}
     C = ∂Ψ∂FF(F, E, vars...)
     _projected(switch) ? regularize_hessian(sym ? _symmetrize(C) : C, δ) : C
   end
@@ -90,24 +90,24 @@ end
 function (obj::ElectroMechModel{<:Electro,<:ViscoElastic{<:IsoElastic}})()
   Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano()
   Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro()
-  Ψ(F, E, Fn, A...)     = Ψm(F, Fn, A...)     + Ψem(F, E)
-  ∂Ψ∂F(F, E, Fn, A...)  = ∂Ψm∂F(F, Fn, A...)  + ∂Ψem∂F(F, E)
-  ∂Ψ∂E(F, E, Fn, A...)  =                       ∂Ψem∂E(F, E)
-  ∂Ψ∂FF(F, E, Fn, A...) = ∂Ψm∂FF(F, Fn, A...) + ∂Ψem∂FF(F, E)
-  ∂Ψ∂EF(F, E, Fn, A...) =                       ∂Ψem∂EF(F, E)
-  ∂Ψ∂EE(F, E, Fn, A...) =                       ∂Ψem∂EE(F, E)
+  Ψ(F, E, Fn, A::Vararg{Any,K})     where {K} = Ψm(F, Fn, A...)     + Ψem(F, E)
+  ∂Ψ∂F(F, E, Fn, A::Vararg{Any,K})  where {K} = ∂Ψm∂F(F, Fn, A...)  + ∂Ψem∂F(F, E)
+  ∂Ψ∂E(F, E, Fn, A::Vararg{Any,K})  where {K} =                       ∂Ψem∂E(F, E)
+  ∂Ψ∂FF(F, E, Fn, A::Vararg{Any,K}) where {K} = ∂Ψm∂FF(F, Fn, A...) + ∂Ψem∂FF(F, E)
+  ∂Ψ∂EF(F, E, Fn, A::Vararg{Any,K}) where {K} =                       ∂Ψem∂EF(F, E)
+  ∂Ψ∂EE(F, E, Fn, A::Vararg{Any,K}) where {K} =                       ∂Ψem∂EE(F, E)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE)
 end
 
 function (obj::ElectroMechModel{<:Electro,<:ViscoElastic{<:AnisoElastic}})()
   Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano()
   Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro()
-  Ψ(F, E, n, Fn, A...)     = Ψm(F, n, Fn, A...)     + Ψem(F, E)
-  ∂Ψ∂F(F, E, n, Fn, A...)  = ∂Ψm∂F(F, n, Fn, A...)  + ∂Ψem∂F(F, E)
-  ∂Ψ∂E(F, E, n, Fn, A...)  =                          ∂Ψem∂E(F, E)
-  ∂Ψ∂FF(F, E, n, Fn, A...) = ∂Ψm∂FF(F, n, Fn, A...) + ∂Ψem∂FF(F, E)
-  ∂Ψ∂EF(F, E, n, Fn, A...) =                          ∂Ψem∂EF(F, E)
-  ∂Ψ∂EE(F, E, n, Fn, A...) =                          ∂Ψem∂EE(F, E)
+  Ψ(F, E, n, Fn, A::Vararg{Any,K})     where {K} = Ψm(F, n, Fn, A...)     + Ψem(F, E)
+  ∂Ψ∂F(F, E, n, Fn, A::Vararg{Any,K})  where {K} = ∂Ψm∂F(F, n, Fn, A...)  + ∂Ψem∂F(F, E)
+  ∂Ψ∂E(F, E, n, Fn, A::Vararg{Any,K})  where {K} =                          ∂Ψem∂E(F, E)
+  ∂Ψ∂FF(F, E, n, Fn, A::Vararg{Any,K}) where {K} = ∂Ψm∂FF(F, n, Fn, A...) + ∂Ψem∂FF(F, E)
+  ∂Ψ∂EF(F, E, n, Fn, A::Vararg{Any,K}) where {K} =                          ∂Ψem∂EF(F, E)
+  ∂Ψ∂EE(F, E, n, Fn, A::Vararg{Any,K}) where {K} =                          ∂Ψem∂EE(F, E)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE)
 end
 
@@ -130,7 +130,7 @@ end
 
 function Dissipation(obj::ElectroMechModel)
   Dvis = Dissipation(obj.mechano)
-  D(F, E, X...) = Dvis(F, X...)
+  D(F, E, X::Vararg{Any,K}) where {K} = Dvis(F, X...)
 end
 
 struct FlexoElectroModel{EM<:ElectroMechano} <: FlexoElectro{EM}

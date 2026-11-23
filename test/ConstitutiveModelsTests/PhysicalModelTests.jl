@@ -1121,3 +1121,79 @@ end
   @test P_vals == [0.0 0.0; 0.0 0.0]
 end
 
+
+
+"""
+Bytes allocated by `f(args...)` after a warm-up call, measured inside a function specialized on the
+arguments (at the @testset level the dynamic dispatch of the call itself may be counted).
+"""
+function allocated_after_warmup(f::G, args::Vararg{Any,N}) where {G,N}
+  f(args...)
+  @allocated f(args...)
+end
+
+@testset "Composed and wrapped models do not allocate" begin
+  # functions of a composed or wrapped model forward a variable number of arguments (fibre directions, previous
+  # deformation gradient, internal variables); they must specialize on it, or every call allocates
+  F = TensorValue(1.3, 0.1, 0.0, 0.2, 0.9, -0.1, 0.0, 0.15, 1.1)
+  I3 = one(F)
+  N1 = VectorValue(1.0, 0.0, 0.0)
+  Ns = (VectorValue(1.0, 0.0, 0.0), VectorValue(0.0, 1.0, 1.0), VectorValue(1.0, 1.0, 0.0), VectorValue(1.0, 0.0, 1.0))
+  E = VectorValue(0.1, 0.2, 0.3)
+  nh = NeoHookean3D(λ=100.0, μ=1.0)
+  mr = MooneyRivlin3D(λ=100.0, μ1=1.0, μ2=0.5)
+  h4 = HGO_4Fibers(c1=[2.0, 1.0, 1.0, 1.0], c2=[0.5, 0.5, 0.5, 0.5])
+  ti = TransverseIsotropy3D(μ=1.0, α1=2.0, α2=1.0)
+  diel = IdealDielectric(ε=1.0)
+  # two viscous branches by default; return_mapping is checked with four (Julia stops specializing the
+  # forwarded states around three)
+  function maxwell(longterm, nbranches=2)
+    m = GeneralizedMaxwell(longterm, ntuple(i -> ViscousPolyconvex(μ=1.0 * i, τ=1.0 + i), nbranches)...)
+    update_time_step!(m, 0.1)
+    m
+  end
+  thermal_law = EntropicElasticityLaw(θr=1.0, γ=0.7)
+  thermal_vol = ThermalVolumetric(cv0=2.0, θr=1.0, α=0.1, κr=3.0, γ=0.5)
+  cases = [
+    ("NeoHookean3D + HGO_4Fibers", nh + h4, (F, Ns...)),
+    ("MooneyRivlin3D + HGO_4Fibers", mr + h4, (F, Ns...)),
+    ("HGO_4Fibers + NeoHookean3D", h4 + nh, (F, Ns...)),
+    ("NeoHookean3D + MooneyRivlin3D + HGO_4Fibers", nh + mr + h4, (F, Ns...)),
+    ("NeoHookean3D + TransverseIsotropy3D", nh + ti, (F, N1)),
+    ("HessianRegularization(NeoHookean3D + HGO_4Fibers)", HessianRegularization(nh + h4), (F, Ns...)),
+    ("HessianRegularization with TangentSwitch", HessianRegularization(nh + h4; switch=TangentSwitch()), (F, Ns...)),
+    ("GeneralizedMaxwell(NeoHookean3D + TransverseIsotropy3D)", maxwell(nh + ti), (F, N1, I3, I3, I3)),
+    ("ElectroMechModel(GeneralizedMaxwell)", ElectroMechModel(mechano=maxwell(nh), electro=diel), (F, E, I3, I3, I3)),
+    ("ElectroMechModel(anisotropic GeneralizedMaxwell)", ElectroMechModel(mechano=maxwell(nh + ti), electro=diel), (F, E, N1, I3, I3, I3)),
+    ("HessianRegularization(ElectroMechModel(GeneralizedMaxwell))",
+      HessianRegularization(ElectroMechModel(mechano=maxwell(nh), electro=diel)), (F, E, I3, I3, I3)),
+    ("ThermoMech_Bonet(GeneralizedMaxwell)", ThermoMech_Bonet(thermal_vol, maxwell(nh), thermal_law, thermal_law), (F, 1.0, I3, I3, I3)),
+    ("ThermoMech_Bonet(anisotropic GeneralizedMaxwell)", ThermoMech_Bonet(thermal_vol, maxwell(nh + ti), thermal_law, thermal_law),
+      (F, 1.0, N1, I3, I3, I3)),
+    ("ThermoElectroMech_Bonet(GeneralizedMaxwell)",
+      ThermoElectroMech_Bonet(thermal_vol, diel, maxwell(nh); el=thermal_law, vis=thermal_law, elec=thermal_law), (F, E, 1.0, I3, I3, I3)),
+    ("ThermoElectroMech_Bonet(anisotropic GeneralizedMaxwell)",
+      ThermoElectroMech_Bonet(thermal_vol, diel, maxwell(nh + ti); el=thermal_law, vis=thermal_law, elec=thermal_law),
+      (F, E, 1.0, N1, I3, I3, I3)),
+  ]
+  for (name, model, args) in cases
+    @testset "$name" begin
+      for f in model()
+        @test allocated_after_warmup(f, args...) == 0
+      end
+    end
+  end
+  @testset "Dissipation and return mapping" begin
+    m = ElectroMechModel(mechano=maxwell(nh), electro=diel)
+    @test allocated_after_warmup(Dissipation(m), F, E, I3, I3, I3) == 0
+    D = Dissipation(ThermoMech_Bonet(thermal_vol, maxwell(nh), thermal_law, thermal_law))
+    @test all(d -> allocated_after_warmup(d, F, 1.0, I3, I3, I3) == 0, D)
+    D = Dissipation(ThermoElectroMech_Bonet(thermal_vol, diel, maxwell(nh); el=thermal_law, vis=thermal_law, elec=thermal_law))
+    @test all(d -> allocated_after_warmup(d, F, E, 1.0, I3, I3, I3) == 0, D)
+    return_mapping = HyperFEM.PhysicalModels.return_mapping
+    A = ntuple(_ -> I3, 4)
+    @test allocated_after_warmup(return_mapping, maxwell(nh, 4), F, I3, A...) == 0
+    @test allocated_after_warmup(return_mapping, maxwell(nh, 4).branches, F, I3, A...) == 0
+    @test allocated_after_warmup(return_mapping, maxwell(nh + ti, 4), F, N1, I3, A...) == 0
+  end
+end
