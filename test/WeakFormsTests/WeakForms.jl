@@ -61,6 +61,21 @@ using Gridap
     @test jac_t[1] ≈ 0.33333333333333304
     @test jac_t[end] ≈ 0.33333333333333315
 
+    # the method with the state (staggered strategy) gives the same thermal Jacobian; it used to compose the
+    # conductivity, a Float64, with the fields
+    jac_t_state = assemble_matrix((dθ, vθ) -> jacobian(modelTM, Thermo, k, (uh, θh), dθ, vθ, dΩ), Vθ, Vθ)
+    @test jac_t_state == jac_t
+
+    # same for the thermo-electro-mechanical model
+    modelTEM = ThermoElectroMechModel(modelT, IdealDielectric(ε=4.0), modelMR, law)
+    Vφ = TestFESpace(model, reffeθ, labels=labels, conformity=:H1)
+    φh = interpolate_everywhere(x -> x[3], Vφ)
+    k3 = (km, Kinematics(Electro, Solid), kt)
+    jac_tem = assemble_matrix((dθ, vθ) -> jacobian(modelTEM, Thermo, k3, dθ, vθ, dΩ), Vθ, Vθ)
+    jac_tem_state = assemble_matrix((dθ, vθ) -> jacobian(modelTEM, Thermo, k3, (uh, φh, θh), dθ, vθ, dΩ), Vθ, Vθ)
+    @test jac_tem_state == jac_tem
+    @test jac_tem == jac_t
+
 
 end
 

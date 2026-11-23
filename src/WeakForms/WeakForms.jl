@@ -142,8 +142,8 @@ function jacobian(physicalmodel::ThermoElectroMechano, ::Type{Thermo}, kine::NTu
 end
 
 function jacobian(physicalmodel::ThermoElectroMechano, ::Type{Thermo}, kine::NTuple{3,KinematicModel}, (u, φ, θ)::Tuple, dθ, vθ, dΩ, Λ=1.0)
-  κ = physicalmodel.thermo.κ
-  ∫((κ ∘ (u, φ, θ)) * ∇(dθ) ⋅ ∇(vθ))dΩ
+  κ = physicalmodel.thermo.κ   # constant conductivity: the state does not enter
+  ∫(κ * ∇(dθ) ⋅ ∇(vθ))dΩ
 end
 
 function jacobian(physicalmodel::ThermoElectroMechano, ::Type{ElectroMechano}, kine::NTuple{3,KinematicModel},(u, φ, θ), (du, dφ), (v,vφ), dΩ, Λ=1.0)
@@ -220,8 +220,8 @@ function jacobian(physicalmodel::ThermoMechano, ::Type{Thermo}, kine::NTuple{2,K
 end
 
 function jacobian(physicalmodel::ThermoMechano, ::Type{Thermo}, kine::NTuple{2,KinematicModel}, (u, θ)::Tuple, dθ, vθ, dΩ, Λ=1.0)
-  κ=physicalmodel.thermo.κ
-  ∫((κ ∘ (u, θ)) * ∇(dθ) ⋅ ∇(vθ))dΩ
+  κ = physicalmodel.thermo.κ   # constant conductivity: the state does not enter
+  ∫(κ * ∇(dθ) ⋅ ∇(vθ))dΩ
 end
 
 function jacobian(physicalmodel::ThermoMechano, ::Type{ThermoMechano}, kine::NTuple{2,KinematicModel}, (u, θ), (du, dθ), v, dΩ, Λ=1.0)
