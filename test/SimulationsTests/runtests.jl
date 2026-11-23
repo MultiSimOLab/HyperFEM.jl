@@ -27,6 +27,7 @@ include("MeshMovementSimulation.jl")
 include("TurekNavierStokesSimulation.jl")
 include("HMREVacuumSimulation.jl")
 include("ThirdMediumContactSimulation.jl")
+include("ThermoMechanicalSimulation.jl")
 
 "Runs `simulate(backend)` for every backend of TEST_BACKENDS: Dict backend => result."
 run_backends(simulate) = Dict(b => simulate(b) for b in TEST_BACKENDS)
@@ -156,6 +157,23 @@ HyperFEM.ComputationalModels.nls_iterations(s::FailingNewton) = HyperFEM.Computa
       end
     end
     agree(r, x -> x[2])
+  end
+
+  @testset "ThermoMechanical" begin
+    r = run_backends(b -> thermo_mechanical_simulation(; backend=b))
+    for (b, s) in r
+      @testset "$b" begin
+        @test s.flag == 1
+        @test s.θmid ≈ 0.1                              # steady temperature increment, linear in x
+        @test isapprox(norm(s.x), 0.888263590916, rtol=1e-10)
+        @test isapprox(s.ux_hot, 0.00852869187021, rtol=1e-10)
+        # α of ThermalModel is a stress per unit temperature: expansion coefficient 2α/K (K = λ + 2μ/3); the
+        # clamped end restrains the free expansion α_th ⟨δθ⟩ L of the bar a little
+        α_th = 2 * 0.5 / (10.0 + 2 * 1.0 / 3)
+        @test 0.85 < s.ux_hot / (α_th * 0.1 * 1.0) < 1.0
+      end
+    end
+    agree(r, s -> s.x)
   end
 
   @testset "Stokes" begin
