@@ -16,8 +16,8 @@ write(index_path, readme_content)
 #   # One-line summary
 # Without a header, the file name is the link text and the summary is an empty string. Each title links to the
 # page rendered by the tutorials' own documentation, and "source" to the script at the commit that was listed.
-const TUTORIALS_REPO = "https://github.com/MultiSimOLab/HyperFEMTutorials.jl"
-const TUTORIALS_SITE = "https://multisimolab.github.io/HyperFEMTutorials.jl/dev"
+const TUTORIALS_REPO = "https://github.com/MultiSimOLab/HyperFEMTutorials"
+const TUTORIALS_SITE = "https://multisimolab.github.io/HyperFEMTutorials/dev"
 
 function tutorial_header(path)
   lines = readlines(path)
