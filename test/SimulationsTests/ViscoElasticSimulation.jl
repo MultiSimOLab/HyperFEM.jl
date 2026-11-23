@@ -15,7 +15,8 @@ state update in the post-processor (the historical setup). `nls` replaces the Ne
 the time stepping of the transient driver (tests force failed attempts with them). Returns the axial
 stretch and the mean first Piola stress on the moving face per step.
 """
-function visco_elastic_simulation(; backend=:lazy, driver=:transient, t_end=2, writevtk=false, verbose=false, nls=nothing, stepping=nothing)
+# `wrap` builds the constitutive model from the viscous one (`identity`: the viscous model itself)
+function visco_elastic_simulation(; wrap=identity, backend=:lazy, driver=:transient, t_end=2, writevtk=false, verbose=false, nls=nothing, stepping=nothing)
   simdir = projdir("data", "sims", stem(@__FILE__))
   writevtk && setupfolder(simdir)
 
@@ -45,7 +46,7 @@ function visco_elastic_simulation(; backend=:lazy, driver=:transient, t_end=2, w
   viscous_branch_1 = ViscousPolyconvex(μ=μ₁, τ=τ₁)
   viscous_branch_2 = ViscousPolyconvex(μ=μ₂, τ=τ₂)
   viscous_branch_3 = ViscousPolyconvex(μ=μ₃, τ=τ₃)
-  cons_model = GeneralizedMaxwell(hyper_elastic_model, viscous_branch_1, viscous_branch_2, viscous_branch_3)
+  cons_model = wrap(GeneralizedMaxwell(hyper_elastic_model, viscous_branch_1, viscous_branch_2, viscous_branch_3))
   k=Kinematics(Mechano,Solid)
 
   # Dirichlet boundary conditions: the stretch peaks at t = 10 s (the static driver evaluates the evolution

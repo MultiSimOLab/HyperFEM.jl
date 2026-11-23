@@ -366,6 +366,10 @@ const STATE_TEST_BACKENDS = Tuple(Symbol.(strip.(split(get(ENV, "HYPERFEM_TEST_B
     ("ElectroMechModel", () -> ElectroMechModel(mechano=visco(), electro=diel), (Fh, Eh, Fh⁻), (Fh, Fh⁻)),
     ("HessianRegularization(ElectroMechModel)", () -> HessianRegularization(ElectroMechModel(mechano=visco(), electro=diel)),
       (Fh, Eh, Fh⁻), (Fh, Fh⁻)),
+    ("HessianRegularization", () -> HessianRegularization(visco()), (Fh, Fh⁻), (Fh,)),
+    ("HessianRegularization with TangentSwitch", () -> HessianRegularization(visco(); switch=TangentSwitch(true)),
+      (Fh, Fh⁻), (Fh,)),
+    ("FlexoElectroModel", () -> FlexoElectroModel(electro=diel, mechano=visco()), (Fh, Eh, Fh⁻), (Fh, Fh⁻)),
     ("ThermoMechModel", () -> ThermoMechModel(thermo, visco(), law), (Fh, θh, Fh⁻), (Fh, Fh⁻)),
     ("ThermalDeviatoric", () -> PM.ThermalDeviatoric(visco(), law), (Fh, θh, Fh⁻), (Fh, Fh⁻)),
     ("ThermoMech_Bonet", () -> ThermoMech_Bonet(tvol, visco(), law, law), (Fh, θh, Fh⁻), (Fh, Fh⁻)),
@@ -404,6 +408,7 @@ const STATE_TEST_BACKENDS = Tuple(Symbol.(strip.(split(get(ENV, "HYPERFEM_TEST_B
   @test_throws "GeneralizedMaxwell has internal variables" update_state!(m, CellState(m, dΩ), Fh, Fh⁻)
   @test_throws "(A, F, E, Fn) for electro-mechanical" update_state!(m, CellState(m, dΩ), Fh, Fh⁻)
   @test_throws "(A, F, θ, Fn) for thermo-mechanical" update_state!(m, CellState(m, dΩ), Fh, Fh⁻)
+  @test_throws "(A, F, n, Fn) if anisotropic" update_state!(m, CellState(m, dΩ), Fh, Fh⁻)
 
   # models without internal variables accept any update and do nothing: no state (`nothing`) or no branches (`()`)
   @test isnothing(initialize_state(nh))
@@ -412,4 +417,30 @@ const STATE_TEST_BACKENDS = Tuple(Symbol.(strip.(split(get(ENV, "HYPERFEM_TEST_B
   @test isnothing(update_state!(GeneralizedMaxwell(nh), (), Fh))
   em0 = ElectroMechModel(mechano=GeneralizedMaxwell(nh), electro=diel)
   @test isnothing(update_state!(em0, CellState(em0, dΩ), Fh, Fh⁻))
+end
+
+
+@testset "Wrappers of viscous models forward the initial state, the time step and the dissipation" begin
+  nh = NeoHookean3D(λ=1e6, μ=1.4e4)
+  visco() = GeneralizedMaxwell(nh, ViscousPolyconvex(μ=5.6e4, τ=0.82), ViscousPolyconvex(μ=3.4e4, τ=10.7))
+  F = I3D + 1e-2*TensorValue(1:9...)
+  Fn = I3D
+  Cv = I3D
+  ref = visco()
+  update_time_step!(ref, 0.37)
+  Dref = Dissipation(ref)(F, Fn, Cv, Cv)
+  @test Dref != 0
+  for (name, wrap) in [("HessianRegularization", HessianRegularization),
+                       ("FlexoElectroModel", v -> FlexoElectroModel(electro=IdealDielectric(ε=1.0), mechano=v))]
+    @testset "$name" begin
+      inner = visco()
+      model = wrap(inner)
+      @test initialize_state(model) == initialize_state(inner)
+      update_time_step!(model, 0.37)
+      @test inner.branches[1].Δt[] == 0.37
+      @test inner.branches[2].Δt[] == 0.37
+      D = Dissipation(model)
+      @test (name == "FlexoElectroModel" ? D(F, VectorValue(0.0, 0.0, 0.0), Fn, Cv, Cv) : D(F, Fn, Cv, Cv)) == Dref
+    end
+  end
 end

@@ -81,6 +81,14 @@ HyperFEM.ComputationalModels.nls_iterations(s::FailingNewton) = HyperFEM.Computa
       end
     end
     agree(r, x -> x[2])
+    # a HessianRegularization that does not project (TangentSwitch off) forwards the state and the time step
+    # of the wrapped viscous model: the same response, bit for bit
+    rw = run_backends(b -> visco_elastic_simulation(; backend=b, wrap=m -> HessianRegularization(m; switch=TangentSwitch(false))))
+    for b in TEST_BACKENDS
+      @testset "HessianRegularization wrapper ($b)" begin
+        @test rw[b] == r[b]
+      end
+    end
     # the transient driver (QuasiStatic scheme, the internal variables updated through the hooks, both
     # storages of the state variables) reproduces the load-step loop of the static driver
     rs = run_backends(b -> visco_elastic_simulation(; backend=b, driver=:static))

@@ -161,3 +161,10 @@ struct FlexoElectroModel{EM<:ElectroMechano} <: FlexoElectro{EM}
     return Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE, Φ
   end
 end
+
+# the state, the time step and the dissipation are those of the electro-mechanical model
+update_time_step!(obj::FlexoElectroModel, Δt::Float64) = update_time_step!(obj.electromechano, Δt)
+Gridap.CellData.CellState(obj::FlexoElectroModel, args...; kwargs...) = CellState(obj.electromechano, args...; kwargs...)
+initialize_state(obj::FlexoElectroModel) = initialize_state(obj.electromechano)
+Gridap.CellData.update_state!(obj::FlexoElectroModel, state, args...; kwargs...) = update_state!(obj.electromechano, state, args...; kwargs...)
+Dissipation(obj::FlexoElectroModel) = Dissipation(obj.electromechano)
