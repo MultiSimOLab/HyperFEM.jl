@@ -101,8 +101,6 @@ struct LogBarrier <: Volumetric
 end
 
 _lnJ(J) = J > 0 ? log(J) : oftype(J, NaN)
-_∂H∂F(F::TensorValue{2,2}) = _∂H∂F_2D()
-_∂H∂F(F::TensorValue{3,3}) = ×ᵢ⁴(F)
 
 function (obj::LogBarrier)()
   κ, p = obj.κ, obj.p
@@ -112,7 +110,7 @@ function (obj::LogBarrier)()
   ∂Ψ_∂J(F) = κ * _lnJ(J(F))^(2p - 1) / J(F)
   ∂Ψ2_∂J2(F) = κ * ((2p - 1) * _lnJ(J(F))^(2p - 2) - _lnJ(J(F))^(2p - 1)) / J(F)^2
   ∂Ψu(F) = ∂Ψ_∂J(F) * H(F)
-  ∂Ψuu(F) = ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂J(F) * _∂H∂F(F)
+  ∂Ψuu(F) = ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂J(F) * ∂H∂F(F)
   return (Ψ, ∂Ψu, ∂Ψuu)
 end
 
@@ -200,7 +198,7 @@ struct Hessian∇JRegularization <: Mechano
     H(F) = det(F) * inv(F)'
     Ψ(F, Jh) = Ψs(F) + 0.5 * κ * (J(F) - Jh)^2
     ∂Ψ(F, Jh) = ∂Ψs(F) + κ * (J(F) - Jh) * H(F)
-    ∂2Ψ_(F, Jh) = ∂2Ψs(F) + κ * (H(F) ⊗ H(F)) + κ * (J(F) - Jh) * _∂H∂F(F)
+    ∂2Ψ_(F, Jh) = ∂2Ψs(F) + κ * (H(F) ⊗ H(F)) + κ * (J(F) - Jh) * ∂H∂F(F)
 
     ∂2Ψ(F, Jh) = regularize_hessian(∂2Ψ_(F, Jh), δ)
     return (Ψ, ∂Ψ, ∂2Ψ)
@@ -452,7 +450,7 @@ struct Gent2D <: IsoElastic
 
     ∂Ψuu(F) = ∂Ψ2_∂FF(F) +
               ∂Ψ2_∂JJ(F) * (H(F) ⊗ H(F)) +
-              ∂Ψ_∂J(F) * _∂H∂F_2D()
+              ∂Ψ_∂J(F) * ∂H∂F(F)
 
     return (Ψ, ∂Ψu, ∂Ψuu)
   end
@@ -513,7 +511,7 @@ struct MooneyRivlin2D <: IsoElastic
     ∂Ψ2_∂J2(F) = μ2 - (μ1 + 2 * μ2) * ∂log2∂J2(J(F)) + λ
 
     ∂Ψu(F) = (μ1 + μ2) * F + ∂Ψ_∂J(F) * H(F)
-    ∂Ψuu(F) = (μ1 + μ2) * 𝕀2D + ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂J(F) * _∂H∂F_2D()
+    ∂Ψuu(F) = (μ1 + μ2) * 𝕀2D + ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂J(F) * ∂H∂F(F)
     return (Ψ, ∂Ψu, ∂Ψuu)
   end
 end
@@ -585,7 +583,7 @@ struct NonlinearMooneyRivlin2D <: IsoElastic
     ∂Ψ2_∂FJ(F) = (2 * μ2 * (α2 - 1) / (3.0^(α2 - 1)) * (tr((F)' * F) + J(F)^2)^(α2 - 2)) * J(F) * F
     ∂Ψ2_∂JJ(F) = μ2 / (3.0^(α2 - 1)) * (tr((F)' * F) + J(F)^2)^(α2 - 1) + (2 * μ2 * (α2 - 1) / (3.0^(α2 - 1)) * (tr((F)' * F) + J(F)^2)^(α2 - 2)) * J(F)^2 - (μ1 + 2.0 * μ2) * ∂log2∂J2(J(F)) + λ
 
-    ∂Ψuu(F) = ∂Ψ2_∂FF(F) + (∂Ψ2_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂Ψ2_∂FJ(F)) + ∂Ψ2_∂JJ(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂J(F) * _∂H∂F_2D()
+    ∂Ψuu(F) = ∂Ψ2_∂FF(F) + (∂Ψ2_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂Ψ2_∂FJ(F)) + ∂Ψ2_∂JJ(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂J(F) * ∂H∂F(F)
     return (Ψ, ∂Ψu, ∂Ψuu)
   end
 end
@@ -621,7 +619,7 @@ struct NonlinearMooneyRivlin2D_CV <: IsoElastic
     ∂Ψ2_∂FJ(F) = (2 * μ2 * (α2 - 1) / (3.0^(α2 - 1)) * (tr((F)' * F) + J(F)^2)^(α2 - 2)) * J(F) * F
     ∂Ψ2_∂JJ(F) = μ2 / (3.0^(α2 - 1)) * (tr((F)' * F) + J(F)^2)^(α2 - 1) + (2 * μ2 * (α2 - 1) / (3.0^(α2 - 1)) * (tr((F)' * F) + J(F)^2)^(α2 - 2)) * J(F)^2 + (μ1 + 2.0 * μ2) * (1.0 / (J(F))^2) + λ * γ * ((γ - 1) * J(F)^(γ - 2) + (γ + 1) * J(F)^(-γ - 2))
 
-    ∂Ψuu(F) = ∂Ψ2_∂FF(F) + (∂Ψ2_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂Ψ2_∂FJ(F)) + ∂Ψ2_∂JJ(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂J(F) * _∂H∂F_2D()
+    ∂Ψuu(F) = ∂Ψ2_∂FF(F) + (∂Ψ2_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂Ψ2_∂FJ(F)) + ∂Ψ2_∂JJ(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂J(F) * ∂H∂F(F)
     return (Ψ, ∂Ψu, ∂Ψuu)
   end
 end
@@ -739,7 +737,7 @@ struct NonlinearIncompressibleMooneyRivlin2D_CV <: IsoElastic
     ∂Ψ_∂FJ(F) = ∂Ψ1_∂FJ(F)
     ∂Ψ_∂J2(F) = ∂Ψ1_∂J2(F) + ∂Ψ2_∂J2(F)
 
-    ∂Ψuu(F) = ∂Ψ_∂F2(F) + ∂Ψ_∂J2(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂Ψ_∂FJ(F) + ∂Ψ_∂J(F) * _∂H∂F_2D()
+    ∂Ψuu(F) = ∂Ψ_∂F2(F) + ∂Ψ_∂J2(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂Ψ_∂FJ(F) + ∂Ψ_∂J(F) * ∂H∂F(F)
     return (Ψ, ∂Ψu, ∂Ψuu)
   end
 end
@@ -856,7 +854,7 @@ struct TransverseIsotropy2D <: AnisoElastic
                  μ / 2 * (α2 - 1) * (I5(F, N)^(α2 - 2)) * (∂I5∂F(F, N)) ⊗ (∂I5∂F(F, N)) +
                  μ / 2 * (I5(F, N)^(α2 - 1)) * ∂I5∂F∂F(F, N) +
                  ∂Ψ2_∂J2(F, N) * (H(F) ⊗ H(F)) +
-                 ∂Ψ_∂J(F, N) * _∂H∂F_2D()
+                 ∂Ψ_∂J(F, N) * ∂H∂F(F)
     return (Ψ, ∂Ψu, ∂Ψuu)
   end
 end
@@ -1022,7 +1020,7 @@ struct IncompressibleNeoHookean2D <: IsoElastic
     ∂Ψ3_∂J2(F) = β / J_(F)^2
     ∂Ψ_∂J2(F) = (∂Ψ1_∂J2(F) * ∂J(F)^2 + ∂Ψ1_∂J(F) * ∂2J(F)) + ∂Ψ2_∂J2(F) + ∂Ψ3_∂J2(F)
     ∂Ψ_∂FJ(F) = -(2 / 3) * μ * J(F)^(-5 / 3) * ∂J(F) * F
-    ∂Ψuu(F) = μ * 𝕀2D * J(F)^(-2 / 3) + ∂Ψ_∂J2(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂Ψ_∂FJ(F) + ∂Ψ_∂J(F) * _∂H∂F_2D()
+    ∂Ψuu(F) = μ * 𝕀2D * J(F)^(-2 / 3) + ∂Ψ_∂J2(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂Ψ_∂FJ(F) + ∂Ψ_∂J(F) * ∂H∂F(F)
     return (Ψ, ∂Ψu, ∂Ψuu)
   end
 end
@@ -1053,7 +1051,7 @@ struct IncompressibleNeoHookean2D_CV <: IsoElastic
     ∂Ψ2_∂J2(F) = λ * γ * ((γ - 1) * J(F)^(γ - 2) + (γ + 1) * J(F)^(-γ - 2))
     ∂Ψ_∂J2(F) = ∂Ψ1_∂J2(F) + ∂Ψ2_∂J2(F)
     ∂Ψ_∂FJ(F) = -(2 / 3) * μ * J(F)^(-5 / 3) * F
-    ∂Ψuu(F) = μ * 𝕀2D * J(F)^(-2 / 3) + ∂Ψ_∂J2(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂Ψ_∂FJ(F) + ∂Ψ_∂J(F) * _∂H∂F_2D()
+    ∂Ψuu(F) = μ * 𝕀2D * J(F)^(-2 / 3) + ∂Ψ_∂J2(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂Ψ_∂FJ(F) + ∂Ψ_∂J(F) * ∂H∂F(F)
     return (Ψ, ∂Ψu, ∂Ψuu)
   end
 end
@@ -1094,7 +1092,7 @@ struct ARAP2D_regularized <: IsoElastic
     ∂Ψ_∂FJ(F) = -μ * J(F)^(-2) * F * ∂J(F)
     ∂Ψ_∂FF(F) = μ * J(F)^(-1) * 𝕀2D
 
-    ∂Ψuu(F) = ∂Ψ_∂FF(F) + ∂Ψ_∂J2(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂Ψ_∂FJ(F) + ∂Ψ_∂J(F) * _∂H∂F_2D()
+    ∂Ψuu(F) = ∂Ψ_∂FF(F) + ∂Ψ_∂J2(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂Ψ_∂FJ(F) + ∂Ψ_∂J(F) * ∂H∂F(F)
     return (Ψ, ∂Ψu, ∂Ψuu)
   end
 end
@@ -1120,7 +1118,7 @@ struct ARAP2D <: IsoElastic
     ∂2Ψ_∂FF(F) = μ * J(F)^(-1) * 𝕀2D
 
     ∂Ψu(F) = ∂Ψ_∂F(F) + ∂Ψ_∂J(F) * H(F)
-    ∂Ψuu(F) = ∂2Ψ_∂FF(F) + ∂2Ψ_∂J2(F) * (H(F) ⊗ H(F)) + ∂2Ψ_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂2Ψ_∂FJ(F) + ∂Ψ_∂J(F) * _∂H∂F_2D()
+    ∂Ψuu(F) = ∂2Ψ_∂FF(F) + ∂2Ψ_∂J2(F) * (H(F) ⊗ H(F)) + ∂2Ψ_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂2Ψ_∂FJ(F) + ∂Ψ_∂J(F) * ∂H∂F(F)
 
     return (Ψ, ∂Ψu, ∂Ψuu)
   end
@@ -1155,7 +1153,7 @@ struct NonlinearARAP2D <: IsoElastic
     ∂2g_∂x2(x) = p * (p-1) * x^(p-2)
 
     ∂fu(F) = ∂f_∂F(F) + ∂f_∂J(F) * H(F)
-    ∂fuu(F) = ∂2f_∂FF(F) + ∂2f_∂J2(F) * (H(F) ⊗ H(F)) + ∂2f_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂2f_∂FJ(F) + ∂f_∂J(F) * _∂H∂F_2D()
+    ∂fuu(F) = ∂2f_∂FF(F) + ∂2f_∂J2(F) * (H(F) ⊗ H(F)) + ∂2f_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂2f_∂FJ(F) + ∂f_∂J(F) * ∂H∂F(F)
 
     ∂Ψu(F) = (μ/p) * (∂g_∂x(f(F)) * ∂fu(F))
     ∂Ψuu(F) = (μ/p) * (∂g_∂x(f(F)) * ∂fuu(F) + ∂2g_∂x2(f(F)) * (∂fu(F) ⊗ ∂fu(F)))
@@ -1187,15 +1185,14 @@ end
 
 function SecondPiola(obj::IsochoricNeoHookean3D)
   μ = obj.μ
-  H(F) = cof(F)
   Ψ(C) = μ / 2 * tr(C) * (det(C))^(-1 / 3) - 3*μ/2
   ∂Ψ∂C(C) = μ / 2 * I3D * (det(C))^(-1 / 3)
   ∂Ψ∂dC(C) = -μ / 6 * tr(C) * (det(C))^(-4 / 3)
-  S(C) = 2 * (∂Ψ∂C(C) + ∂Ψ∂dC(C) * H(C))
+  S(C) = 2 * (∂Ψ∂C(C) + ∂Ψ∂dC(C) * cof(C))
   ∂2Ψ∂CdC(C) = -μ / 6 * I3D * (det(C))^(-4 / 3)
   ∂2Ψ∂2dC(C) = 2 * μ / 9 * tr(C) * (det(C))^(-7 / 3)
   ∂S∂C(C) =
-    let HC = H(C)
+    let HC = cof(C)
       2 * (∂2Ψ∂2dC(C) * (HC ⊗ HC) + ∂2Ψ∂CdC(C) ⊗ HC + HC ⊗ ∂2Ψ∂CdC(C) + ∂Ψ∂dC(C) * ×ᵢ⁴(C))
     end
   return (Ψ, S, ∂S∂C)

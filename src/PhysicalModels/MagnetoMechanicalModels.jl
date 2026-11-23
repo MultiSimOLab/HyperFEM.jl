@@ -173,7 +173,7 @@ function _getCoupling(mag::HardMagnetic2D, ::Mechano, Λ::Float64=1.0)
 
   ∂Ψcoup_∂JF(F, N) = 2 * μ * (H(F) ⊗ (Fℋᵣ(F, N) ⊗ ℋᵣ(N)) + (Fℋᵣ(F, N) ⊗ ℋᵣ(N)) ⊗ H(F))
   ∂Ψcoup_∂FF(F, N) = 2 * μ * J(F) * (I2D ⊗ᵢₖʲˡ (ℋᵣ(N) ⊗ ℋᵣ(N)))
-  ∂Ψcoup_∂uu(F, N) = ∂Ψcoup_∂JF(F, N) + ∂Ψcoup_∂FF(F, N) + ∂Ψcoup_∂J(F, N) * _∂H∂F_2D()
+  ∂Ψcoup_∂uu(F, N) = ∂Ψcoup_∂JF(F, N) + ∂Ψcoup_∂FF(F, N) + ∂Ψcoup_∂J(F, N) * ∂H∂F(F)
 
   #-------------------------------------------------------------------------------------
   # THIRD TERM
@@ -181,7 +181,7 @@ function _getCoupling(mag::HardMagnetic2D, ::Mechano, Λ::Float64=1.0)
 
   Ψmok(F, N) = (0.5 * μ * J(F) / χr) * (ℋᵣ(N) ⋅ ℋᵣ(N))
   ∂Ψmok_∂u(F, N) = (0.5 * μ / χr) * (ℋᵣ(N) ⋅ ℋᵣ(N)) * H(F)
-  ∂Ψmok_∂uu(F, N) = (0.5 * μ / χr) * (ℋᵣ(N) ⋅ ℋᵣ(N)) * _∂H∂F_2D()
+  ∂Ψmok_∂uu(F, N) = (0.5 * μ / χr) * (ℋᵣ(N) ⋅ ℋᵣ(N)) * ∂H∂F(F)
 
   #-------------------------------------------------------------------------------------
   # FOURTH TERM
@@ -197,17 +197,17 @@ function _getCoupling(mag::HardMagnetic2D, ::Mechano, Λ::Float64=1.0)
   ∂Ψtorq_∂HJ(F, ℋ₀, N) = -(μ * (1 + χt) / J(F)^2) * (Hℋᵣ(F, N) ⊗ ℋ₀ + Hℋ₀(F, ℋ₀) ⊗ ℋᵣ(N))
   ∂Ψtorq_∂JJ(F, ℋ₀, N) = (2 * μ * (1 + χt) / J(F)^3) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
 
-  ∂Ψtorq_∂uu(F, ℋ₀, N) = _∂H∂F_2D()' ⋅² ∂Ψtorq_∂HH(F, ℋ₀, N) ⋅² _∂H∂F_2D() +
-                         _∂H∂F_2D()' ⋅² (∂Ψtorq_∂HJ(F, ℋ₀, N) ⊗ H(F)) +
-                         (H(F) ⊗ ∂Ψtorq_∂HJ(F, ℋ₀, N)) ⋅² _∂H∂F_2D() +
+  ∂Ψtorq_∂uu(F, ℋ₀, N) = ∂H∂F(F)' ⋅² ∂Ψtorq_∂HH(F, ℋ₀, N) ⋅² ∂H∂F(F) +
+                         ∂H∂F(F)' ⋅² (∂Ψtorq_∂HJ(F, ℋ₀, N) ⊗ H(F)) +
+                         (H(F) ⊗ ∂Ψtorq_∂HJ(F, ℋ₀, N)) ⋅² ∂H∂F(F) +
                          ∂Ψtorq_∂JJ(F, ℋ₀, N) * (H(F) ⊗ H(F)) +
-                         ∂Ψtorq_∂J(F, ℋ₀, N) * _∂H∂F_2D()
+                         ∂Ψtorq_∂J(F, ℋ₀, N) * ∂H∂F(F)
 
   ∂Ψtorq_∂ℋ₀H(F, ℋ₀, N) = (μ / (J(F))) * ((I2D ⊗ᵢₖʲ Hℋᵣ(F, N)) + (H(F)' ⊗ ℋᵣ(N))) * (1 + χt)
   ∂Ψtorq_∂ℋ₀J(F, ℋ₀, N) = (-μ / (J(F))^2.0) * (H(F)' * Hℋᵣ(F, N)) * (1 + χt)
 
 
-  ∂Ψtorq_∂φu(F, ℋ₀, N) = (∂Ψtorq_∂ℋ₀H(F, ℋ₀, N) ⋅² _∂H∂F_2D()) + (∂Ψtorq_∂ℋ₀J(F, ℋ₀, N) ⊗ H(F))
+  ∂Ψtorq_∂φu(F, ℋ₀, N) = (∂Ψtorq_∂ℋ₀H(F, ℋ₀, N) ⋅² ∂H∂F(F)) + (∂Ψtorq_∂ℋ₀J(F, ℋ₀, N) ⊗ H(F))
 
   #-------------------------------------------------------------------------------------
   #                           TOTAL ENERGY
