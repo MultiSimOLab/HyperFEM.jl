@@ -369,6 +369,27 @@ end
   test_type_stability_2D(model)
 end
 
+@testset "Gent3D" begin
+  model = Gent3D(λ=3.0, μ=1.0, Jm=50.0, γ=1.0)
+  test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-12)
+  test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
+  Ψ, P, A = model()
+  F = I3D + ∇u3
+  @test isapprox(norm(P(I3D)), 0.0, atol=1e-12)                          # stress-free reference state
+  Q = TensorValue(0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0)          # a rotation
+  @test Ψ(Q * F) ≈ Ψ(F)                                                   # objectivity
+  @test P(Q * F) ≈ Q * P(F)
+  # Jm → ∞: the isochoric part tends to the neo-Hookean μ/2 (I₁ - 3) (λ = 0 leaves -μ ln J in both)
+  # (differences of order μ (I₁ - 3)²/Jm in Ψ, μ (I₁ - 3)/Jm in P and μ/Jm in the tangent; absolute tolerances,
+  # since Ψ itself is small here: its two terms nearly cancel)
+  Ψg, Pg, Ag = Gent3D(λ=0.0, μ=1.0, Jm=1e5, γ=1.0)()
+  Ψn, Pn, An = NeoHookean3D(λ=0.0, μ=1.0)()
+  @test isapprox(Ψg(F), Ψn(F), atol=1e-8)
+  @test isapprox(Pg(F), Pn(F), atol=1e-6)
+  @test isapprox(Ag(F), An(F), atol=1e-4)
+end
+
 @testset "MooneyRivlin2D" begin
   #  Memory estimate: 0 bytes, allocs estimate: 0.
   model = MooneyRivlin2D(λ=3.0, μ1=1.0, μ2=2.0)
@@ -1160,6 +1181,7 @@ end
     ("HGO_4Fibers + NeoHookean3D", h4 + nh, (F, Ns...)),
     ("NeoHookean3D + MooneyRivlin3D + HGO_4Fibers", nh + mr + h4, (F, Ns...)),
     ("NeoHookean3D + TransverseIsotropy3D", nh + ti, (F, N1)),
+    ("Gent3D + HGO_4Fibers", Gent3D(λ=100.0, μ=1.0, Jm=50.0, γ=1.0) + h4, (F, Ns...)),
     ("HessianRegularization(NeoHookean3D + HGO_4Fibers)", HessianRegularization(nh + h4), (F, Ns...)),
     ("HessianRegularization with TangentSwitch", HessianRegularization(nh + h4; switch=TangentSwitch()), (F, Ns...)),
     ("GeneralizedMaxwell(NeoHookean3D + TransverseIsotropy3D)", maxwell(nh + ti), (F, N1, I3, I3, I3)),

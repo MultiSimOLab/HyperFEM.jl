@@ -37,6 +37,7 @@ end
 @publish PhysicalModels LinearElasticity2D
 @publish PhysicalModels Yeoh3D
 @publish PhysicalModels Gent2D
+@publish PhysicalModels Gent3D
 @publish PhysicalModels NeoHookean3D
 @publish PhysicalModels IsochoricNeoHookean3D
 @publish PhysicalModels IncompressibleNeoHookean3D
