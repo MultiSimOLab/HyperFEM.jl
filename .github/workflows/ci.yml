@@ -46,7 +46,7 @@ jobs:
       - uses: julia-actions/julia-processcoverage@v1
         if: matrix.version == '1'
         continue-on-error: true
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v7
         if: matrix.version == '1'
         with:
           files: lcov.info
