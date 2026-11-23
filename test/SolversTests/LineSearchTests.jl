@@ -1,5 +1,5 @@
 # Line searches: exact injectivity step (2D quadratic, 3D cubic, J_min) against sampling, the step of a
-# field over a measure, InjectivityLS and BacktrackingLS inside the Newton, failures, deprecated names.
+# field over a measure, InjectivityLS and BacktrackingLS inside the Newton, failures, argument checks.
 using Gridap, Gridap.Algebra, Gridap.FESpaces, Gridap.CellData
 using HyperFEM
 using HyperFEM.Solvers: _det_coefficients, _smallest_root
@@ -113,7 +113,7 @@ function linesearch_test_problem(; stretch=-0.5)
   V = TestFESpace(Ω, reffe, bc, conformity=:H1)
   U = TrialFESpace(V, bc, 0.0)
   res(Λ) = (u, v) -> ∫(∇(v)' ⊙ (∂Ψ∂F ∘ (F ∘ ∇(u)')))dΩ
-  jac(Λ) = (u, du, v) -> ∫(∇(v)' ⊙ ((∂Ψ∂FF ∘ (F ∘ ∇(u)')) ⊙ ∇(du)'))dΩ
+  jac(Λ) = (u, du, v) -> ∫(∇(v)' ⊙ ((∂Ψ∂FF ∘ (F ∘ ∇(u)')) ⋅² ∇(du)'))dΩ
   (; res, jac, U, V, bc, dΩ)
 end
 
@@ -180,8 +180,7 @@ end
   @test step_history(nls)[1] ≈ 0.5^4
 end
 
-@testset "Deprecated line-search names" begin
-  @test HyperFEM.Solvers.LineSearch() isa FullStepLS
+@testset "InjectivityLS: argument checks" begin
   @test_throws ArgumentError InjectivityLS(β=1.5)
   @test_throws ArgumentError InjectivityLS(jmin=-1.0)
 end

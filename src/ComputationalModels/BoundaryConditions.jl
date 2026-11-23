@@ -61,19 +61,41 @@ end
 (p::NonSeparable)(Λ, τ) = x -> _to_number(p.f(x, Λ))
 
 """
-    Coupling(g)
+    Coupling(g; match=:auto, tol=1e-10)
 
 The state of another problem prescribed on a boundary: `g(τ)` returns a field (`FEFunction`, `CellField`,
 `Interpolable`) or a function of `x`, evaluated at the stage parameter `τ` of the solver, the same one
 `res(τ)` receives. In a staggered loop `g` typically interpolates between the previous and the current
-stage of the other field, `τ -> uh⁻ + (uh⁺ - uh⁻) * τ`, and the field may live only on the faces of the
-tag (an `FESpace` on an interface). See [`Prescription`](@ref).
+stage of the other field, `τ -> uh⁻ + (uh⁺ - uh⁻) * τ` or [`StageBlend`](@ref)`(uh⁻, uh⁺)`. The field may live
+on another mesh, on the volume next to the boundary or only on the faces of the tag (an `FESpace` on an
+interface): the nodes of the tag are located in the mesh of the field once (see [`PointLocation`](@ref) for
+`match` and `tol`) and no point search is done afterwards. See [`Prescription`](@ref).
 """
 struct Coupling{G} <: Prescription
     g::G
+    match::Symbol
+    tol::Float64
 end
 
+Coupling(g; match::Symbol=:auto, tol::Real=1e-10) = Coupling(g, match, Float64(tol))
+
 (p::Coupling)(Λ, τ) = p.g(τ)
+
+"""
+    StageBlend(uh⁻, uh⁺)
+
+The state of a field between two stages of a staggered loop, `b(τ) = uh⁻ + (uh⁺ - uh⁻) * τ`, as a callable
+that keeps the two finite-element functions: the same field as the closure `τ -> uh⁻ + (uh⁺ - uh⁻) * τ` in a
+weak form, and in a [`Coupling`](@ref) the Dirichlet values are computed from the dof vectors of `uh⁻` and
+`uh⁺` (linear algebra only, the path that runs on GPU arrays and distributed vectors) and its derivative with
+respect to `τ` is exact.
+"""
+struct StageBlend{A,B}
+    uh⁻::A
+    uh⁺::B
+end
+
+(b::StageBlend)(τ) = b.uh⁻ + (b.uh⁺ - b.uh⁻) * τ
 
 """
     central_difference(f, Λ; h=1e-6)
@@ -97,6 +119,8 @@ function _derivative(p::NonSeparable, Λ, d)
 end
 
 # A coupling depends on the stage parameter only
+_derivative(p::Coupling{<:StageBlend}, τ, d) = p.g.uh⁺ - p.g.uh⁻
+
 function _derivative(p::Coupling, τ, d)
     if p.g(τ) isa Function
         x -> d(t -> p.g(t)(x), τ)

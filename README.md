@@ -2,8 +2,8 @@
 
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://multisimolab.github.io/HyperFEM.jl/stable/)
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://multisimolab.github.io/HyperFEM.jl/dev/)
-[![Build Status](https://github.com/MultiSimOLab/HyperFEM/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MultiSimOLab/HyperFEM/actions/workflows/ci.yml?branch=main)
-[![Coverage](https://codecov.io/gh/jmartfrut/HyperFEM.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/jmartfrut/HyperFEM.jl)
+[![Build Status](https://github.com/MultiSimOLab/HyperFEM.jl/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MultiSimOLab/HyperFEM.jl/actions/workflows/ci.yml?branch=main)
+[![Coverage](https://codecov.io/gh/MultiSimOLab/HyperFEM.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/MultiSimOLab/HyperFEM.jl)
 
 # Multiphysics Simulation of Multifunctional Soft Materials
 
@@ -85,10 +85,10 @@ E     = get_Kinematics(ke)
 res(Λ)= ((u, φ), (v, vφ)) ->   ∫(∇(v)' ⊙ (∂ΨF ∘ (F∘∇(u)', E∘∇(φ))))dΩ -
                                 ∫(∇(vφ) ⋅ (∂ΨE ∘ (F∘∇(u)', E∘∇(φ))))dΩ
 
-jac(Λ)= ((u, φ), (du, dφ), (v, vφ)) -> ∫(∇(v)' ⊙ ((∂ΨFF ∘ (F∘∇(u)', E∘∇(φ))) ⊙ ∇(du)'))dΩ +
+jac(Λ)= ((u, φ), (du, dφ), (v, vφ)) -> ∫(∇(v)' ⊙ ((∂ΨFF ∘ (F∘∇(u)', E∘∇(φ))) ⋅² ∇(du)'))dΩ +
                                         ∫(∇(vφ)' ⋅ ((∂ΨEE ∘ (F∘∇(u)', E∘∇(φ))) ⋅ ∇(dφ)))dΩ -
-                                        ∫(∇(dφ) ⋅ ((∂ΨEF ∘ (F∘∇(u)', E∘∇(φ))) ⊙ ∇(v)'))dΩ -
-                                        ∫(∇(vφ) ⋅ ((∂ΨEF ∘ (F∘∇(u)', E∘∇(φ))) ⊙ ∇(du)'))dΩ 
+                                        ∫(∇(dφ) ⋅ ((∂ΨEF ∘ (F∘∇(u)', E∘∇(φ))) ⋅² ∇(v)'))dΩ -
+                                        ∫(∇(vφ) ⋅ ((∂ΨEF ∘ (F∘∇(u)', E∘∇(φ))) ⋅² ∇(du)'))dΩ 
 # nonlinear solver (LU here; see "Solvers for large problems" below)
 nls_ = NewtonRaphson(LUSolver(); maxiter=20, atol=1.e-10, rtol=1.e-8, verbose=true)
 
@@ -116,6 +116,14 @@ post_model = PostProcessor(comp_model, driverpost; is_vtk=true, filepath=simdir)
 # Solve
 x = solve!(comp_model; stepping=(nsteps=5, maxbisec=5), post=post_model)
 ```
+
+`stepping` controls the load increments: the stage Λ goes from 0 to 1 starting with `ΔΛ = 1/nsteps`; a failed
+increment is bisected (`maxbisec` consecutive bisections at most). With `LoadStepping` the increment can also grow
+after easy increments: `LoadStepping(nsteps=1000, maxbisec=5, grow=1.5, easy=4, ΔΛmax=0.016, neasy=2)` starts with
+ΔΛ = 0.001 and multiplies it by 1.5 after every two consecutive increments converged in at most 4 Newton iterations,
+up to ΔΛ = 0.016. By default (`grow = 1`, `ΔΛmax = 1/nsteps`, `neasy = 1`) the increment never exceeds the initial one.
+A small initial increment with a larger `ΔΛmax` gets through a hard start and speeds up where the problem allows it;
+`neasy = 2` (Abaqus' rule) makes a large `ΔΛmax` safer.
 
 ## Solvers for large problems
 
@@ -247,14 +255,42 @@ is still accepted and selects it). With a tolerance, the passes of a step stop w
 the residual of the field at the new state of the others relative to the one of the first pass); a step whose
 passes reach `max_substeps` without convergence, or in which an inner solve fails, is rejected: the states, the
 lagged states and the Dirichlet values return to the last accepted step and the increment is bisected
-(`maxbisec` consecutive bisections at most); after a step accepted in at most `easy` passes the increment grows
-by `grow`, never beyond the initial one. `relaxation` is `:none`, a factor, `:aitken`/`Aitken(; ω0, ωmin, ωmax)`
+(`maxbisec` consecutive bisections at most); after `neasy` consecutive steps accepted in at most `easy` passes
+each (one, by default) the increment grows by `grow`, up to `Δτmax` (the initial increment by default).
+`relaxation` is `:none`, a factor, `:aitken`/`Aitken(; ω0, ωmin, ωmax)`
 (`ωmax > 1` allows over-relaxation, which a monotonically converging iteration needs to gain anything),
 `:iqnils`/`IQNILS()` (a quasi-Newton update of the coupling built from the passes of the step: the choice when
 the coupling is stiffer than a field's own stiffness, where the passes oscillate and no scalar factor converges),
 or a tuple with one of them per field; the factor of a field whose model has an `injectivity` measure and an
 `InjectivityLS` is cut so that the relaxed state does not invert elements. The post-processors of the inner
 models run inside every pass; output per accepted step belongs in `on_step`.
+
+### Fields of other problems: `Coupling`, `StageBlend` and `Transfer`
+
+A `Coupling(g)` prescribes on a boundary the state of another problem, `g(τ)` at the stage τ of the solver. The
+field may live on another mesh, on the volume next to the boundary or only on the faces of the tag: the nodes of
+the tag are located in the mesh of the field once, when the model builds its Dirichlet applicator, and no point
+search is done afterwards. A finite-element function (or a `StageBlend` of two) is then transferred through its
+dof values — a copy when the nodes coincide, a sparse product otherwise — and any other field is evaluated in the
+located cells. Fields that are not Dirichlet data (loads, tractions) go between two spaces with a `Transfer`:
+
+```julia
+# the vacuum follows the solid on their interface (staggered: the solid between its two stages)
+uhsolid = StageBlend(uh_solid⁻, uh_solid⁺)       # uhsolid(τ) = uh_solid⁻ + (uh_solid⁺ - uh_solid⁻) * τ, also in the weak forms
+Du_vacuum = BoundaryConditions(BoundaryCondition("Fixed_Air", [0.0, 0.0]),
+                               BoundaryCondition("Interface", Coupling(uhsolid)))    # match = :auto, tol = 1e-10
+
+# nodal forces of the vacuum on the interface of the solid
+T = Transfer(V_maxwell, Usolid_int)              # built once
+transfer!(tmaxw_, T, Pmaxw)                      # values at the dofs of Usolid_int (a copy here: the nodes coincide)
+transfer_transpose!(f, T, g)                     # conservative transfer of loads (the resultant is kept)
+```
+
+`match = :auto` matches coincident nodes exactly and searches the others in the cells of the source mesh;
+`match = :search` always searches. A node that is not on the source mesh is an error, never an extrapolation.
+The application is linear algebra on flat arrays (no allocations, generic in the array type), the part that
+carries over to distributed and GPU arrays; a `Coupling` whose `g(τ)` is not a finite-element function or a
+`StageBlend` is evaluated by Gridap in the located cells. Gridap's `Interpolable` is still accepted.
 
 ## HyperFEM Gallery
 

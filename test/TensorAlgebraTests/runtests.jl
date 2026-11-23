@@ -6,6 +6,7 @@ using Test
 
   @time begin
     include("TensorAlgebraTests.jl")
+    include("TensorTypes.jl")
     include("Hessian.jl")
   end
 

@@ -93,9 +93,12 @@ acceleration `(1−αm) aₙ₊₁ + αm aₙ` (`∂tt(ctx, u)`), the velocity `
 and the field `(1−αf) uₙ₊₁ + αf uₙ` (`field(ctx, u)`) at `t_{n+1−αf}`. `ρ∞ ∈ [0, 1]` gives
 `αm = (2ρ∞−1)/(ρ∞+1)`, `αf = ρ∞/(ρ∞+1)`, `γ = ½ − αm + αf`, `β = ¼(1 − αm + αf)²`. `Newmark` is
 `αm = αf = 0`; `HHT(α)` is `αm = 0, αf = α, γ = ½ + α, β = ¼(1+α)²`; `Midpoint()` is `ρ∞ = 1`
-(`αm = αf = ½, β = ¼, γ = ½`: `uₙ₊₁ − uₙ = Δt (vₙ + vₙ₊₁)/2` and the forces at `u_{n+½}`). Order 2.
+(`αm = αf = ½, β = ¼, γ = ½`: `uₙ₊₁ − uₙ = Δt (vₙ + vₙ₊₁)/2` and the forces at `u_{n+½}`). Order 2 if
+`γ = ½ − αm + αf` (`order`; all the constructors above with their default parameters), otherwise 1.
 Error estimate of Zienkiewicz–Xie extended to the family, `C Δt²(aₙ₊₁ − aₙ)` with
-`C = β − (1−αm)/(6(1−αf))` (`β − 1/6` for Newmark; the schemes with `C = 0` have no estimate).
+`C = β − (1−αm)/(6(1−αf))` (`β − 1/6` for Newmark; the schemes with `C = 0` have no estimate). The estimate
+is the local error of the displacement, `O(Δt³)` whatever `γ`, so `error_order` is 2 in all cases (it does
+not see the first-order velocity error of the schemes with `γ ≠ ½ − αm + αf`).
 """
 struct GeneralizedAlpha <: TimeScheme
     αm::Float64
@@ -116,7 +119,8 @@ end
 Newmark(; β::Real=0.25, γ::Real=0.5) = GeneralizedAlpha(; αm=0.0, αf=0.0, β, γ)
 HHT(α::Real) = GeneralizedAlpha(; αm=0.0, αf=α, γ=0.5 + α, β=0.25 * (1 + α)^2)
 Midpoint() = GeneralizedAlpha(; αm=0.5, αf=0.5, β=0.25, γ=0.5)
-order(::GeneralizedAlpha) = 2
+order(s::GeneralizedAlpha) = abs(s.γ - (0.5 - s.αm + s.αf)) <= 1e-12 ? 2 : 1
+error_order(::GeneralizedAlpha) = 2
 derivative_order(::GeneralizedAlpha) = 2
 has_error_estimate(s::GeneralizedAlpha) = _zx_constant(s) != 0.0
 

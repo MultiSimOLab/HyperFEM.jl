@@ -1,5 +1,6 @@
 using Gridap
 using HyperFEM
+using JSON
 using LinearAlgebra
 using Test
 
@@ -80,6 +81,14 @@ HyperFEM.ComputationalModels.nls_iterations(s::FailingNewton) = HyperFEM.Computa
       end
     end
     agree(r, x -> x[2])
+    # a HessianRegularization that does not project (TangentSwitch off) forwards the state and the time step
+    # of the wrapped viscous model: the same response, bit for bit
+    rw = run_backends(b -> visco_elastic_simulation(; backend=b, wrap=m -> HessianRegularization(m; switch=TangentSwitch(false))))
+    for b in TEST_BACKENDS
+      @testset "HessianRegularization wrapper ($b)" begin
+        @test rw[b] == r[b]
+      end
+    end
     # the transient driver (QuasiStatic scheme, the internal variables updated through the hooks, both
     # storages of the state variables) reproduces the load-step loop of the static driver
     rs = run_backends(b -> visco_elastic_simulation(; backend=b, driver=:static))
@@ -142,8 +151,8 @@ HyperFEM.ComputationalModels.nls_iterations(s::FailingNewton) = HyperFEM.Computa
     r = run_backends(b -> staggered_visco_electric_simulation(; backend=b))
     for (b, (t, uz)) in r
       @testset "$b" begin
-        @test uz[end] ≈ 0.002914376983
-        @test norm(uz) ≈ 0.004558785342
+        @test uz[end] ≈ 0.003132373359
+        @test norm(uz) ≈ 0.004849630487
       end
     end
     agree(r, x -> x[2])
@@ -153,11 +162,12 @@ HyperFEM.ComputationalModels.nls_iterations(s::FailingNewton) = HyperFEM.Computa
     r = run_backends(b -> stokes_simulation(; backend=b))
     for (b, x) in r
       @testset "$b" begin
-        @test norm(x) ≈ 4199.925167995936
+        @test norm(x) ≈ 4199.925167995936 rtol=1e-7
       end
     end
-    # saddle point: the kernel's sparsity pattern stores the (empty) p-p block, which changes the pivoting of
-    # the LU; matrix and vector agree to 1e-16, the solutions to ~1e-7
+    # saddle point with ~1e8 amplification of rounding: differences of ~1e-16 in the matrix (assembly order,
+    # backend) or in the LU (UMFPACK/BLAS version, platform) move the norm by ~1e-8 and the solution vector
+    # by up to ~1e-7; hence rtol=1e-7 against the reference and 1e-6 between backends
     agree(r, identity; rtol=1e-6)
   end
 

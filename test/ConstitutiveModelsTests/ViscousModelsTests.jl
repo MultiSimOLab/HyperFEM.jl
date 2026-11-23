@@ -2,9 +2,14 @@
 using Gridap.TensorValues
 using Gridap.Arrays
 using HyperFEM, HyperFEM.TensorAlgebra
+using HyperFEM.PhysicalModels: cof
 using StaticArrays
 using Test
 using ForwardDiff
+import Gridap
+using Gridap: ∇
+
+include("TypeStabilityHelpers.jl")
 
 
 μ      = 1.367e4  # Pa
@@ -60,7 +65,7 @@ function numerical_tangent(Ψ, F, ϵ=1e-5)
       end
     end
   end
-  return TensorValue(H)
+  return FourthOrderTensorValue(Tuple(H))
 end
 
 
@@ -72,21 +77,51 @@ end
 function test_viscous_derivatives_numerical(model; rtolP=1e-12, rtolH=1e-12)
   update_time_step!(model, 1e-2)
   Ψ, ∂Ψu, ∂Ψuu = model()
-  F = TensorValue(1.:9...) * 1e-3 + I3
-  Fn = TensorValue(1.:9...) * 5e-4 + I3
-  Uvn = isochoric_F(TensorValue(1.,2.,3.,2.,4.,5.,3.,5.,6.) * 2e-4 + I3)
+  F = TensorValue(1.:9...) * 1e-3 + I3D
+  Fn = TensorValue(1.:9...) * 5e-4 + I3D
+  Uvn = isochoric_F(TensorValue(1.,2.,3.,2.,4.,5.,3.,5.,6.) * 2e-4 + I3D)
   λvn = 1e-3
   Avn = VectorValue(Uvn..., λvn)
   piola = richardson_expansion((F, ϵ) -> numerical_piola(F -> Ψ(F, Fn, Avn), F, ϵ), F, 1e-5)
   tangent = richardson_expansion((F, ϵ) -> numerical_tangent(F -> Ψ(F, Fn, Avn), F, ϵ), F, 1e-4)
   @test isapprox(∂Ψu(F, Fn, Avn), piola, rtol=rtolP)
   @test isapprox(∂Ψuu(F, Fn, Avn), tangent, rtol=rtolH)
+  test_type_stability__(model, F, Fn, Avn)
+end
+
+
+"Numerical derivative of the stress `P(F)` (central differences)."
+function numerical_stress_derivative(P, F, ϵ=1e-5)
+  H = MMatrix{9,9}(zeros(Float64,81))
+  for j in 1:9
+    ej = zeros(9); ej[j] = ϵ
+    H[:, j] = (get_array(P(F + TensorValue(ej...))) - get_array(P(F - TensorValue(ej...))))[:] / 2ϵ
+  end
+  return FourthOrderTensorValue(Tuple(H))
+end
+
+
+"""
+The stress of a viscous model is the algorithmic one (internal variable fixed after the return mapping), not the
+derivative of the energy: the consistent tangent is checked against the numerical derivative of the stress.
+"""
+function test_viscous_tangent_numerical(model; rtol=1e-5)  # limited by the absolute tolerance (1e-6) of the return mapping
+  update_time_step!(model, 1e-2)
+  Ψ, ∂Ψu, ∂Ψuu = model()
+  F = TensorValue(1.:9...) * 1e-3 + I3D
+  Fn = TensorValue(1.:9...) * 5e-4 + I3D
+  Uvn = isochoric_F(TensorValue(1.,2.,3.,2.,4.,5.,3.,5.,6.) * 2e-4 + I3D)
+  λvn = 1e-3
+  Avn = VectorValue(Uvn..., λvn)
+  tangent = richardson_expansion((F, ϵ) -> numerical_stress_derivative(F -> ∂Ψu(F, Fn, Avn), F, ϵ), F, 1e-4)
+  @test isapprox(∂Ψuu(F, Fn, Avn), tangent, rtol=rtol)
+  test_type_stability__(model, F, Fn, Avn)
 end
 
 
 function test_elastic_derivatives_numerical(model; rtolP=1e-12, rtolH=1e-12)
   Ψ, ∂Ψu, ∂Ψuu = model()
-  F = TensorValue(1.:9...) * 1e-3 + I3
+  F = TensorValue(1.:9...) * 1e-3 + I3D
   piola = richardson_expansion((F,ϵ) -> numerical_piola(Ψ,F,ϵ), F, 1e-5)
   tangent = richardson_expansion((F,ϵ) -> numerical_tangent(Ψ,F,ϵ), F, 1e-4)
   @test isapprox(∂Ψu(F), piola, rtol=rtolP)
@@ -126,21 +161,22 @@ end;
 
 @testset "ViscousIncompressible" begin
   visco = ViscousIncompressible(IsochoricNeoHookean3D(μ=μ1), τ=τ1)
-  test_viscous_derivatives_numerical(visco, rtolP=1e-3, rtolH=1e-3)
+  test_viscous_tangent_numerical(visco)
 end
 
 @testset "ViscousIncompressible2" begin
   visco = ViscousIncompressible(IsochoricNeoHookean3D(μ=1.0), τ=10.0)
   update_time_step!(visco, 0.1)
   Ψ, ∂Ψu, ∂Ψuu = visco()
-  F    =  1e-2*TensorValue(1,2,3,4,5,6,7,8,9) + I3
-  Fn   =  5e-3*TensorValue(1,2,3,4,5,6,7,8,9) + I3
-  Fvn  =  2e-2*TensorValue(1.0,2.0,3.0,4.0,5.0,8.7,6.5,4.3,6.5) + I3
+  F    =  1e-2*TensorValue(1,2,3,4,5,6,7,8,9) + I3D
+  Fn   =  5e-3*TensorValue(1,2,3,4,5,6,7,8,9) + I3D
+  Fvn  =  2e-2*TensorValue(1.0,2.0,3.0,4.0,5.0,8.7,6.5,4.3,6.5) + I3D
   Cvn  =  Fvn'*Fvn
   Uvn  =  sqrt(Cvn)
   Avn  =  VectorValue(Uvn...,0.0)
   @test isapprox(norm(∂Ψu(F, Fn, Avn)), 0.20303772905627682, rtol=1e-10)
   @test isapprox(norm(∂Ψuu(F, Fn, Avn)), 4.847586088299776, rtol=1e-10)
+  test_type_stability__(visco, F, Fn, Avn)
 end
 
 @testset "GeneralizedMaxwell EightChain 0-branch" begin
@@ -159,15 +195,15 @@ end
   hyper_elastic_model = NeoHookean3D(λ=λ, μ=μ)
   branch1 = ViscousIncompressible(IsochoricNeoHookean3D(μ=μ1), τ=τ1)
   cons_model = GeneralizedMaxwell(hyper_elastic_model, branch1)
-  test_viscous_derivatives_numerical(cons_model, rtolP=1e-3, rtolH=1e-2)
+  test_viscous_tangent_numerical(cons_model)
 end
 
 @testset "Dissipation ViscousIncompressible" begin
   branch1 = ViscousIncompressible(IsochoricNeoHookean3D(μ=μ1), τ=τ1)
   D = Dissipation(branch1, 0.1)
-  F = I3
-  Fn = I3
-  A = VectorValue(I3..., 0)
+  F = I3D
+  Fn = I3D
+  A = VectorValue(I3D..., 0)
   @test D(F, Fn, A) == 0
 end
 
@@ -182,9 +218,9 @@ end
   Ψ, S, ∂S∂C = SecondPiola(short_term)
   return_mapping(C,Cet,Cen,λ) = HyperFEM.PhysicalModels.return_mapping_algorithm!(branch1, S, ∂S∂C, C, Cet, Cen, λ)
 
-  F = I3 + TensorValue(1e-1, zeros(8)...)
-  Fn = I3 + TensorValue(2e-2, zeros(8)...)
-  Uvn = isochoric_F(I3 + TensorValue(2e-2, zeros(8)...))
+  F = I3D + TensorValue(1e-1, zeros(8)...)
+  Fn = I3D + TensorValue(2e-2, zeros(8)...)
+  Uvn = isochoric_F(I3D + TensorValue(2e-2, zeros(8)...))
   C = F'·F
   Cn = Fn'·Fn
   Cet = inv(Uvn)' · C · inv(Uvn)
@@ -194,12 +230,12 @@ end
   Ge = cof(Ce)
   ∂Se∂Ce = ∂S∂C(Ce)
   ∂Se = -1/τ * (Se - λ*Ge)
-  α = abs(tr(∂Se∂Ce))
-  Dvis_ref = -Se ⊙ (inv(2*∂Se∂Ce + 1e8α*Ge⊗Ge) ⊙ ∂Se)
+  α = abs(tr(TensorValue(Tuple(∂Se∂Ce))))
+  Dvis_ref = -Se ⊙ (FourthOrderTensorValue(Tuple(inv(TensorValue(Tuple(2*∂Se∂Ce + 1e8α*Ge⊗Ge))))) ⋅² ∂Se)
   e_rel = Float64[]
   m_values = [10^m for m = 3:7]
   for m ∈ m_values
-    Dvis = -Se ⊙ (inv(2*∂Se∂Ce + m*α*Ge⊗Ge) ⊙ ∂Se)
+    Dvis = -Se ⊙ (FourthOrderTensorValue(Tuple(inv(TensorValue(Tuple(2*∂Se∂Ce + m*α*Ge⊗Ge))))) ⋅² ∂Se)
     e = abs(Dvis - Dvis_ref) / Dvis_ref
     push!(e_rel, e)
     @test e < 1e-6
@@ -216,8 +252,8 @@ end
   cons_model = GeneralizedMaxwell(hyper_elastic_model, visco_branch)
   update_time_step!(cons_model, 0.1)
   Ψ, ∂Ψ∂F, ∂∂Ψ∂FF = cons_model()
-  F1 = I3
-  A1 = VectorValue(I3..., 0)
+  F1 = I3D
+  A1 = VectorValue(I3D..., 0)
   @test Ψ(F1, F1, A1) == 0
 
   Ψh, ∂Ψh∂F, ∂∂Ψh∂FF = hyper_elastic_model()
@@ -235,11 +271,11 @@ end
 @testset "ViscousPolyconvex" begin
   model = ViscousPolyconvex(τ=1.15, μ=7e4)
   update_time_step!(model, 0.1)
-  Fn = I3
-  F1 = I3 + 0.1*TensorValue(rand(9)...)
+  Fn = I3D
+  F1 = I3D + 0.1*TensorValue(rand(9)...)
   C1 = F1' · F1
-  Cn = I3
-  Cv = I3
+  Cn = I3D
+  Cv = I3D
 
   # --- Test neo-Hookean model ---
   Ψv          = HyperFEM.PhysicalModels.Ψv
@@ -247,7 +283,7 @@ end
   ∂Sv∂C_Cᵥfix = HyperFEM.PhysicalModels.∂Sv∂C_Cᵥfix
 
   Sv_ref = 2*TensorValue(ForwardDiff.gradient(C -> Ψv(model, TensorValue(C), inv(Cv)), get_array(C1)))
-  ∂Sv_ref = 2*TensorValue(ForwardDiff.hessian(C -> Ψv(model, TensorValue(C), inv(Cv)), get_array(C1)))
+  ∂Sv_ref = 2*FourthOrderTensorValue(Tuple(ForwardDiff.hessian(C -> Ψv(model, TensorValue(C), inv(Cv)), get_array(C1))))
 
   @test isapprox(Sv(model, C1, inv(Cv)), Sv_ref, rtol=1e-8)
   @test isapprox(∂Sv∂C_Cᵥfix(model, C1, inv(Cv)), ∂Sv_ref, rtol=1e-8)
@@ -256,13 +292,14 @@ end
   Cv⁻¹    = HyperFEM.PhysicalModels.Cv⁻¹
   ∂Cv⁻¹∂C = HyperFEM.PhysicalModels.∂Cv⁻¹∂C
 
-  ∂invCv_ref = TensorValue(ForwardDiff.jacobian(C -> get_array(Cv⁻¹(model, 0.5*TensorValue(C+C'), Cn, Cv)), get_array(C1)))  # Enforce symmetry of C within ForwardDiff
+  ∂invCv_ref = FourthOrderTensorValue(Tuple(ForwardDiff.jacobian(C -> get_array(Cv⁻¹(model, 0.5*TensorValue(C+C'), Cn, Cv)), get_array(C1))))  # Enforce symmetry of C within ForwardDiff
   @test isapprox(∂Cv⁻¹∂C(model, C1, Cn, Cv)[2], ∂invCv_ref, rtol=1e-8)
 
   # --- Test full model tangent operator ---
   Ψ, ∂Ψ∂F, ∂∂Ψ∂FF = model()
-  ∂∂Ψ∂FF_ref = TensorValue(ForwardDiff.jacobian(F -> get_array(∂Ψ∂F(TensorValue(F), Fn, Cv)), get_array(F1)))
+  ∂∂Ψ∂FF_ref = FourthOrderTensorValue(Tuple(ForwardDiff.jacobian(F -> get_array(∂Ψ∂F(TensorValue(F), Fn, Cv)), get_array(F1))))
   @test isapprox(∂∂Ψ∂FF(F1, Fn, Cv), ∂∂Ψ∂FF_ref, rtol=1e-8)
+  test_type_stability__(model, F1, Fn, Cv)
 end
 
 
@@ -284,11 +321,126 @@ end
   update_time_step!(cons_model, 0.1)
   Ψ, ∂Ψ∂F, ∂∂Ψ∂FF = cons_model()
   D = Dissipation(cons_model)
-  F = I3 + 1e-2*TensorValue(1:9...)
-  Fn = I3
-  Cv = I3
+  F = I3D + 1e-2*TensorValue(1:9...)
+  Fn = I3D
+  Cv = I3D
   @test allocations(Ψ, F, Fn, Cv, Cv) == 0
   @test allocations(∂Ψ∂F, F, Fn, Cv, Cv) == 0
   @test allocations(∂∂Ψ∂FF, F, Fn, Cv, Cv) == 0
   @test allocations(D, F, Fn, Cv, Cv) == 0
+  test_type_stability__(cons_model, F, Fn, Cv, Cv)
+end
+
+
+
+# backends of the state tests, as the simulation tests (HYPERFEM_TEST_BACKENDS, default "lazy,compiled")
+const STATE_TEST_BACKENDS = Tuple(Symbol.(strip.(split(get(ENV, "HYPERFEM_TEST_BACKENDS", "lazy,compiled"), ","))))
+:compiled in STATE_TEST_BACKENDS && @eval using HyperFEMKernels
+
+@testset "update_state! of models with internal variables" begin
+  PM = HyperFEM.PhysicalModels
+  geometry = Gridap.CartesianDiscreteModel((0, 1, 0, 1, 0, 1), (1, 1, 1))
+  dΩ = Gridap.Measure(Gridap.Triangulation(geometry), 2)
+  pts = Gridap.CellData.get_cell_points(dΩ)
+  U = Gridap.FESpace(geometry, Gridap.ReferenceFE(Gridap.lagrangian, VectorValue{3,Float64}, 1))
+  Φ = Gridap.FESpace(geometry, Gridap.ReferenceFE(Gridap.lagrangian, Float64, 1))
+  uh = Gridap.interpolate(x -> VectorValue(0.2x[1], 0.0, 0.0), U)   # a stretch
+  uh⁻ = Gridap.interpolate(x -> VectorValue(0.0, 0.0, 0.0), U)
+  φh = Gridap.interpolate(x -> 0.1x[3], Φ)
+  θh = Gridap.interpolate(x -> 0.0, Φ)
+  F, _... = get_Kinematics(Kinematics(Mechano, Solid))
+  E = get_Kinematics(Kinematics(Electro, Solid))
+  Fh, Fh⁻, Eh = F ∘ ∇(uh)', F ∘ ∇(uh⁻)', E ∘ ∇(φh)
+
+  nh = NeoHookean3D(λ=1e6, μ=1.4e4)
+  visco() = GeneralizedMaxwell(nh, ViscousPolyconvex(μ=5.6e4, τ=0.82), ViscousPolyconvex(μ=3.4e4, τ=10.7))
+  diel = IdealDielectric(ε=1.0)
+  thermo = ThermalModel(Cv=1.0, θr=1.0, α=0.1)
+  law = PM.EntropicElasticityLaw(θr=1.0, γ=0.7)
+  tvol = PM.ThermalVolumetric(cv0=2.0, θr=1.0, α=0.1, κr=3.0, γ=0.5)
+  # first internal variable at the first quadrature point (Gridap's CellState or the compiled storage)
+  first_value(A) = A[1] isa Gridap.CellData.CellState ? A[1](pts)[1][1] : A[1].values[1, 1]
+
+  # composite models whose state is that of their viscous mechanical model: (model, good args, bad args)
+  composites = [
+    ("ElectroMechModel", () -> ElectroMechModel(mechano=visco(), electro=diel), (Fh, Eh, Fh⁻), (Fh, Fh⁻)),
+    ("HessianRegularization(ElectroMechModel)", () -> HessianRegularization(ElectroMechModel(mechano=visco(), electro=diel)),
+      (Fh, Eh, Fh⁻), (Fh, Fh⁻)),
+    ("HessianRegularization", () -> HessianRegularization(visco()), (Fh, Fh⁻), (Fh,)),
+    ("HessianRegularization with TangentSwitch", () -> HessianRegularization(visco(); switch=TangentSwitch(true)),
+      (Fh, Fh⁻), (Fh,)),
+    ("FlexoElectroModel", () -> FlexoElectroModel(electro=diel, mechano=visco()), (Fh, Eh, Fh⁻), (Fh, Fh⁻)),
+    ("ThermoMechModel", () -> ThermoMechModel(thermo, visco(), law), (Fh, θh, Fh⁻), (Fh, Fh⁻)),
+    ("ThermalDeviatoric", () -> PM.ThermalDeviatoric(visco(), law), (Fh, θh, Fh⁻), (Fh, Fh⁻)),
+    ("ThermoMech_Bonet", () -> ThermoMech_Bonet(tvol, visco(), law, law), (Fh, θh, Fh⁻), (Fh, Fh⁻)),
+    ("ThermoElectroMechModel", () -> ThermoElectroMechModel(thermo, diel, visco(), law), (Fh, Eh, θh, Fh⁻), (Fh, Eh, Fh⁻)),
+    ("ThermoElectroMech_Bonet", () -> ThermoElectroMech_Bonet(tvol, diel, visco(); el=law, vis=law, elec=law),
+      (Fh, Eh, θh, Fh⁻), (Fh, Eh, Fh⁻))]
+
+  for backend in STATE_TEST_BACKENDS
+    @testset "$backend" begin
+      # the internal variables of the viscous model change after an update
+      mech = visco()
+      update_time_step!(mech, 0.1)
+      Am = CellState(mech, dΩ; backend)
+      initial = first_value(Am)
+      update_state!(mech, Am, Fh, Fh⁻; backend)
+      @test !(first_value(Am) ≈ initial)
+
+      for (name, model, good, bad) in composites
+        @testset "$name" begin
+          m = model()
+          update_time_step!(m, 0.1)
+          A = CellState(m, dΩ; backend)
+          # a wrong argument list throws (it used to do nothing) and leaves the state unchanged
+          @test_throws ArgumentError update_state!(m, A, bad...; backend)
+          @test first_value(A) == initial
+          # the right one updates as the mechanical model alone
+          update_state!(m, A, good...; backend)
+          @test first_value(A) == first_value(Am)
+        end
+      end
+    end
+  end
+
+  # the message names the model that received the arguments and the expected argument lists
+  m = ElectroMechModel(mechano=visco(), electro=diel)
+  @test_throws "GeneralizedMaxwell has internal variables" update_state!(m, CellState(m, dΩ), Fh, Fh⁻)
+  @test_throws "(A, F, E, Fn) for electro-mechanical" update_state!(m, CellState(m, dΩ), Fh, Fh⁻)
+  @test_throws "(A, F, θ, Fn) for thermo-mechanical" update_state!(m, CellState(m, dΩ), Fh, Fh⁻)
+  @test_throws "(A, F, n, Fn) if anisotropic" update_state!(m, CellState(m, dΩ), Fh, Fh⁻)
+
+  # models without internal variables accept any update and do nothing: no state (`nothing`) or no branches (`()`)
+  @test isnothing(initialize_state(nh))
+  @test isnothing(update_state!(nh, nothing, Fh, Fh⁻))
+  @test initialize_state(GeneralizedMaxwell(nh)) === ()
+  @test isnothing(update_state!(GeneralizedMaxwell(nh), (), Fh))
+  em0 = ElectroMechModel(mechano=GeneralizedMaxwell(nh), electro=diel)
+  @test isnothing(update_state!(em0, CellState(em0, dΩ), Fh, Fh⁻))
+end
+
+
+@testset "Wrappers of viscous models forward the initial state, the time step and the dissipation" begin
+  nh = NeoHookean3D(λ=1e6, μ=1.4e4)
+  visco() = GeneralizedMaxwell(nh, ViscousPolyconvex(μ=5.6e4, τ=0.82), ViscousPolyconvex(μ=3.4e4, τ=10.7))
+  F = I3D + 1e-2*TensorValue(1:9...)
+  Fn = I3D
+  Cv = I3D
+  ref = visco()
+  update_time_step!(ref, 0.37)
+  Dref = Dissipation(ref)(F, Fn, Cv, Cv)
+  @test Dref != 0
+  for (name, wrap) in [("HessianRegularization", HessianRegularization),
+                       ("FlexoElectroModel", v -> FlexoElectroModel(electro=IdealDielectric(ε=1.0), mechano=v))]
+    @testset "$name" begin
+      inner = visco()
+      model = wrap(inner)
+      @test initialize_state(model) == initialize_state(inner)
+      update_time_step!(model, 0.37)
+      @test inner.branches[1].Δt[] == 0.37
+      @test inner.branches[2].Δt[] == 0.37
+      D = Dissipation(model)
+      @test (name == "FlexoElectroModel" ? D(F, VectorValue(0.0, 0.0, 0.0), Fn, Cv, Cv) : D(F, Fn, Cv, Cv)) == Dref
+    end
+  end
 end

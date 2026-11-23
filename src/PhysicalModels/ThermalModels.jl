@@ -13,7 +13,7 @@ struct ThermalModel <: Thermo
   end
 end
 
-function (obj::ThermalModel)(Λ::Float64=1.0)
+function (obj::ThermalModel)()
   Ψ(δθ) = obj.Cv * (δθ - (δθ + obj.θr) * log((δθ + obj.θr) / obj.θr))
   ∂Ψθ(δθ) = -obj.Cv * log((δθ + obj.θr) / obj.θr)
   ∂Ψθθ(δθ) = -obj.Cv / (δθ + obj.θr)

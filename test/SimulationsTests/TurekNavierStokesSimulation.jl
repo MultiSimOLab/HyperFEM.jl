@@ -87,10 +87,10 @@ function turek_navier_stokes_simulation(; backend=:lazy, nsteps=12, dt=0.5, verb
 
   # Forces on the cylinder: F = -∫ σ·n dΓ with n the outward normal of the fluid (σ = -p I + 2μ ε(u))
   Γc = BoundaryTriangulation(geomodel, tags="cylinder"); dΓc = Measure(Γc, 2order + 1); nc = get_normal_vector(Γc)
-  I2 = TensorValue(1.0, 0.0, 0.0, 1.0)
+  I2D = TensorValue(1.0, 0.0, 0.0, 1.0)
   function coefficients(xh)
     uh, ph = xh
-    σ = 2μ * (ε ∘ (∇(uh))) - ph * I2
+    σ = 2μ * (ε ∘ (∇(uh))) - ph * I2D
     F = -sum(∫(σ ⋅ nc)dΓc)
     cD, cL = 2 * F[1] / (ρ * Ū^2 * D), 2 * F[2] / (ρ * Ū^2 * D)
     Δp = ph(Point(0.15, 0.2)) - ph(Point(0.25, 0.2))

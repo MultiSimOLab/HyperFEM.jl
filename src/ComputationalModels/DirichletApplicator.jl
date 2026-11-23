@@ -11,9 +11,10 @@
 #     computed once at construction and scaled by load(Λ);
 #   - constants and functions of x returned by the other prescriptions: evaluated at the nodes of
 #     the tag only;
-#   - fields (CellField, FEFunction, Interpolable) returned by a Coupling: evaluated at the nodes of the
-#     tag only, with a cached point search, so a field defined only on the faces of the tag (e.g. an
-#     FESpace on an interface) is admissible and the update costs one point search per node.
+#   - fields (CellField, FEFunction, Interpolable) returned by a Coupling: the nodes of the tag are located
+#     in the mesh of the field once (Transfer.jl); afterwards a finite-element function is a gather or a
+#     sparse product on its dof values and any other field is evaluated in the located cells, without
+#     point searches. A field defined only on the faces of the tag (an FESpace on an interface) is admissible.
 # Spaces whose Dirichlet dofs cannot be mapped to Lagrangian nodes (no LagrangianDofBasis, or
 # non-Vector Dirichlet values such as distributed ones) get a `DirichletInterpolator`, which uses
 # Gridap's interpolation.
@@ -36,8 +37,8 @@ mutable struct DirichletApplicator{B<:BoundaryConditions}
     bc::B
     tags::Vector{DirichletTagDofs}
     base::Vector{Any}                 # Separable: value(x)[comp] per dof of the tag; nothing otherwise
-    cache::Vector{Any}                # per tag: Gridap evaluation cache of the last field
-    field::Vector{Any}                # per tag: the field the cache was built for
+    cache::Vector{Any}                # per tag: location of its nodes in the mesh of the coupled field
+    field::Vector{Any}                # per tag: what the location was built for (space or triangulation)
 end
 
 "Fallback for spaces the applicator does not support: Gridap's interpolation of the prescribed functions."
@@ -117,24 +118,24 @@ function _values_at_nodes(f, t::DirichletTagDofs)
     [_comp(vals[n], c) for (n, c) in zip(t.nodes, t.comps)]
 end
 
-_is_field(v) = v isa CellField || v isa Gridap.CellData.Interpolable
-_field(f) = f
-_field(f::Gridap.CellData.Interpolable) = f.uh
+# Fields returned by a Coupling: see Transfer.jl (`_prescribed!`), where the nodes of the tag are located once.
 
-"Values at the dofs of a tag of a field, with the evaluation cache of the applicator."
-function _values_at_nodes!(app::DirichletApplicator, i::Int, v, t::DirichletTagDofs)
-    fld = _field(v)
-    if app.cache[i] === nothing || app.field[i] !== fld
-        app.cache[i] = Gridap.Arrays.return_cache(fld, t.coords[1])
-        app.field[i] = fld
+# Function barriers: the values come out of a dynamic dispatch on the prescription
+function _assign!(dv, dofs, vals)
+    @inbounds for (j, d) in enumerate(dofs)
+        dv[d] = vals[j]
     end
-    cache = app.cache[i]
-    vals = [Gridap.Arrays.evaluate!(cache, fld, x) for x in t.coords]
-    [_comp(vals[n], c) for (n, c) in zip(t.nodes, t.comps)]
 end
-
-_values!(app::DirichletApplicator, i::Int, v, t::DirichletTagDofs) =
-    _is_field(v) ? _values_at_nodes!(app, i, v, t) : _values_at_nodes(v, t)
+function _assign_scaled!(dv, dofs, base, s)
+    @inbounds for (j, d) in enumerate(dofs)
+        dv[d] = base[j] * s
+    end
+end
+function _assign!(dv, dofs, vals, vals⁻)
+    @inbounds for (j, d) in enumerate(dofs)
+        dv[d] = vals[j] - vals⁻[j]
+    end
+end
 
 """
     apply!(space, app::DirichletApplicator, Λ, τ)
@@ -149,15 +150,9 @@ function apply!(space::SingleFieldFESpace, app::DirichletApplicator, Λ, τ)
         p = c.value
         if p isa Separable
             s = _at_load(p.load, Λ)
-            b = app.base[i]
-            @inbounds for (j, d) in enumerate(t.dofs)
-                dv[d] = b[j] * s
-            end
+            _assign_scaled!(dv, t.dofs, app.base[i], s)
         else
-            vals = _values!(app, i, p(Λ, τ), t)
-            @inbounds for (j, d) in enumerate(t.dofs)
-                dv[d] = vals[j]
-            end
+            _assign!(dv, t.dofs, _prescribed!(app, i, p, Λ, τ, t))
         end
     end
     space
@@ -179,16 +174,10 @@ function apply!(space::SingleFieldFESpace, app::DirichletApplicator, Λ, ΔΛ, �
         p = c.value
         if p isa Separable
             s = _at_load(p.load, Λ) - _at_load(p.load, Λ - ΔΛ)
-            b = app.base[i]
-            @inbounds for (j, d) in enumerate(t.dofs)
-                dv[d] = b[j] * s
-            end
+            _assign_scaled!(dv, t.dofs, app.base[i], s)
         else
-            vals⁻ = _values!(app, i, p(Λ - ΔΛ, τ - Δτ), t)
-            vals = _values!(app, i, p(Λ, τ), t)
-            @inbounds for (j, d) in enumerate(t.dofs)
-                dv[d] = vals[j] - vals⁻[j]
-            end
+            vals⁻ = copy(_prescribed!(app, i, p, Λ - ΔΛ, τ - Δτ, t))      # the buffer of the tag is reused
+            _assign!(dv, t.dofs, _prescribed!(app, i, p, Λ, τ, t), vals⁻)
         end
     end
     space

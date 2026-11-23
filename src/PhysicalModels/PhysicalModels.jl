@@ -9,14 +9,11 @@ using LinearAlgebra
 using StaticArrays
 
 using ..TensorAlgebra
-using ..TensorAlgebra: _∂H∂F_2D
-using ..TensorAlgebra: trAA
 
 import Base: +
 import Gridap.CellData: CellState, update_state!
 
 export Yeoh3D
-export PlaneStressIncompressible_I1PD 
 export Gent2D
 export NeoHookean3D
 export IsochoricNeoHookean3D
@@ -63,7 +60,6 @@ export ThermoMech_EntropicPolyconvex
 export FlexoElectroModel
 export ThermoElectroMech_Bonet
 export ThermoElectroMech_Govindjee
-export ThermoElectroMech_PINNs
 export MagnetoMechModel
 export GeneralizedMaxwell
 export ViscousIncompressible
@@ -107,6 +103,19 @@ export getIsoInvariants
 export HessianRegularization
 export Hessian∇JRegularization
 
+"""
+    PhysicalModel
+
+Supertype of the constitutive models. A model is a functor: `model()` returns the energy density and its
+derivatives as functions of the kinematic fields (for a mechanical model, `(Ψ, ∂Ψ/∂F, ∂²Ψ/∂F²)` as functions of
+`F`). The magnetic models (`Magnetic`, `IdealMagnetic`, `HardMagnetic`, … and the magneto-mechanical models
+built from them) take the load factor, `model(Λ=1.0)`, which scales the remanent field `ℋᵣ = αr Λ N`.
+A material parameter that has to be ramped is a mutable field of the model (e.g. `αr` of the magnetic models)
+updated between steps.
+
+Many mechanical models store a reference density `ρ` (keyword argument, `0.0` by default). The model does not use
+it: it is kept for the user, e.g. as the coefficient of the inertial term, `mass_term(u, v, model.ρ, dΩ)`.
+"""
 abstract type PhysicalModel end
 abstract type Mechano <: PhysicalModel end
 abstract type Electro <: PhysicalModel end
@@ -133,6 +142,8 @@ abstract type MagnetoMechano{G,M} <: MultiPhysicalModel end
 
 include("KinematicModels.jl")
 
+include("Kinematics.jl")
+
 include("MechanicalModels.jl")
 
 include("ViscousModels.jl")
@@ -155,7 +166,6 @@ include("MagnetoMechanicalModels.jl")
 
 include("ThermoElectroMechanicalModels.jl")
 
-include("PINNs.jl")
 
 
 # ============================================
@@ -213,8 +223,22 @@ hence, the order of the arguments differ from the standar energy function, like 
 `backend = :compiled` (HyperFEMKernels loaded) runs the update with the engine's kernels whatever the
 storage of the states; states created with `CellState(model, dΩ; backend = :compiled)` use the
 engine with any backend.
+
+For a model without internal variables ([`initialize_state`](@ref) returns `nothing` or `()`) the
+call does nothing. For a model with internal variables, an argument list that matches none of its
+methods throws an `ArgumentError` instead of silently leaving the state unchanged. Composite models
+(electro-, thermo- or thermo-electro-mechanical) forward the state and the mechanical arguments to
+their mechanical model, so a wrong argument list may be reported for that inner model.
 """
-function Gridap.CellData.update_state!(::PhysicalModel, vars...; backend=:lazy)
+function Gridap.CellData.update_state!(model::PhysicalModel, vars...; backend=:lazy)
+  state = initialize_state(model)
+  (isnothing(state) || state === ()) && return nothing
+  throw(ArgumentError("update_state!: $(nameof(typeof(model))) has internal variables, but no method of it takes " *
+    "the $(length(vars)) positional arguments it received (state included), so the state would not be updated. " *
+    "If it was reached through another model, check the arguments against that model's method: (A, F, Fn) for " *
+    "mechanical models ((A, F, n, Fn) if anisotropic, with the fibre direction n), (A, F, E, Fn) for " *
+    "electro-mechanical, (A, F, θ, Fn) for thermo-mechanical and (A, F, E, θ, Fn) for thermo-electro-mechanical " *
+    "models."))
 end
 
 """

@@ -9,23 +9,20 @@ end
 @publish TensorAlgebra TensorValue  # Reexport from Gridap for convenience
 @publish TensorAlgebra VectorValue  # Reexport from Gridap for convenience
 @publish TensorAlgebra (*)
+@publish TensorAlgebra (⋅²)
 @publish TensorAlgebra (×ᵢ⁴)
-@publish TensorAlgebra (⊗₁²)
-@publish TensorAlgebra (⊗₁₂³)
-@publish TensorAlgebra (⊗₁₃²)
-@publish TensorAlgebra (⊗₁²³)
-@publish TensorAlgebra (⊗₁₃²⁴)
-@publish TensorAlgebra (⊗₁₂³⁴)
-@publish TensorAlgebra (⊗₁₂₃⁴)
-@publish TensorAlgebra (⊙₁₂₃₄²⁴)
-@publish TensorAlgebra logreg
+@publish TensorAlgebra (⊗ᵢₖʲ)
+@publish TensorAlgebra (⊗ᵢₖʲˡ)
+@publish TensorAlgebra (⊗ᵢₗʲᵏ)
+@publish TensorAlgebra (⊗ᵢₘʲᵐᵏˡ)
+@publish TensorAlgebra ThirdOrderTensorValue
+@publish TensorAlgebra FourthOrderTensorValue
 @publish TensorAlgebra Box
 @publish TensorAlgebra Ellipsoid
-@publish TensorAlgebra I2
-@publish TensorAlgebra I3
-@publish TensorAlgebra I4
-@publish TensorAlgebra I9
-@publish TensorAlgebra Tensorize
+@publish TensorAlgebra I2D
+@publish TensorAlgebra I3D
+@publish TensorAlgebra 𝕀2D
+@publish TensorAlgebra 𝕀3D
 @publish TensorAlgebra hessian_nonaffine
 
 @publish Backends AbstractBackend
@@ -38,7 +35,6 @@ end
 
 @publish PhysicalModels LinearElasticity3D
 @publish PhysicalModels LinearElasticity2D
-@publish PhysicalModels PlaneStressIncompressible_I1PD
 @publish PhysicalModels Yeoh3D
 @publish PhysicalModels Gent2D
 @publish PhysicalModels NeoHookean3D
@@ -81,7 +77,6 @@ end
 @publish PhysicalModels FlexoElectroModel
 @publish PhysicalModels ThermoElectroMech_Bonet
 @publish PhysicalModels ThermoElectroMech_Govindjee
-@publish PhysicalModels ThermoElectroMech_PINNs
 @publish PhysicalModels MagnetoMechModel
 @publish PhysicalModels ARAP2D
 @publish PhysicalModels ARAP2D_regularized
@@ -132,11 +127,13 @@ end
 @publish WeakForms residual
 @publish WeakForms jacobian
 @publish WeakForms mass_term
+@publish WeakForms energy
 
 @publish ComputationalModels Prescription
 @publish ComputationalModels Separable
 @publish ComputationalModels NonSeparable
 @publish ComputationalModels Coupling
+@publish ComputationalModels StageBlend
 @publish ComputationalModels BoundaryCondition
 @publish ComputationalModels BoundaryConditions
 @publish ComputationalModels MultiFieldBoundaryConditions
@@ -216,9 +213,16 @@ end
 @publish ComputationalModels level_glue
 @publish ComputationalModels prolongation
 @publish ComputationalModels prolongations
+@publish ComputationalModels PointLocation
+@publish ComputationalModels Transfer
+@publish ComputationalModels transfer!
+@publish ComputationalModels transfer_transpose!
+@publish ComputationalModels is_gather
 @publish ComputationalModels interpolate_L2_field
 @publish ComputationalModels L2_projection
 @publish ComputationalModels component_LInf
+@publish ComputationalModels update_displacements!
+@publish ComputationalModels update_velocity!
 
 @publish DiscreteModeling CartesianTags
 @publish DiscreteModeling EvolutionFunctions
@@ -230,7 +234,6 @@ end
 @publish Solvers NewtonTolerances
 @publish Solvers NewtonLog
 @publish Solvers NewtonCache
-@publish Solvers Newton_RaphsonSolver
 @publish Solvers converged
 @publish Solvers residual_history
 @publish Solvers step_history
@@ -256,12 +259,10 @@ end
 @publish Solvers FullStepLS
 @publish Solvers BacktrackingLS
 @publish Solvers InjectivityLS
-@publish Solvers Injectivity_Preserving_LS
 @publish Solvers update_cellstate!
 @publish Solvers injectivity_step
 @publish Solvers ModelOperator
 @publish Solvers backend_operator
-@publish WeakForms energy
 @publish Solvers max_step
 @publish Solvers set_tangent!
 @publish Solvers ConsistentTangent

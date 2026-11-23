@@ -35,12 +35,12 @@ struct Kinematics{T1,T2} <: KinematicModel
     # end
 
     function Kinematics(::Type{Electro}, ::Type{Solid}; E::Function=(∇φ) -> -∇φ)
-        metrics = (E)
+        metrics = E
         new{Electro,Solid}(metrics)
     end
 
     function Kinematics(::Type{Magneto}, ::Type{Solid}; H::Function=(∇φ) -> -∇φ)
-        metrics = (H)
+        metrics = H
         new{Magneto,Solid}(metrics)
     end
     function Kinematics(::Type{Thermo}, ::Type{Solid})
@@ -94,12 +94,12 @@ struct EvolutiveKinematics{T} <: KinematicModel
     end
 
     function EvolutiveKinematics(::Type{Electro}; E::Function=(t) -> ((∇φ) -> -∇φ))
-        metrics = (E)
+        metrics = E
         new{Electro}(metrics)
     end
 
     function EvolutiveKinematics(::Type{Magneto}; H::Function=(t) -> ((∇φ) -> -∇φ))
-        metrics = (H)
+        metrics = H
         new{Magneto}(metrics)
     end
 end

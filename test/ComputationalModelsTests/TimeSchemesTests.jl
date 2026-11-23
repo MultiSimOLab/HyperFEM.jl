@@ -4,7 +4,7 @@
 using Gridap, Gridap.FESpaces
 using HyperFEM
 using HyperFEM.ComputationalModels: StageHistory, stage_coefficients!, predict!, commit_stage!, commit!, error_estimate!,
-  order, nstages, _dirichlet_values
+  order, error_order, nstages, _dirichlet_values
 using LinearAlgebra
 using Test
 
@@ -133,4 +133,16 @@ end
   commit_stage!(CentralDifference(), h, 1, y, Δt)
   commit!(CentralDifference(), h, h.b0, Δt)
   @test h.an[1] == y[1] && h.vn[1] ≈ v(0.0) + 0.5Δt * (a(0.0) + y[1]) && h.xn[1] ≈ x(0.0) + Δt * v(0.0) + 0.5Δt^2 * a(0.0)
+end
+
+@testset "Order of the generalised-α family" begin
+  # second order iff γ = ½ − αm + αf; the Zienkiewicz–Xie estimate is of the displacement (O(Δt³)) for any γ
+  for s in (Newmark(), Newmark(β=1/6), HHT(0.1), Midpoint(), GeneralizedAlpha(0.8), GeneralizedAlpha(0.0))
+    @test order(s) == 2
+    @test error_order(s) == 2
+  end
+  for s in (Newmark(γ=0.6, β=0.3), GeneralizedAlpha(; αm=0.1, αf=0.2, β=0.3, γ=0.5))
+    @test order(s) == 1
+    @test error_order(s) == 2
+  end
 end

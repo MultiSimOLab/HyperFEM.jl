@@ -13,6 +13,21 @@ grown_increment(grow::Float64, easy::Int, Δ::Float64, Δ0::Float64, ok::Bool, i
     ok && grow > 1 && iterations <= easy ? min(grow * Δ, Δ0) : Δ
 
 """
+    counted_growth(grow, easy, neasy, count, Δ, Δmax, ok, iterations) -> (Δnext, count)
+
+Growth after `neasy` **consecutive** easy attempts (at most `easy` iterations or passes): `count` is the number
+of consecutive easy attempts before this one. An easy attempt adds one; when the count reaches `neasy` the
+increment grows, `min(grow Δ, Δmax)`, and the count restarts; an attempt that is not easy, or failed, restarts it
+too. With `neasy = 1` it is [`grown_increment`](@ref) (every easy attempt grows the increment).
+"""
+function counted_growth(grow::Float64, easy::Int, neasy::Int, count::Int, Δ::Float64, Δmax::Float64, ok::Bool, iterations::Int)
+    (ok && iterations <= easy) || return Δ, 0
+    count += 1
+    count >= neasy || return Δ, count
+    return grown_increment(grow, easy, Δ, Δmax, ok, iterations), 0
+end
+
+"""
     TimeStepping(; Δt, t_end, t0=0.0, maxbisec=15, grow=1.0, easy=10, Δtmax=Δt, tstops=())
 
 Control of the time loop of a transient model with a fixed increment: the time runs from `t0` to

@@ -24,15 +24,14 @@ using WriteVTK
 using GridapGmsh 
 using GridapGmsh: GmshDiscreteModel
 
-# Deprecation exports
 using HyperFEM.DiscreteModeling
-Base.@deprecate_binding EvolutionFunctions DiscreteModeling.EvolutionFunctions
 
 include("BoundaryConditions.jl")
 export Prescription
 export Separable
 export NonSeparable
 export Coupling
+export StageBlend
 export BoundaryCondition
 export BoundaryConditions
 export MultiFieldBoundaryConditions
@@ -48,6 +47,8 @@ export MultiFieldBC
 export residual_Neumann
 export NeumannConditions
 export add_tag_from_vertex_filter!
+export update_displacements!
+export update_velocity!
 
 
 include("DirichletApplicator.jl")
@@ -67,6 +68,12 @@ export fine_model
 export level_glue
 export prolongation
 export prolongations
+include("Transfer.jl")
+export PointLocation
+export Transfer
+export transfer!
+export transfer_transpose!
+export is_gather
 
 include("GridapExtras.jl")
 export GmshDiscreteModel

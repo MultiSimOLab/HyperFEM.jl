@@ -41,7 +41,7 @@ _projected(s::TangentSwitch) = is_projected(s)
 function (obj::ElectroMechHessianRegularization)(args...; kwargs...)
   Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE = obj.model(args...; kwargs...)
   δ, sym, switch = obj.δ, obj.symmetrize, obj.switch
-  function ∂Ψ∂FFr(F, E, vars...)
+  function ∂Ψ∂FFr(F, E, vars::Vararg{Any,K}) where {K}
     C = ∂Ψ∂FF(F, E, vars...)
     _projected(switch) ? regularize_hessian(sym ? _symmetrize(C) : C, δ) : C
   end
@@ -63,7 +63,7 @@ function (+)(Model1::Mechano, Model2::Electro)
   ElectroMechModel(Model2, Model1)
 end
 
-function (obj::ElectroMechModel{<:Electro,<:IsoElastic})(Λ::Float64=1.0)
+function (obj::ElectroMechModel{<:Electro,<:IsoElastic})()
   Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano()
   Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro()
   Ψ(F, E)     = Ψm(F)     + Ψem(F, E)
@@ -75,7 +75,7 @@ function (obj::ElectroMechModel{<:Electro,<:IsoElastic})(Λ::Float64=1.0)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE)
 end
 
-function (obj::ElectroMechModel{<:Electro,<:AnisoElastic})(Λ::Float64=1.0)
+function (obj::ElectroMechModel{<:Electro,<:AnisoElastic})()
   Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano()
   Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro()
   Ψ(F, E, N)     = Ψm(F, N)     + Ψem(F, E)
@@ -87,27 +87,27 @@ function (obj::ElectroMechModel{<:Electro,<:AnisoElastic})(Λ::Float64=1.0)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE)
 end
 
-function (obj::ElectroMechModel{<:Electro,<:ViscoElastic{<:IsoElastic}})(Λ::Float64=1.0)
+function (obj::ElectroMechModel{<:Electro,<:ViscoElastic{<:IsoElastic}})()
   Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano()
   Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro()
-  Ψ(F, E, Fn, A...)     = Ψm(F, Fn, A...)     + Ψem(F, E)
-  ∂Ψ∂F(F, E, Fn, A...)  = ∂Ψm∂F(F, Fn, A...)  + ∂Ψem∂F(F, E)
-  ∂Ψ∂E(F, E, Fn, A...)  =                       ∂Ψem∂E(F, E)
-  ∂Ψ∂FF(F, E, Fn, A...) = ∂Ψm∂FF(F, Fn, A...) + ∂Ψem∂FF(F, E)
-  ∂Ψ∂EF(F, E, Fn, A...) =                       ∂Ψem∂EF(F, E)
-  ∂Ψ∂EE(F, E, Fn, A...) =                       ∂Ψem∂EE(F, E)
+  Ψ(F, E, Fn, A::Vararg{Any,K})     where {K} = Ψm(F, Fn, A...)     + Ψem(F, E)
+  ∂Ψ∂F(F, E, Fn, A::Vararg{Any,K})  where {K} = ∂Ψm∂F(F, Fn, A...)  + ∂Ψem∂F(F, E)
+  ∂Ψ∂E(F, E, Fn, A::Vararg{Any,K})  where {K} =                       ∂Ψem∂E(F, E)
+  ∂Ψ∂FF(F, E, Fn, A::Vararg{Any,K}) where {K} = ∂Ψm∂FF(F, Fn, A...) + ∂Ψem∂FF(F, E)
+  ∂Ψ∂EF(F, E, Fn, A::Vararg{Any,K}) where {K} =                       ∂Ψem∂EF(F, E)
+  ∂Ψ∂EE(F, E, Fn, A::Vararg{Any,K}) where {K} =                       ∂Ψem∂EE(F, E)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE)
 end
 
-function (obj::ElectroMechModel{<:Electro,<:ViscoElastic{<:AnisoElastic}})(Λ::Float64=1.0)
+function (obj::ElectroMechModel{<:Electro,<:ViscoElastic{<:AnisoElastic}})()
   Ψm, ∂Ψm∂F, ∂Ψm∂FF = obj.mechano()
   Ψem, ∂Ψem∂F, ∂Ψem∂E, ∂Ψem∂FF, ∂Ψem∂EF, ∂Ψem∂EE = obj.electro()
-  Ψ(F, E, n, Fn, A...)     = Ψm(F, n, Fn, A...)     + Ψem(F, E)
-  ∂Ψ∂F(F, E, n, Fn, A...)  = ∂Ψm∂F(F, n, Fn, A...)  + ∂Ψem∂F(F, E)
-  ∂Ψ∂E(F, E, n, Fn, A...)  =                          ∂Ψem∂E(F, E)
-  ∂Ψ∂FF(F, E, n, Fn, A...) = ∂Ψm∂FF(F, n, Fn, A...) + ∂Ψem∂FF(F, E)
-  ∂Ψ∂EF(F, E, n, Fn, A...) =                          ∂Ψem∂EF(F, E)
-  ∂Ψ∂EE(F, E, n, Fn, A...) =                          ∂Ψem∂EE(F, E)
+  Ψ(F, E, n, Fn, A::Vararg{Any,K})     where {K} = Ψm(F, n, Fn, A...)     + Ψem(F, E)
+  ∂Ψ∂F(F, E, n, Fn, A::Vararg{Any,K})  where {K} = ∂Ψm∂F(F, n, Fn, A...)  + ∂Ψem∂F(F, E)
+  ∂Ψ∂E(F, E, n, Fn, A::Vararg{Any,K})  where {K} =                          ∂Ψem∂E(F, E)
+  ∂Ψ∂FF(F, E, n, Fn, A::Vararg{Any,K}) where {K} = ∂Ψm∂FF(F, n, Fn, A...) + ∂Ψem∂FF(F, E)
+  ∂Ψ∂EF(F, E, n, Fn, A::Vararg{Any,K}) where {K} =                          ∂Ψem∂EF(F, E)
+  ∂Ψ∂EE(F, E, n, Fn, A::Vararg{Any,K}) where {K} =                          ∂Ψem∂EE(F, E)
   return (Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE)
 end
 
@@ -130,7 +130,7 @@ end
 
 function Dissipation(obj::ElectroMechModel)
   Dvis = Dissipation(obj.mechano)
-  D(F, E, X...) = Dvis(F, X...)
+  D(F, E, X::Vararg{Any,K}) where {K} = Dvis(F, X...)
 end
 
 struct FlexoElectroModel{EM<:ElectroMechano} <: FlexoElectro{EM}
@@ -147,17 +147,24 @@ struct FlexoElectroModel{EM<:ElectroMechano} <: FlexoElectro{EM}
     new{ElectroMechModel{E,M}}(physmodel, κ)
   end
 
-  function (obj::FlexoElectroModel)(Λ::Float64=1.0)
+  function (obj::FlexoElectroModel)()
     e₁ = VectorValue(1.0, 0.0, 0.0)
     e₂ = VectorValue(0.0, 1.0, 0.0)
     e₃ = VectorValue(0.0, 0.0, 1.0)
-    # Φ(ϕ₁,ϕ₂,ϕ₃)=ϕ₁ ⊗₁² e₁+ϕ₂ ⊗₁² e₂+ϕ₃ ⊗₁² e₃
-    f1(δϕ) = δϕ ⊗₁² e₁
-    f2(δϕ) = δϕ ⊗₁² e₂
-    f3(δϕ) = δϕ ⊗₁² e₃
+    # Φ(ϕ₁,ϕ₂,ϕ₃)=ϕ₁ ⊗ e₁+ϕ₂ ⊗ e₂+ϕ₃ ⊗ e₃
+    f1(δϕ) = δϕ ⊗ e₁
+    f2(δϕ) = δϕ ⊗ e₂
+    f3(δϕ) = δϕ ⊗ e₃
     Φ(ϕ₁, ϕ₂, ϕ₃) = (f1 ∘ (ϕ₁) + f2 ∘ (ϕ₂) + f3 ∘ (ϕ₃))
 
-    Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE = obj.electromechano(Λ)
+    Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE = obj.electromechano()
     return Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE, Φ
   end
 end
+
+# the state, the time step and the dissipation are those of the electro-mechanical model
+update_time_step!(obj::FlexoElectroModel, Δt::Float64) = update_time_step!(obj.electromechano, Δt)
+Gridap.CellData.CellState(obj::FlexoElectroModel, args...; kwargs...) = CellState(obj.electromechano, args...; kwargs...)
+initialize_state(obj::FlexoElectroModel) = initialize_state(obj.electromechano)
+Gridap.CellData.update_state!(obj::FlexoElectroModel, state, args...; kwargs...) = update_state!(obj.electromechano, state, args...; kwargs...)
+Dissipation(obj::FlexoElectroModel) = Dissipation(obj.electromechano)

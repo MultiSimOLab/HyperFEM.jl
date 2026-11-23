@@ -98,7 +98,7 @@ using ForwardDiff
   @test sum(assemble_vector(v -> resN(nothing, v), V0)) ≈ -1.0
   @test HyperFEM.ComputationalModels.with_neumann(res0, nothing, 0.5) === res0
 
-  # Couplings: a Gridap Interpolable from a non-matching mesh is a space function
+  # Couplings: a field from a non-matching mesh; a Gridap Interpolable is still admitted (its function is used)
   f(x) = VectorValue(x[1]^2, x[1] * x[2])
   reffe2 = ReferenceFE(lagrangian, VectorValue{2,Float64}, 2)
   uhA = interpolate(f, FESpace(CartesianDiscreteModel((0.0, 1.0, 0.0, 1.0), (3, 3)), reffe2))
@@ -120,7 +120,7 @@ using ForwardDiff
   uhΓ = interpolate_everywhere(f, FESpace(Γ, reffe2))
   coupledΓ = BoundaryConditions(
     BoundaryCondition("bottom", [0.0, 0.0]),
-    BoundaryCondition("top", Coupling(τ -> Gridap.CellData.Interpolable(uhΓ))))
+    BoundaryCondition("top", Coupling(τ -> uhΓ)))
   UΓ = TrialFESpace(Vc, coupledΓ, 1.0)
   @test get_dirichlet_dof_values(UΓ) ≈ exact
   appΓ = dirichlet_applicator(UΓ, coupledΓ)                       # as a driver keeps it: one per space
@@ -163,10 +163,12 @@ using ForwardDiff
     BoundaryCondition("bottom", 2.5, Λ -> Λ),
     BoundaryCondition("top", x -> x[1] + x[2]),
     BoundaryCondition("tag_7", NonSeparable((x, Λ) -> Λ * x[1])),
-    BoundaryCondition("tag_8", Coupling(τ -> Gridap.CellData.Interpolable(φA))))
+    BoundaryCondition("tag_8", Coupling(τ -> φA)))
   Vs = TestFESpace(model, reffe1, smix)
   Us = TrialFESpace(Vs, smix, 0.8)
-  @test get_dirichlet_dof_values(Us) ≈ gridap_values(Vs, smix, 0.8)
+  # reference: Gridap interpolates a field of another model only through an Interpolable
+  smixI = BoundaryConditions(smix.conditions[1:3]..., BoundaryCondition("tag_8", Coupling(τ -> Gridap.CellData.Interpolable(φA))))
+  @test get_dirichlet_dof_values(Us) ≈ gridap_values(Vs, smixI, 0.8)
 
   # Couplings with a partial mask: only the masked components of the field are prescribed
   for mask in ((true, false), (false, true))
@@ -178,7 +180,7 @@ using ForwardDiff
     @test get_dirichlet_dof_values(TrialFESpace(Vcm, cmask, 0.7)) ≈ gridap_values(Vcm, cmask, 0.7)
     cmaskΓ = BoundaryConditions(
       BoundaryCondition("bottom", [0.0, 0.0]),
-      BoundaryCondition("top", Coupling(τ -> Gridap.CellData.Interpolable(uhΓ)); mask=mask))      # field only on the interface
+      BoundaryCondition("top", Coupling(τ -> uhΓ); mask=mask))      # field only on the interface
     exactΓ = BoundaryConditions(BoundaryCondition("bottom", [0.0, 0.0]), BoundaryCondition("top", x -> 2 * f(x); mask=mask))
     @test get_dirichlet_dof_values(TrialFESpace(Vcm, cmaskΓ, 1.0)) ≈ get_dirichlet_dof_values(TrialFESpace(Vcm, exactΓ, 1.0))
   end

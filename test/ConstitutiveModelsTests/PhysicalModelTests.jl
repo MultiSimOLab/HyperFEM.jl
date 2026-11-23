@@ -6,7 +6,6 @@ using LinearAlgebra
 using HyperFEM.PhysicalModels
 using HyperFEM.TensorAlgebra
 using HyperFEM.IO
-using JSON
 
 
 import Base: +,-
@@ -18,12 +17,14 @@ import Base: +,-
 import Gridap: inner
 inner(a::SMatrix, b::SMatrix) = sum(a.data .* b.data)  # inner function is required by SecondPiola to work with ForwardDiff
 
-import HyperFEM.TensorAlgebra: cof
+import HyperFEM.PhysicalModels: cof
 cof(a::SMatrix) = det(a) * inv(a)'  # cof is required by SecondPiola to work with ForwardDiff
 
 
 const ∇u2 = TensorValue(1.0, 2.0, 3.0, 4.0) * 1e-3
 const ∇u3 = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0) * 1e-3
+const F2D = ∇u2 + I2D
+const F3D = ∇u3 + I3D
 const μParams = [6456.9137547089595, 896.4633794151492,
   1.999999451256222, 1.9999960497608036, 11747.646562400318,
   0.7841068624959612, 1.5386288924587603]
@@ -32,40 +33,44 @@ const μParams = [6456.9137547089595, 896.4633794151492,
 function test_derivatives__(model::PhysicalModel, K::KinematicModel, ∇u; rtol, kwargs...)
   Ψ, ∂Ψu, ∂Ψuu = model()
   ∂Ψu_(F) = TensorValue(ForwardDiff.gradient(Ψ, get_array(F)))
-  ∂Ψuu_(F) = TensorValue(ForwardDiff.hessian(Ψ, get_array(F)))
+  ∂Ψuu_(F) = FourthOrderTensorValue(Tuple(ForwardDiff.hessian(Ψ, get_array(F))))
 
-  K = Kinematics(Mechano, Solid)
   F, _, _ = get_Kinematics(K)
 
-  @test isapprox(∂Ψu(F(∇u)), ∂Ψu_(F(∇u)), rtol=rtol, kwargs...)
-  @test isapprox(∂Ψuu(F(∇u)), ∂Ψuu_(F(∇u)), rtol=rtol, kwargs...)
+  @test isapprox(∂Ψu(F(∇u)), ∂Ψu_(F(∇u)); rtol=rtol, kwargs...)
+  @test isapprox(∂Ψuu(F(∇u)), ∂Ψuu_(F(∇u)); rtol=rtol, kwargs...)
 end
 
 function test_derivatives_2D_(model::PhysicalModel, K::KinematicModel; rtol=1e-14, kwargs...)
-  test_derivatives__(model, K, ∇u2, rtol=rtol, kwargs...)
+  test_derivatives__(model, K, ∇u2; rtol=rtol, kwargs...)
 end
 
 function test_derivatives_3D_(model::PhysicalModel, K::KinematicModel; rtol=1e-14, kwargs...)
-  test_derivatives__(model, K, ∇u3, rtol=rtol, kwargs...)
+  test_derivatives__(model, K, ∇u3; rtol=rtol, kwargs...)
 end
 
 function test_equilibrium_at_rest_2D(obj::Mechano; atol=1e-10)
   Ψ, _... = obj()
-  @test isapprox(Ψ(I2), 0.0, atol=atol)
+  @test isapprox(Ψ(I2D), 0.0, atol=atol)
 end
 
-function test_equilibrium_at_rest_3D(obj::Mechano, atol=1e-10)
+function test_equilibrium_at_rest_3D(obj::Mechano; atol=1e-10)
   Ψ, _... = obj()
-  @test isapprox(Ψ(I3), 0.0, atol=atol)
+  @test isapprox(Ψ(I3D), 0.0, atol=atol)
 end
 
 function test_second_piola_3D_(model::PhysicalModel; rtol=1e-12, kwargs...)
-  F = I3 + ∇u3
+  F = I3D + ∇u3
   C = F'·F
   Ψ, S, ∂S∂C = SecondPiola(model)
-  @test isapprox(S(C),  2*TensorValue(ForwardDiff.gradient(Ψ, get_array(C))), rtol=rtol, kwargs...)
-  @test isapprox(∂S∂C(C), TensorValue(ForwardDiff.jacobian(S, get_array(C))), rtol=rtol, kwargs...)
+  @test isapprox(S(C),  2*TensorValue(ForwardDiff.gradient(Ψ, get_array(C))); rtol=rtol, kwargs...)
+  @test isapprox(∂S∂C(C), FourthOrderTensorValue(Tuple(ForwardDiff.jacobian(S, get_array(C)))); rtol=rtol, kwargs...)
 end
+
+include("TypeStabilityHelpers.jl")
+
+test_type_stability_2D(model::Mechano, args...) = test_type_stability__(model, F2D, args...)
+test_type_stability_3D(model::Mechano, args...) = test_type_stability__(model, F3D, args...)
 
 
 
@@ -83,9 +88,9 @@ end
     test_derivatives__(barrier, K, TensorValue(-0.9, 0.0, 0.0, 0.0, -0.5, 0.0, 0.0, 0.0, -0.7); rtol=1e-10)
   end
   Ψ, ∂Ψu, ∂Ψuu = LogBarrier(κ=1.0, p=2)()
-  @test Ψ(I2) == 0 && Ψ(I3) == 0
+  @test Ψ(I2D) == 0 && Ψ(I3D) == 0
   @test isnan(Ψ(TensorValue(-1.0, 0.0, 0.0, 1.0))) && all(isnan, ∂Ψu(TensorValue(-1.0, 0.0, 0.0, 1.0)).data)
-  @test Ψ(0.01 * I2) > Ψ(0.5 * I2) > 0
+  @test Ψ(0.01 * I2D) > Ψ(0.5 * I2D) > 0
   @test_throws ArgumentError LogBarrier(κ=1.0, p=0)
   # composition with the third-medium model of the piston
   tm = ARAP2D(μ=1e-6) + LogBarrier(κ=1e-6, p=2)
@@ -138,8 +143,8 @@ end
   F = TensorValue(1.1, 0.05, 0.0, 0.0, 0.9, 0.02, 0.01, 0.0, 1.05)
   E = VectorValue(0.0, 3.0, 0.0)                      # a strong field: the Maxwell part makes ∂²Ψ/∂F∂F indefinite
   C = ∂FF(F, E)
-  @test minimum(eigvals(Symmetric(Matrix(get_array(C))))) < 0
-  @test minimum(eigvals(Symmetric(Matrix(get_array(model.mechano()[3](F)))))) > 0   # the elastic part alone is not
+  @test minimum(eigvals(Symmetric(flat_matrix(C)))) < 0
+  @test minimum(eigvals(Symmetric(flat_matrix(model.mechano()[3](F))))) > 0   # the elastic part alone is not
   δ = 1e-6
   switch = TangentSwitch()
   reg = HessianRegularization(model; δ, switch)
@@ -149,7 +154,7 @@ end
   set_projected!(switch, true)
   Cr = ∂FFr(F, E)
   @test Cr == regularize_hessian(C, δ)
-  @test minimum(eigvals(Symmetric(Matrix(get_array(Cr))))) ≥ δ * (1 - 1e-8)
+  @test minimum(eigvals(Symmetric(flat_matrix(Cr)))) ≥ δ * (1 - 1e-8)
   # the rest is unchanged
   @test Ψr(F, E) == Ψ(F, E) && ∂Fr(F, E) == ∂F(F, E) && ∂Er(F, E) == ∂E(F, E)
   @test ∂EFr(F, E) == ∂EF(F, E) && ∂EEr(F, E) == ∂EE(F, E)
@@ -160,7 +165,7 @@ end
   # a weak field: the total tangent is positive definite, the projection is the clamp itself (a no-op up to round-off
   # where every eigenvalue is above δ)
   E0 = VectorValue(0.0, 0.1, 0.0)
-  @test minimum(eigvals(Symmetric(Matrix(get_array(∂FF(F, E0)))))) > 0
+  @test minimum(eigvals(Symmetric(flat_matrix(∂FF(F, E0))))) > 0
   @test HessianRegularization(model; δ)()[4](F, E0) == regularize_hessian(∂FF(F, E0), δ)
 end
 
@@ -185,13 +190,14 @@ end
 
   Ψ, ∂Ψ∂F, ∂Ψ∂F∂F = model()
   ∂Ψ∂F_(F, M1, M2, M3, M4) = TensorValue(ForwardDiff.gradient(F -> Ψ(F, (get_array(M1), get_array(M2), get_array(M3), get_array(M4))), get_array(F)))
-  ∂Ψ∂F∂F_(F, M1, M2, M3, M4) = TensorValue(ForwardDiff.hessian(F -> Ψ(F, (get_array(M1), get_array(M2), get_array(M3), get_array(M4))), get_array(F)))
+  ∂Ψ∂F∂F_(F, M1, M2, M3, M4) = FourthOrderTensorValue(Tuple(ForwardDiff.hessian(F -> Ψ(F, (get_array(M1), get_array(M2), get_array(M3), get_array(M4))), get_array(F))))
 
   K = Kinematics(Mechano, Solid)
   F, _, _ = get_Kinematics(K)
   @test Ψ(F(∇u3), (M1, M2, M3, M4)) == 0.0005561006012767033
   @test isapprox(norm(∂Ψ∂F(F(∇u3), (M1, M2, M3, M4))), norm(∂Ψ∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-14)
   @test isapprox(norm(∂Ψ∂F∂F(F(∇u3), (M1, M2, M3, M4))), norm(∂Ψ∂F∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-14)
+  test_type_stability_3D(model, (M1, M2, M3, M4))
 end
 
 @testset "HGO_4Fibers" begin
@@ -209,7 +215,7 @@ end
   model = HGO_4Fibers(c1=c1, c2=c2)
   Ψ, ∂Ψ∂F, ∂Ψ∂F∂F = model()
   ∂Ψ∂F_(F, M1, M2, M3, M4) = TensorValue(ForwardDiff.gradient(F -> Ψ(F, get_array(M1), get_array(M2), get_array(M3), get_array(M4)), get_array(F)))
-  ∂Ψ∂F∂F_(F, M1, M2, M3, M4) = TensorValue(ForwardDiff.hessian(F -> Ψ(F, get_array(M1), get_array(M2), get_array(M3), get_array(M4)), get_array(F)))
+  ∂Ψ∂F∂F_(F, M1, M2, M3, M4) = FourthOrderTensorValue(Tuple(ForwardDiff.hessian(F -> Ψ(F, get_array(M1), get_array(M2), get_array(M3), get_array(M4)), get_array(F))))
 
 
   K = Kinematics(Mechano, Solid)
@@ -218,6 +224,7 @@ end
   @test Ψ(F(∇u3), M1, M2, M3, M4) == 0.0005561006012767033
   @test isapprox(norm(∂Ψ∂F(F(∇u3), M1, M2, M3, M4)), norm(∂Ψ∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-14)
   @test isapprox(norm(∂Ψ∂F∂F(F(∇u3), M1, M2, M3, M4)), norm(∂Ψ∂F∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-14)
+  test_type_stability_3D(model, M1, M2, M3, M4)
 end
 
 
@@ -241,7 +248,7 @@ end
 
   Ψ, ∂Ψ∂F, ∂Ψ∂F∂F = model()
   ∂Ψ∂F_(F, M1, M2, M3, M4) = TensorValue(ForwardDiff.gradient(F -> Ψ(F, get_array(M1), get_array(M2), get_array(M3), get_array(M4)), get_array(F)))
-  ∂Ψ∂F∂F_(F, M1, M2, M3, M4) = TensorValue(ForwardDiff.hessian(F -> Ψ(F, get_array(M1), get_array(M2), get_array(M3), get_array(M4)), get_array(F)))
+  ∂Ψ∂F∂F_(F, M1, M2, M3, M4) = FourthOrderTensorValue(Tuple(ForwardDiff.hessian(F -> Ψ(F, get_array(M1), get_array(M2), get_array(M3), get_array(M4)), get_array(F))))
 
 
   K = Kinematics(Mechano, Solid)
@@ -250,6 +257,7 @@ end
   @test Ψ(F(∇u3), M1, M2, M3, M4) == 23.21318362353833
   @test isapprox(norm(∂Ψ∂F(F(∇u3), M1, M2, M3, M4)), norm(∂Ψ∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-10)
   @test isapprox(norm(∂Ψ∂F∂F(F(∇u3), M1, M2, M3, M4)), norm(∂Ψ∂F∂F_(F(∇u3), M1, M2, M3, M4)), rtol=1e-10)
+  test_type_stability_3D(model, M1, M2, M3, M4)
 end
 
 
@@ -270,6 +278,7 @@ end
   @test Ψ(F(∇u3), N) == Ψ1(F(∇u3)) + Ψ2(F(∇u3), N)
   @test norm(∂Ψu(F(∇u3), N)) == norm(∂Ψu1(F(∇u3)) + ∂Ψu2(F(∇u3), N))
   @test norm(∂Ψuu(F(∇u3), N)) == norm(∂Ψuu1(F(∇u3)) + ∂Ψuu2(F(∇u3), N))
+  test_type_stability_3D(model, N)
 end
 
 
@@ -294,6 +303,7 @@ end
   @test Ψ(F(∇u3), [N1, N2]) == Ψ1(F(∇u3)) + Ψ2(F(∇u3), [N1]) + Ψ3(F(∇u3), [N2])
   @test isapprox(norm(∂Ψu(F(∇u3), [N1, N2])), norm(∂Ψu1(F(∇u3)) + ∂Ψu2(F(∇u3), N1) + ∂Ψu3(F(∇u3), N2)), rtol=1e-14)
   @test isapprox(norm(∂Ψuu(F(∇u3), [N1, N2])), norm(∂Ψuu1(F(∇u3)) + ∂Ψuu2(F(∇u3), N1) + ∂Ψuu3(F(∇u3), N2)), rtol=1e-14)
+  test_type_stability_3D(model, [N1, N2])
 end
 
 
@@ -303,6 +313,7 @@ end
   model = NonlinearMooneyRivlin_CV(λ=3.0, μ1=1.0, μ2=1.0, α1=2.0, α2=1.0, γ=6.0)
   test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-13)
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 
@@ -311,6 +322,7 @@ end
   model = NonlinearNeoHookean_CV(λ=3.0, μ=1.0, α=2.0, γ=6.0)
   test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-13)
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 
@@ -319,6 +331,7 @@ end
   test_derivatives_3D_(model, Kinematics(Mechano,Solid), rtol=1e-12)
   test_second_piola_3D_(model)
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 
@@ -327,6 +340,7 @@ end
   model = LinearElasticity2D(λ=3.0, μ=1.0)
   test_derivatives_2D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_2D(model)
+  test_type_stability_2D(model)
 end
 
 
@@ -335,6 +349,7 @@ end
   model = LinearElasticity3D(λ=3.0, μ=1.0)
   test_derivatives_3D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 
@@ -343,6 +358,7 @@ end
   model = NeoHookean3D(λ=3.0, μ=1.0)
   test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-13)
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 @testset "Gent2D" begin
@@ -350,24 +366,15 @@ end
   model = Gent2D(λ=3.0, μ=1.0, Jm=1000.0, γ=1.0)
   test_derivatives_2D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_2D(model)
-end
-
-@testset "PlaneStressIncompressible_I1PD" begin
-  #  Memory estimate: 0 bytes, allocs estimate: 0.
-  model = PlaneStressIncompressible_I1PD(μ=1.0)
-  Ψ, ∂Ψu , ∂Ψuu = model()
-  ∂Ψuu_(F) = TensorValue(ForwardDiff.jacobian(∂Ψu, get_array(F)))
-  K = Kinematics(Mechano, Solid)
-  F, _, _ = get_Kinematics(K)
-  @test isapprox(∂Ψuu(F(∇u2)), ∂Ψuu_(F(∇u2)),rtol=1e-14)
-  test_equilibrium_at_rest_2D(model)
+  test_type_stability_2D(model)
 end
 
 @testset "MooneyRivlin2D" begin
   #  Memory estimate: 0 bytes, allocs estimate: 0.
   model = MooneyRivlin2D(λ=3.0, μ1=1.0, μ2=2.0)
-  test_derivatives_2D_(model, Kinematics(Mechano, Solid))
+  test_derivatives_2D_(model, Kinematics(Mechano, Solid); rtol=1e-13)  # analytical derivatives vs ForwardDiff
   test_equilibrium_at_rest_2D(model)
+  test_type_stability_2D(model)
 end
 
 @testset "MooneyRivlin3D" begin
@@ -375,6 +382,7 @@ end
   model = MooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0)
   test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-13)
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 
@@ -383,6 +391,7 @@ end
   model = NonlinearMooneyRivlin2D(λ=(μParams[1] + μParams[2]) * 1e2, μ1=μParams[1], μ2=μParams[2], α1=μParams[3], α2=μParams[4])
   test_derivatives_2D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_2D(model)
+  test_type_stability_2D(model)
 end
 
 
@@ -391,6 +400,7 @@ end
   model = Yeoh3D(λ=3.0, C10=1.0, C20=1.0, C30=1.0)
   test_derivatives_3D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 
@@ -399,6 +409,7 @@ end
   model = NonlinearMooneyRivlin2D_CV(λ=(μParams[1] + μParams[2]) * 1e2, μ1=μParams[1], μ2=μParams[2], α1=μParams[3], α2=μParams[4], γ=μParams[4])
   test_derivatives_2D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_2D(model, atol=1e-9)
+  test_type_stability_2D(model)
 end
 
 
@@ -407,6 +418,7 @@ end
   model = NonlinearMooneyRivlin3D(λ=(μParams[1] + μParams[2]) * 1e2, μ1=μParams[1], μ2=μParams[2], α1=μParams[3], α2=μParams[4])
   test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-13)
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 
@@ -415,6 +427,7 @@ end
   model = IncompressibleNeoHookean2D(λ=(μParams[1] + μParams[2]) * 1e2, μ=μParams[1])
   test_derivatives_2D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_2D(model)
+  test_type_stability_2D(model)
 end
 
 @testset "IncompressibleNeoHookean2D_CV" begin
@@ -422,6 +435,7 @@ end
   model = IncompressibleNeoHookean2D_CV(λ=(μParams[1] + μParams[2]) * 1e2, μ=μParams[1], γ=3.0)
   test_derivatives_2D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_2D(model)
+  test_type_stability_2D(model)
 end
 
 
@@ -430,6 +444,7 @@ end
   model = NonlinearIncompressibleMooneyRivlin2D_CV(λ=(μParams[1] + μParams[2]) * 1e2, μ=μParams[1], α=μParams[3], γ=3.0)
   test_derivatives_2D_(model, Kinematics(Mechano, Solid))
   test_equilibrium_at_rest_2D(model)
+  test_type_stability_2D(model)
 end
 
 
@@ -438,6 +453,7 @@ end
   model = EightChain(μ=μParams[1], N=μParams[2])
   test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-13)
   test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
 end
 
 
@@ -463,7 +479,8 @@ end
   @test Ψ(F(∇u), N) == 0.27292220826242186
   @test norm(∂Ψu(F(∇u), N)) == 100.64088114687468
   @test norm(∂Ψuu(F(∇u), N)) == 46792.35008576098
-  @test isapprox(Ψ(I2, N), 0.0, atol=1e-10)
+  @test isapprox(Ψ(I2D, N), 0.0, atol=1e-10)
+  test_type_stability_2D(model, N)
 end
 
 
@@ -481,9 +498,10 @@ end
   K = Kinematics(Mechano, Solid)
   F, _, _ = get_Kinematics(K)
   @test Ψ(F(∇u), N) == 2.5259068330070704
-  @test norm(∂Ψu(F(∇u), N)) == 309.14297430663385
+  @test norm(∂Ψu(F(∇u), N)) == 309.1429743066338
   @test norm(∂Ψuu(F(∇u), N)) == 81316.15339475962
-  @test isapprox(Ψ(I3, N), 0.0, atol=1e-10)
+  @test isapprox(Ψ(I3D, N), 0.0, atol=1e-10)
+  test_type_stability_3D(model, N)
 end
 
 
@@ -500,9 +518,8 @@ end
   modelMR = MooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0)
   modelID = IdealDielectric(ε=4.0)
   modelT = ThermalModel(Cv=1.0, θr=1.0, α=2.0)
-  f(δθ::Float64)::Float64 = (δθ + 1.0) / 1.0
-  df(δθ::Float64)::Float64 = 1.0
-  modelTEM = ThermoElectroMechModel(modelT, modelID, modelMR, fθ=f, dfdθ=df)
+  law = EntropicElasticityLaw(θr=1.0, γ=0.0)   # f(θ) = θ/θr
+  modelTEM = ThermoElectroMechModel(modelT, modelID, modelMR, law)
   Ψ, ∂Ψu, ∂Ψφ, ∂Ψθ, ∂Ψuu, ∂Ψφφ, ∂Ψθθ, ∂Ψφu, ∂Ψuθ, ∂Ψφθ = modelTEM()
   K = Kinematics(Mechano, Solid)
   F, _, _ = get_Kinematics(K)
@@ -510,14 +527,14 @@ end
   E = get_Kinematics(Ke)
 
   @test (Ψ(F(∇u), E(∇φ), θt)) == -95.74389746463744
-  @test norm(∂Ψu(F(∇u), E(∇φ), θt)) == 185.1315441384458
+  @test norm(∂Ψu(F(∇u), E(∇φ), θt)) == 185.13154413844578
   @test norm(∂Ψφ(F(∇u), E(∇φ), θt)) == 50.00690431860902
   @test norm(∂Ψθ(F(∇u), E(∇φ), θt)) == 28.91912594899454
   @test norm(∂Ψuu(F(∇u), E(∇φ), θt)) == 429.9957659123366
   @test norm(∂Ψφφ(F(∇u), E(∇φ), θt)) == 23.679055285771508
   @test norm(∂Ψθθ(F(∇u), E(∇φ), θt)) == 0.29411764705882354
   @test norm(∂Ψφu(F(∇u), E(∇φ), θt)) == 132.7243219000811
-  @test norm(∂Ψuθ(F(∇u), E(∇φ), θt)) == 58.281073490042175
+  @test norm(∂Ψuθ(F(∇u), E(∇φ), θt)) == 58.28107349004217
   @test norm(∂Ψφθ(F(∇u), E(∇φ), θt)) == 14.707913034885005
 end
 
@@ -528,9 +545,8 @@ end
   θt = 3.4 - 1.0
   modelMR = MooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0)
   modelT = ThermalModel(Cv=1.0, θr=1.0, α=2.0)
-  f(δθ::Float64)::Float64 = (δθ + 1.0) / 1.0
-  df(δθ::Float64)::Float64 = 1.0
-  modelTM = ThermoMechModel(modelT, modelMR, fθ=f, dfdθ=df)
+  law = EntropicElasticityLaw(θr=1.0, γ=0.0)   # f(θ) = θ/θr
+  modelTM = ThermoMechModel(modelT, modelMR, law)
   Ψ, ∂Ψu, ∂Ψθ, ∂Ψuu, ∂Ψθθ, ∂Ψuθ = modelTM()
   K = Kinematics(Mechano, Solid)
   F, _, _ = get_Kinematics(K)
@@ -601,9 +617,9 @@ end
   ∂2Ψ_∂2E(F, E, θ) = TensorValue(ForwardDiff.hessian(E -> Ψ(get_array(F), E, θ), get_array(E)))
   ∂2Ψ∂2θ(F, E, θ) = ForwardDiff.derivative(θ -> ∂Ψ_∂θ(get_array(F), get_array(E), θ), θ)
   ∂2Ψ_∂2Eθ(F, E, θ) = VectorValue(ForwardDiff.derivative(θ -> get_array(∂Ψ_∂E(get_array(F), get_array(E), θ)), θ))
-  ∂2Ψ_∂2F(F, E, θ) = TensorValue(ForwardDiff.hessian(F -> Ψ(F, get_array(E), θ), get_array(F)))
+  ∂2Ψ_∂2F(F, E, θ) = FourthOrderTensorValue(Tuple(ForwardDiff.hessian(F -> Ψ(F, get_array(E), θ), get_array(F))))
   ∂2Ψ_∂2Fθ(F, E, θ) = TensorValue(ForwardDiff.derivative(θ -> get_array(∂Ψ_∂F(get_array(F), get_array(E), θ)), θ))
-  ∂2Ψ_∂EF(F, E, θ) = TensorValue(ForwardDiff.jacobian(F -> get_array(∂Ψ_∂E(F, get_array(E), θ)), get_array(F)))
+  ∂2Ψ_∂EF(F, E, θ) = ThirdOrderTensorValue(Tuple(ForwardDiff.jacobian(F -> get_array(∂Ψ_∂E(F, get_array(E), θ)), get_array(F))))
 
 
   @test isapprox(∂Ψu(F(∇u), E(∇φ), θt), ∂Ψ_∂F(F(∇u), E(∇φ), θt); rtol=1e-14)
@@ -616,7 +632,7 @@ end
   @test isapprox(∂ΨFθ(F(∇u), E(∇φ), θt), ∂2Ψ_∂2Fθ(F(∇u), E(∇φ), θt); rtol=1e-14)
   @test isapprox(∂ΨEF(F(∇u), E(∇φ), θt), ∂2Ψ_∂EF(F(∇u), E(∇φ), θt); rtol=1e-14)
 
-  F0 = I3
+  F0 = I3D
   E0 = VectorValue(0.,0.,0.)
   cv(F,E,θ,x...) = -θ*∂2Ψ∂2θ(F,E,θ,x...)
   @test isapprox(cv0, cv(F0, E0, θr); rtol=1e-14)
@@ -654,11 +670,13 @@ end
   modelID = IdealDielectric(ε=1.0)
   modelT = ThermalModel(Cv=17.385, θr=293.0, α=0.00156331)
   f(δθ) = (δθ + 293.0) / 293.0
-  df(δθ) = 293.0
+  df(δθ) = 1 / 293.0
+  d2f(δθ) = 0.0
   g(δθ) = -0.33 * ((δθ + 293.0) / 293.0)^3
   dg(δθ) = -(3 * 0.33 / 293.0) * ((δθ + 293.0) / 293.0)^2
+  d2g(δθ) = -(6 * 0.33 / 293.0^2) * ((δθ + 293.0) / 293.0)
 
-  modelTEM = ThermoElectroMech_Govindjee(modelT, modelID, modelMR, fθ=f, dfdθ=df, gθ=g, dgdθ=dg, β=0.0)
+  modelTEM = ThermoElectroMech_Govindjee(modelT, modelID, modelMR, fθ=f, dfdθ=df, d2fdθ2=d2f, gθ=g, dgdθ=dg, d2gdθ2=d2g, β=0.0)
   Ψ, ∂Ψu, ∂ΨE, ∂Ψθ, ∂ΨFF, ∂ΨEE, ∂2Ψθθ, ∂ΨEF, ∂ΨFθ, ∂ΨEθ, η = modelTEM()
   K = Kinematics(Mechano, Solid)
   F, _, _ = get_Kinematics(K)
@@ -677,61 +695,6 @@ end
   @test norm(∂ΨEθ(F(∇u), E(∇φ), θt)) ≈ 0.012345048484459126
 
 
-
-end
-
-
-@testset "ThermoElectroMech_PINNS" begin
-
-  function ExtractingInfo(data_filename)
-    data_dict = open(data_filename, "r") do file
-      JSON.parse(file)
-    end
-    weights_ = data_dict["weights"]
-    biases_ = data_dict["biases"]
-    Scaling = data_dict["Scaling"]
-    ϵ = vcat(Scaling["ϵₓ"], Scaling["ϵθ"])
-    β = vcat(Scaling["βₓ"], Scaling["βθ"])
-    n_layers = size(weights_, 1)
-    Weights = Vector{Matrix{Float64}}(undef, n_layers)
-    Biases = Vector{Any}(undef, n_layers)
-    for i in 1:n_layers
-      Weights[i] = hcat(weights_[i]...)  # Concatenate weights horizontally
-      if length(biases_[i]) == 1 && isa(biases_[i][1], Float64)
-        Biases[i] = biases_[i][1]  # Convert 1-element Vector{Any} to Float64
-      else
-        Biases[i] = biases_[i]  # Assign directly if it's a vector
-      end
-    end
-    return n_layers, Weights, Biases, ϵ, β
-  end
-
-  data_filename = projdir("test/models/test_NN_TEM.json")
-  n_layers, Weights, Biases, ϵ, β = ExtractingInfo(data_filename)
-
-  model = ThermoElectroMech_PINNs(; W=Weights, b=Biases, ϵ=ϵ, β=β, nLayer=n_layers)
-
-  Ψ, ∂ΨF, ∂ΨE, ∂Ψθ, ∂ΨFF, ∂ΨEE, ∂Ψθθ, ∂ΨEF, ∂ΨFθ, ∂ΨEθ = model()
-
-  ∇u = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0) * 1e-3
-  ∇φ = VectorValue(1.0, 2.0, 3.0)
-  θt = 3.4 - 1.0
-
-  K = Kinematics(Mechano, Solid)
-  F, _, _ = get_Kinematics(K)
-  Ke = Kinematics(Electro, Solid)
-  E = get_Kinematics(Ke)
-
-  @test isapprox(Ψ(F(∇u), E(∇φ), θt), 34.24573625846419, atol=1e-12)
-  @test norm(∂ΨF(F(∇u), E(∇φ), θt)) ≈ 12.190784442767743
-  @test norm(∂ΨE(F(∇u), E(∇φ), θt)) ≈ 3.890788259241063
-  @test ∂Ψθ(F(∇u), E(∇φ), θt) ≈ -0.1756808680132173
-  @test norm(∂ΨFF(F(∇u), E(∇φ), θt)) ≈ 41.75134321258517
-  @test norm(∂ΨEE(F(∇u), E(∇φ), θt)) ≈ 1.9388101847663917
-  @test norm(∂Ψθθ(F(∇u), E(∇φ), θt)) ≈ 0.05854786347086507
-  @test norm(∂ΨEF(F(∇u), E(∇φ), θt)) ≈ 10.455220025096452
-  @test norm(∂ΨFθ(F(∇u), E(∇φ), θt)) ≈ 0.059252287541736004
-  @test norm(∂ΨEθ(F(∇u), E(∇φ), θt)) ≈ 0.023111702806623537
 
 end
 
@@ -850,8 +813,8 @@ end
   @test Ψ(F(∇u), H0(∇φ), N) == 0.003187725760804994
   @test norm(∂Ψu(F(∇u), H0(∇φ), N)) == 0.4966662732306754
   @test norm(∂Ψφ(F(∇u), H0(∇φ), N)) == 4.660348298920368e-6
-  @test norm(∂Ψuu(F(∇u), H0(∇φ), N)) == 60.735729041745294
-  @test norm(∂Ψφu(F(∇u), H0(∇φ), N)) == 1.2369035467980284e-5
+  @test norm(∂Ψuu(F(∇u), H0(∇φ), N)) == 60.73572864460345
+  @test norm(∂Ψφu(F(∇u), H0(∇φ), N)) == 1.2368968933146047e-5
   @test norm(∂Ψφφ(F(∇u), H0(∇φ), N)) == 2.1878750641250348e-6
 end
 
@@ -890,8 +853,8 @@ end
   @test Ψ(F(∇u), H0(∇φ), N) == 0.001589466682574581
   @test norm(∂Ψu(F(∇u), H0(∇φ), N)) == 0.24833301570214883
   @test norm(∂Ψφ(F(∇u), H0(∇φ), N)) == 4.660348298920368e-6
-  @test norm(∂Ψuu(F(∇u), H0(∇φ), N)) == 30.36786063436432
-  @test norm(∂Ψφu(F(∇u), H0(∇φ), N)) == 1.2369035467980284e-5
+  @test norm(∂Ψuu(F(∇u), H0(∇φ), N)) == 30.36786023722243
+  @test norm(∂Ψφu(F(∇u), H0(∇φ), N)) == 1.2368968933146047e-5
   @test norm(∂Ψφφ(F(∇u), H0(∇φ), N)) == 2.1878750641250348e-6
 end
 
@@ -977,9 +940,9 @@ end
 
 
   @test Ψ(F(∇u), H0(∇φ), N) == 0.0001725693366710852
-  @test norm(∂Ψu(F(∇u), H0(∇φ), N)) == 0.07482084634773895
+  @test norm(∂Ψu(F(∇u), H0(∇φ), N)) == 0.07482084634773827
   @test norm(∂Ψφ(F(∇u), H0(∇φ), N)) == 2.793633631007779e-6
-  @test norm(∂Ψuu(F(∇u), H0(∇φ), N)) == 21.74472389462642
+  @test norm(∂Ψuu(F(∇u), H0(∇φ), N)) == 21.744723894626418
   @test norm(∂Ψφu(F(∇u), H0(∇φ), N)) == 5.589596497314291e-6
   @test norm(∂Ψφφ(F(∇u), H0(∇φ), N)) == 1.7771608829110207e-6
 end
@@ -1018,10 +981,10 @@ end
 
 
   @test Ψ(F(∇u), H0(∇φ), N) == 0.0001724695011788059
-  @test norm(∂Ψu(F(∇u), H0(∇φ), N)) == 0.07482089298212842
+  @test norm(∂Ψu(F(∇u), H0(∇φ), N)) == 0.07482089298212774
   @test norm(∂Ψφ(F(∇u), H0(∇φ), N)) == 2.8384487487963508e-6
-  @test norm(∂Ψuu(F(∇u), H0(∇φ), N)) == 21.744723980670503
-  @test norm(∂Ψφu(F(∇u), H0(∇φ), N)) == 5.679235813302821e-6
+  @test norm(∂Ψuu(F(∇u), H0(∇φ), N)) == 21.74472379720783
+  @test norm(∂Ψφu(F(∇u), H0(∇φ), N)) == 5.679234925777502e-6
   @test norm(∂Ψφφ(F(∇u), H0(∇φ), N)) == 1.7771608829110207e-6
 end
 
@@ -1039,9 +1002,9 @@ end
   # type-stable and allocation-free, and still read the current value of `αr` at each call.
   cases = (
     (MooneyRivlin2D(λ=3.0, μ1=1.0, μ2=2.0), HardMagnetic2D(μ0=1.2566e-6, αr=40e-3, χe=0.0, χr=8.0; βmok=1.0, βcoup=1.0),
-     I2 + 1e-3 * TensorValue(1.0, 2.0, 3.0, 4.0), VectorValue(1.0, 2.0), VectorValue(0.0, 1.0)),
+     I2D + 1e-3 * TensorValue(1.0, 2.0, 3.0, 4.0), VectorValue(1.0, 2.0), VectorValue(0.0, 1.0)),
     (MooneyRivlin3D(λ=3.0, μ1=1.0, μ2=2.0), HardMagnetic(μ0=1.2566e-6, αr=40e-3, χe=0.0, χr=8.0; βmok=1.0, βcoup=1.0),
-     I3 + 1e-3 * TensorValue(1.0:9.0...), VectorValue(1.0, 2.0, 3.0), VectorValue(0.0, 0.0, 1.0)))
+     I3D + 1e-3 * TensorValue(1.0:9.0...), VectorValue(1.0, 2.0, 3.0), VectorValue(0.0, 0.0, 1.0)))
   for (mech, mag, F, ℋ₀, N) in cases
     funcs = (mech + mag)()
     for f in funcs
@@ -1158,3 +1121,85 @@ end
   @test P_vals == [0.0 0.0; 0.0 0.0]
 end
 
+
+
+"""
+Bytes allocated by `f(args...)` after a warm-up call, measured inside a function specialized on the
+arguments (at the @testset level the dynamic dispatch of the call itself may be counted).
+"""
+function allocated_after_warmup(f::G, args::Vararg{Any,N}) where {G,N}
+  f(args...)
+  @allocated f(args...)
+end
+
+@testset "Composed and wrapped models do not allocate" begin
+  # functions of a composed or wrapped model forward a variable number of arguments (fibre directions, previous
+  # deformation gradient, internal variables); they must specialize on it, or every call allocates
+  F = TensorValue(1.3, 0.1, 0.0, 0.2, 0.9, -0.1, 0.0, 0.15, 1.1)
+  I3 = one(F)
+  N1 = VectorValue(1.0, 0.0, 0.0)
+  Ns = (VectorValue(1.0, 0.0, 0.0), VectorValue(0.0, 1.0, 1.0), VectorValue(1.0, 1.0, 0.0), VectorValue(1.0, 0.0, 1.0))
+  E = VectorValue(0.1, 0.2, 0.3)
+  nh = NeoHookean3D(λ=100.0, μ=1.0)
+  mr = MooneyRivlin3D(λ=100.0, μ1=1.0, μ2=0.5)
+  h4 = HGO_4Fibers(c1=[2.0, 1.0, 1.0, 1.0], c2=[0.5, 0.5, 0.5, 0.5])
+  ti = TransverseIsotropy3D(μ=1.0, α1=2.0, α2=1.0)
+  diel = IdealDielectric(ε=1.0)
+  # two viscous branches by default; return_mapping is checked with four (Julia stops specializing the
+  # forwarded states around three)
+  function maxwell(longterm, nbranches=2)
+    m = GeneralizedMaxwell(longterm, ntuple(i -> ViscousPolyconvex(μ=1.0 * i, τ=1.0 + i), nbranches)...)
+    update_time_step!(m, 0.1)
+    m
+  end
+  thermal_law = EntropicElasticityLaw(θr=1.0, γ=0.7)
+  thermal_vol = ThermalVolumetric(cv0=2.0, θr=1.0, α=0.1, κr=3.0, γ=0.5)
+  cases = [
+    ("NeoHookean3D + HGO_4Fibers", nh + h4, (F, Ns...)),
+    ("MooneyRivlin3D + HGO_4Fibers", mr + h4, (F, Ns...)),
+    ("HGO_4Fibers + NeoHookean3D", h4 + nh, (F, Ns...)),
+    ("NeoHookean3D + MooneyRivlin3D + HGO_4Fibers", nh + mr + h4, (F, Ns...)),
+    ("NeoHookean3D + TransverseIsotropy3D", nh + ti, (F, N1)),
+    ("HessianRegularization(NeoHookean3D + HGO_4Fibers)", HessianRegularization(nh + h4), (F, Ns...)),
+    ("HessianRegularization with TangentSwitch", HessianRegularization(nh + h4; switch=TangentSwitch()), (F, Ns...)),
+    ("GeneralizedMaxwell(NeoHookean3D + TransverseIsotropy3D)", maxwell(nh + ti), (F, N1, I3, I3, I3)),
+    ("ElectroMechModel(GeneralizedMaxwell)", ElectroMechModel(mechano=maxwell(nh), electro=diel), (F, E, I3, I3, I3)),
+    ("ElectroMechModel(anisotropic GeneralizedMaxwell)", ElectroMechModel(mechano=maxwell(nh + ti), electro=diel), (F, E, N1, I3, I3, I3)),
+    ("HessianRegularization(ElectroMechModel(GeneralizedMaxwell))",
+      HessianRegularization(ElectroMechModel(mechano=maxwell(nh), electro=diel)), (F, E, I3, I3, I3)),
+    ("ThermoMech_Bonet(GeneralizedMaxwell)", ThermoMech_Bonet(thermal_vol, maxwell(nh), thermal_law, thermal_law), (F, 1.0, I3, I3, I3)),
+    ("ThermoMech_Bonet(anisotropic GeneralizedMaxwell)", ThermoMech_Bonet(thermal_vol, maxwell(nh + ti), thermal_law, thermal_law),
+      (F, 1.0, N1, I3, I3, I3)),
+    ("ThermoElectroMech_Bonet(GeneralizedMaxwell)",
+      ThermoElectroMech_Bonet(thermal_vol, diel, maxwell(nh); el=thermal_law, vis=thermal_law, elec=thermal_law), (F, E, 1.0, I3, I3, I3)),
+    ("ThermoElectroMech_Bonet(anisotropic GeneralizedMaxwell)",
+      ThermoElectroMech_Bonet(thermal_vol, diel, maxwell(nh + ti); el=thermal_law, vis=thermal_law, elec=thermal_law),
+      (F, E, 1.0, N1, I3, I3, I3)),
+  ]
+  # tangents projected by regularize_hessian: skipped when bounds checking is forced (Pkg.test runs with
+  # --check-bounds=yes), as in the regularize_hessian tests: @inbounds is then ignored and the MMatrix scratch
+  # arrays of its eigen-decomposition can escape to the heap through the BoundsError path (platform dependent)
+  forced_boundscheck = Base.JLOptions().check_bounds == 1
+  projected_tangent = Dict("HessianRegularization(NeoHookean3D + HGO_4Fibers)" => 3,
+                           "HessianRegularization(ElectroMechModel(GeneralizedMaxwell))" => 4)
+  for (name, model, args) in cases
+    @testset "$name" begin
+      for (i, f) in enumerate(model())
+        @test allocated_after_warmup(f, args...) == 0 skip = forced_boundscheck && get(projected_tangent, name, 0) == i
+      end
+    end
+  end
+  @testset "Dissipation and return mapping" begin
+    m = ElectroMechModel(mechano=maxwell(nh), electro=diel)
+    @test allocated_after_warmup(Dissipation(m), F, E, I3, I3, I3) == 0
+    D = Dissipation(ThermoMech_Bonet(thermal_vol, maxwell(nh), thermal_law, thermal_law))
+    @test all(d -> allocated_after_warmup(d, F, 1.0, I3, I3, I3) == 0, D)
+    D = Dissipation(ThermoElectroMech_Bonet(thermal_vol, diel, maxwell(nh); el=thermal_law, vis=thermal_law, elec=thermal_law))
+    @test all(d -> allocated_after_warmup(d, F, E, 1.0, I3, I3, I3) == 0, D)
+    return_mapping = HyperFEM.PhysicalModels.return_mapping
+    A = ntuple(_ -> I3, 4)
+    @test allocated_after_warmup(return_mapping, maxwell(nh, 4), F, I3, A...) == 0
+    @test allocated_after_warmup(return_mapping, maxwell(nh, 4).branches, F, I3, A...) == 0
+    @test allocated_after_warmup(return_mapping, maxwell(nh + ti, 4), F, N1, I3, A...) == 0
+  end
+end

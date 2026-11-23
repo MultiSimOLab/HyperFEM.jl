@@ -13,12 +13,12 @@ const ∇un = TensorValue(1.0:9.0...) * 5e-4
   model = IdealDielectric(ε=4.0*8.85e-12)
   Ψ, ∂Ψ∂F, ∂Ψ∂E, ∂Ψ∂FF, ∂Ψ∂EF, ∂Ψ∂EE = model()
   E0 = VectorValue(rand(3)) * 6000 / 0.001
-  F1 = I3 + 0.1*TensorValue(rand(9)...)
+  F1 = I3D + 0.1*TensorValue(rand(9)...)
   @test get_array(∂Ψ∂F(F1,E0))  ≈ ForwardDiff.gradient(Fi -> Ψ(Fi, get_array(E0)), get_array(F1))
   @test get_array(∂Ψ∂E(F1,E0))  ≈ ForwardDiff.gradient(Ei -> Ψ(get_array(F1), Ei), get_array(E0))
-  @test get_array(∂Ψ∂FF(F1,E0)) ≈ ForwardDiff.jacobian(Fi -> ∂Ψ∂F(Fi, get_array(E0)), get_array(F1))
-  @test get_array(∂Ψ∂EF(F1,E0)) ≈ ForwardDiff.jacobian(Fi -> ∂Ψ∂E(Fi, get_array(E0)), get_array(F1))
-  @test get_array(∂Ψ∂EF(F1,E0)) ≈ ForwardDiff.jacobian(Ei -> ∂Ψ∂F(get_array(F1), Ei), get_array(E0))'
+  @test flat_smatrix(∂Ψ∂FF(F1,E0)) ≈ ForwardDiff.jacobian(Fi -> get_array(∂Ψ∂F(TensorValue(Fi), E0)), get_array(F1))
+  @test ∂Ψ∂EF(F1,E0) ≈ ThirdOrderTensorValue(Tuple(ForwardDiff.jacobian(Fi -> ∂Ψ∂E(Fi, get_array(E0)), get_array(F1))))
+  @test ∂Ψ∂EF(F1,E0) ≈ ThirdOrderTensorValue(Tuple(ForwardDiff.jacobian(Ei -> get_array(∂Ψ∂F(F1, VectorValue(Ei))), get_array(E0))'))
   @test get_array(∂Ψ∂EE(F1,E0)) ≈ ForwardDiff.jacobian(Ei -> ∂Ψ∂E(get_array(F1), Ei), get_array(E0))
 end
 
@@ -71,7 +71,7 @@ end
   F, _, _  = get_Kinematics(K)
 
   @test Ψ(F(∇u), E(∇φ)) == -27.514219755428428
-  @test norm(∂Ψu(F(∇u), E(∇φ))) == 47.42294370458073
+  @test norm(∂Ψu(F(∇u), E(∇φ))) == 47.422943704580724
   @test norm(∂Ψφ(F(∇u), E(∇φ))) == 14.707913034885005
   @test norm(∂Ψuu(F(∇u), E(∇φ))) == 131.10069227603947
   @test norm(∂Ψφu(F(∇u), E(∇φ))) == 39.03656526472973
@@ -85,7 +85,7 @@ end
   ∇umacro = TensorValue(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0) * 1e-2
   ∇u1 = 1e-1 * TensorValue(1, 2, 3, 4, 5, 6, 7, 8, 9)
   Emacro = VectorValue(0.0, 0.0, sqrt((1.0 + 5.0) / (1.0 + 5.0)) * 0.1)
-  A = TensorValue{3,9,Float64,27}(0.0013981268088158305, 0.0008195783555664171,
+  A = ThirdOrderTensorValue{3,3,3,Float64,27}(0.0013981268088158305, 0.0008195783555664171,
     0.0016562357569609649, 0.0008406006468943406, 0.0009224862278332126, 0.001155322042969417,
     0.0005129360612093835, 0.0012909164959851265, 0.001152698427032676, 0.0008406006468943406,
     0.0009224862278332126, 0.001155322042969417, 0.00034502469077903774, 0.00021859521770246592,
@@ -93,14 +93,14 @@ end
     0.0005129360612093835, 0.0012909164959851265, 0.001152698427032676, 0.0009471782270005929,
     0.001800950730156155, 0.0009587801251013468, 0.0008421896546088605, 0.0007114140805416631,
     0.001245006227831607)
-  Kin_mec = EvolutiveKinematics(Mechano; F=(t) -> ((∇u1, x) -> ∇u1 + one(∇u1) + t * ∇umacro + t * (A ⊙ x)))
+  Kin_mec = EvolutiveKinematics(Mechano; F=(t) -> ((∇u1, x) -> ∇u1 + one(∇u1) + t * ∇umacro + t * (A ⋅ x)))
   Kin_elec = EvolutiveKinematics(Electro; E=(t) -> ((∇φ) -> -∇φ + t * Emacro))
 
   physmec = MooneyRivlin3D(λ=10.0, μ1=1.0, μ2=1.0)
   physelec = IdealDielectric(ε=1.0)
   physmodel = FlexoElectroModel(mechano=physmec, electro=physelec, κ=1000.0)
 
-  Ψ, ∂Ψu, ∂Ψφ, ∂Ψuu, ∂Ψφu, ∂Ψφφ, Φ = physmodel(1.0)
+  Ψ, ∂Ψu, ∂Ψφ, ∂Ψuu, ∂Ψφu, ∂Ψφφ, Φ = physmodel()
 
   F, _, _ = get_Kinematics(Kin_mec; Λ=1.0)
   E = get_Kinematics(Kin_elec; Λ=1.0)
@@ -128,7 +128,7 @@ end
   E  = get_Kinematics(Ke)
   K=Kinematics(Mechano,Solid)
   F, _, _  = get_Kinematics(K)
-  Uvn = TensorValue(1.,2.,3.,2.,4.,5.,3.,5.,6.) * 2e-4 + I3
+  Uvn = TensorValue(1.,2.,3.,2.,4.,5.,3.,5.,6.) * 2e-4 + I3D
   Uvn *= det(Uvn)^(-1/3)
   λvn = 1e-3
   Avn = VectorValue(Uvn..., λvn)
@@ -151,7 +151,7 @@ end
   E = get_Kinematics(Ke)
   K=Kinematics(Mechano,Solid)
   F, _, _  = get_Kinematics(K)
-  Uvn = TensorValue(1.,2.,3.,2.,4.,5.,3.,5.,6.) * 2e-4 + I3
+  Uvn = TensorValue(1.,2.,3.,2.,4.,5.,3.,5.,6.) * 2e-4 + I3D
   Uvn *= det(Uvn)^(-1/3)
   λvn = 1e-3
   Avn = VectorValue(Uvn..., λvn)

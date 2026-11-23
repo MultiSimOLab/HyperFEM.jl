@@ -1,11 +1,8 @@
-# NewtonRaphson: tolerances and log, parity with GridapSolvers' NewtonSolver (temporary, while the
-# compatibility extension exists), and the curvature criterion.
+# NewtonRaphson: tolerances and log, stop reasons and the curvature criterion.
 using Gridap, Gridap.Algebra, Gridap.FESpaces
 using HyperFEM
 using LinearAlgebra
 using Test
-using GridapSolvers: NonlinearSolvers
-using GridapSolvers.NonlinearSolvers: NewtonSolver
 
 # Small 2D hyperelastic block stretched by a Dirichlet condition: res, jac, spaces and conditions.
 function newton_test_problem(; n=(4, 2))
@@ -25,7 +22,7 @@ function newton_test_problem(; n=(4, 2))
   V = TestFESpace(Ω, reffe, bc, conformity=:H1)
   U = TrialFESpace(V, bc, 0.0)
   res(Λ) = (u, v) -> ∫(∇(v)' ⊙ (∂Ψ∂F ∘ (F ∘ ∇(u)')))dΩ
-  jac(Λ) = (u, du, v) -> ∫(∇(v)' ⊙ ((∂Ψ∂FF ∘ (F ∘ ∇(u)')) ⊙ ∇(du)'))dΩ
+  jac(Λ) = (u, du, v) -> ∫(∇(v)' ⊙ ((∂Ψ∂FF ∘ (F ∘ ∇(u)')) ⋅² ∇(du)'))dΩ
   (; res, jac, U, V, bc, dΩ)
 end
 
@@ -42,27 +39,6 @@ end
   @test get_tolerances(nls) == NewtonTolerances(maxiter=5, atol=1e-10, rtol=1e-6, ctol=0.0)
   @test stop_reason(nls) === :running
   @test !converged(nls)
-end
-
-@testset "Parity with GridapSolvers' NewtonSolver" begin
-  p = newton_test_problem()
-  histories = Dict{Symbol,Vector{Vector{Float64}}}()
-  solutions = Dict{Symbol,Vector{Float64}}()
-  for (name, nls) in (:hyperfem => NewtonRaphson(LUSolver(); maxiter=20, atol=1e-10, rtol=1e-8),
-                      :gridapsolvers => NewtonSolver(LUSolver(); maxiter=20, atol=1e-10, rtol=1e-8))
-    h = Vector{Float64}[]
-    xh = FEFunction(p.U, zero_free_values(p.U))
-    m = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=nls, xh=xh)
-    function record(post)
-      push!(h, copy(nls.log.residuals[1:nls.log.num_iters+1]))
-    end
-    solve!(m; stepping=(nsteps=4, maxbisec=2), post=PostProcessor(m, record; is_vtk=false, filepath=mktempdir()))
-    histories[name] = h
-    solutions[name] = copy(get_free_dof_values(xh))
-  end
-  @test length(histories[:hyperfem]) == 4
-  @test histories[:hyperfem] == histories[:gridapsolvers]        # bit-identical residual histories
-  @test solutions[:hyperfem] == solutions[:gridapsolvers]
 end
 
 @testset "Stop reasons" begin
@@ -100,8 +76,6 @@ end
   m0 = StaticNonlinearModel(p.res, p.jac, p.U, p.V, p.bc; nls=nls0)
   solve!(m0; stepping=(nsteps=1, maxbisec=0))
   @test num_iterations(nls0) > num_iterations(nls)
-  # deprecated name still constructs the solver
-  @test Newton_RaphsonSolver(LUSolver(); maxiter=3) isa NewtonRaphson
 end
 
 # stdout of `f()` (redirect_stdout needs a file)

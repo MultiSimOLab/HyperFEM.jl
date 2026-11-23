@@ -96,3 +96,23 @@ function regularize_hessian(C::TensorValue{N,N,T}, δ::Real) where {N,T}
   R = Q * Diagonal(max.(T(δ), λ)) * Q'
   return TensorValue{N,N,T}(Tuple(R))
 end
+
+"""
+    regularize_hessian(H::FourthOrderTensorValue, δ) -> FourthOrderTensorValue
+
+Same as for the D²×D² matrix of `H`, `flat_tensor(H)`.
+"""
+regularize_hessian(H::FourthOrderTensorValue, δ::Real) = FourthOrderTensorValue(Tuple(regularize_hessian(flat_tensor(H), δ)))
+
+"""
+    sqrt_sym(A::TensorValue{N,N}) -> TensorValue{N,N}
+
+Principal square root of the symmetric positive (semi)definite tensor `A` (upper triangle, as
+`sqrt(Symmetric(A))`): `Q * Diagonal(sqrt.(λ)) * Q'` with `A = Q * Diagonal(λ) * Q'`.
+Unlike the general matrix `sqrt`, the result is always real, so it is type stable, and allocation-free.
+"""
+function sqrt_sym(A::TensorValue{N,N,T}) where {N,T}
+  λ, Q = _sym_eigen(_sym_upper(SMatrix{N,N,T}(A.data)))
+  R = Q * Diagonal(sqrt.(max.(zero(T), λ))) * Q'
+  return TensorValue{N,N,T}(Tuple(R))
+end
