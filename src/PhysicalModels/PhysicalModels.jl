@@ -71,6 +71,7 @@ export PhysicalModel
 export Mechano
 export Elasto
 export AnisoElastic
+export IsoElastic
 export Visco
 export ViscoElastic
 export Electro
