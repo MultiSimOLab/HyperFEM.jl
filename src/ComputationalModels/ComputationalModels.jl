@@ -47,6 +47,8 @@ export MultiFieldBC
 export residual_Neumann
 export NeumannConditions
 export add_tag_from_vertex_filter!
+export update_displacements!
+export update_velocity!
 
 
 include("DirichletApplicator.jl")
