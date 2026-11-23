@@ -132,7 +132,7 @@ function Gridap.CellData.update_state!(obj::NVisco, states, F, Fn; kwargs...)
   map((b, s) -> update_state!(b, s, F, Fn; kwargs...), obj, states)
 end
 
-function return_mapping(obj::NVisco, F, Fn, A...)
+function return_mapping(obj::NVisco, F, Fn, A::Vararg{Any,K}) where {K}
   map((b, Ai) -> return_mapping(b, F, Fn, Ai), obj, A)
 end
 
@@ -202,11 +202,11 @@ function Gridap.CellData.update_state!(obj::GeneralizedMaxwell{<:AnisoElastic}, 
   update_state!(obj.branches, states, F, Fn; kwargs...)
 end
 
-function return_mapping(obj::GeneralizedMaxwell{<:IsoElastic}, F, Fn, A...)
+function return_mapping(obj::GeneralizedMaxwell{<:IsoElastic}, F, Fn, A::Vararg{Any,K}) where {K}
   return_mapping(obj.branches, F, Fn, A...)
 end
 
-function return_mapping(obj::GeneralizedMaxwell{<:AnisoElastic}, F, n, Fn, A...)
+function return_mapping(obj::GeneralizedMaxwell{<:AnisoElastic}, F, n, Fn, A::Vararg{Any,K}) where {K}
   return_mapping(obj.branches, F, Fn, A...)
 end
 

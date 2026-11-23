@@ -167,14 +167,14 @@ function (obj::HessianRegularization{Nothing})()
   Ψs, ∂Ψs, ∂2Ψs = obj.mechano()
   δ, sym = obj.δ, obj.symmetrize
   # extra arguments (the fibre direction of an anisotropic model) are passed through
-  ∂2Ψ(F, args...) = (C = ∂2Ψs(F, args...); regularize_hessian(sym ? _symmetrize(C) : C, δ))
+  ∂2Ψ(F, args::Vararg{Any,K}) where {K} = (C = ∂2Ψs(F, args...); regularize_hessian(sym ? _symmetrize(C) : C, δ))
   return (Ψs, ∂Ψs, ∂2Ψ)
 end
 
 function (obj::HessianRegularization{TangentSwitch})()
   Ψs, ∂Ψs, ∂2Ψs = obj.mechano()
   δ, sym, switch = obj.δ, obj.symmetrize, obj.switch
-  ∂2Ψ(F, args...) = (C = ∂2Ψs(F, args...); is_projected(switch) ? regularize_hessian(sym ? _symmetrize(C) : C, δ) : C)
+  ∂2Ψ(F, args::Vararg{Any,K}) where {K} = (C = ∂2Ψs(F, args...); is_projected(switch) ? regularize_hessian(sym ? _symmetrize(C) : C, δ) : C)
   return (Ψs, ∂Ψs, ∂2Ψ)
 end
 
@@ -275,11 +275,18 @@ struct ComposedAnisoElastic <: AnisoElastic
   function (obj::ComposedAnisoElastic)()
     DΨ1 = obj.Model1()
     DΨ2 = obj.Model2()
-    Ψ, ∂Ψ, ∂∂Ψ = map((ψ1, ψ2) -> (x, N...) -> ψ1(x) + ψ2(x, N...), DΨ1, DΨ2)
+    Ψ, ∂Ψ, ∂∂Ψ = map(_aniso_sum, DΨ1, DΨ2)
     return (Ψ, ∂Ψ, ∂∂Ψ)
   end
 end
 
+
+# x -> ψ1(x) + ψ2(x, N...) for any number of fibre directions N. `Vararg{Any,K}` makes Julia specialize on the
+# number of arguments: a vararg that is only passed through is not specialized and allocates at every call.
+function _aniso_sum(ψ1, ψ2)
+  ψ(x, N::Vararg{Any,K}) where {K} = ψ1(x) + ψ2(x, N...)
+  return ψ
+end
 
 function (+)(Model1::IsoElastic, Model2::AnisoElastic)
   ComposedAnisoElastic(Model1, Model2)
