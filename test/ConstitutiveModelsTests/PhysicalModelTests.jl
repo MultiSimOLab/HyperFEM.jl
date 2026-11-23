@@ -1225,3 +1225,49 @@ end
     @test allocated_after_warmup(return_mapping, maxwell(nh + ti, 4), F, N1, I3, A...) == 0
   end
 end
+
+
+# A user model built from the exported base type IsoElastic, and its sum with a library anisotropic model
+struct UserNeoHookeanIso <: IsoElastic
+  μ::Float64
+end
+function (m::UserNeoHookeanIso)()
+  μ = m.μ
+  Ψ(F) = μ / 2 * (tr(F' * F) - 3)
+  ∂Ψ∂F(F) = μ * F
+  ∂∂Ψ∂FF(F) = μ * 𝕀3D
+  return (Ψ, ∂Ψ∂F, ∂∂Ψ∂FF)
+end
+
+# and one from AnisoElastic: a single fibre, Ψ = c/2 (|F N|² - 1)²
+struct UserFibre <: AnisoElastic
+  c::Float64
+end
+function (m::UserFibre)()
+  c = m.c
+  Ψ(F, N) = c / 2 * ((F ⋅ N) ⋅ (F ⋅ N) - 1)^2
+  ∂Ψ∂F(F, N) = 2c * ((F ⋅ N) ⋅ (F ⋅ N) - 1) * ((F ⋅ N) ⊗ N)
+  ∂∂Ψ∂FF(F, N) = FourthOrderTensorValue(Tuple(ForwardDiff.jacobian(x -> get_array(∂Ψ∂F(TensorValue(x), N)), get_array(F))))
+  return (Ψ, ∂Ψ∂F, ∂∂Ψ∂FF)
+end
+
+@testset "User models from the exported base types" begin
+  @test :IsoElastic in names(HyperFEM) && :AnisoElastic in names(HyperFEM)
+  user = UserNeoHookeanIso(1.0)
+  fibre = HGO_1Fiber(c1=2.0, c2=0.5)
+  model = user + fibre
+  @test model isa AnisoElastic
+  F = TensorValue(1.3, 0.1, 0.0, 0.2, 0.9, -0.1, 0.0, 0.15, 1.1)
+  N = VectorValue(1.0, 0.0, 0.0)
+  Ψ, P, A = model()
+  Ψf, Pf, Af = fibre()
+  @test Ψ(F, N) ≈ user()[1](F) + Ψf(F, N)
+  @test P(F, N) ≈ F + Pf(F, N)
+  @test A(F, N) ≈ 𝕀3D + Af(F, N)
+  @test allocated_after_warmup(P, F, N) == 0
+  # a user anisotropic model summed with a library isotropic one
+  model2 = NeoHookean3D(λ=3.0, μ=1.0) + UserFibre(2.0)
+  @test model2 isa AnisoElastic
+  Ψ2, P2, A2 = model2()
+  @test P2(F, N) ≈ NeoHookean3D(λ=3.0, μ=1.0)()[2](F) + UserFibre(2.0)()[2](F, N)
+end

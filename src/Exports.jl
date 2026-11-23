@@ -31,6 +31,8 @@ end
 @publish Backends as_backend
 @publish PhysicalModels PhysicalModel
 @publish PhysicalModels Elasto
+@publish PhysicalModels IsoElastic
+@publish PhysicalModels AnisoElastic
 @publish PhysicalModels ViscoElastic
 
 @publish PhysicalModels LinearElasticity3D
