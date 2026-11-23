@@ -1,3 +1,42 @@
+
+
+function midpoint_update!(v, x⁺, x⁻, Δt)
+  v .*= -1.0
+  v .-= (2.0 / Δt) * x⁻
+  v .+= (2.0 / Δt) * x⁺
+end
+
+
+"""
+    update_velocity!
+
+Update the velocity field `vh` based on the current displacement field `xh⁺`
+and the previous displacement `xh⁻` using a midpoint time-stepping scheme.
+The velocity is updated in place.
+"""
+function update_velocity!(vh, xh⁺, xh⁻, Δt)
+  midpoint_update!(get_free_dof_values(vh), get_free_dof_values(xh⁺), get_free_dof_values(xh⁻), Δt)
+  midpoint_update!(get_dirichlet_dof_values(vh), get_dirichlet_dof_values(xh⁺), get_dirichlet_dof_values(xh⁻), Δt)
+  return vh
+end
+
+
+"""
+    update_displacements!
+
+Update the old displacement field `xh⁻` with the new displacement field `xh⁺`.
+The update is performed in place, modifying `xh⁻` to match both the free dof values
+and the dirichlet dof values of `xh⁺`.
+"""
+function update_displacements!(xh⁻, xh⁺)
+  x = get_free_dof_values(xh⁻)
+  x .= get_free_dof_values(xh⁺)
+  x_dir = get_dirichlet_dof_values(xh⁻)
+  x_dir .= get_dirichlet_dof_values(xh⁺)
+  return xh⁻
+end
+
+
 abstract type ComputationalModel end
 
 get_state(::ComputationalModel) = @abstractmethod
