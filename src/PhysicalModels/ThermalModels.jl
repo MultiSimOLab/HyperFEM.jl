@@ -3,6 +3,21 @@
 # Thermal models
 # ===================
 
+"""
+    ThermalModel(; Cv, θr, α, κ=10.0)
+
+Thermal model in the temperature increment `δθ = θ - θr`: heat capacity `Cv`, reference temperature `θr`,
+thermo-mechanical coupling coefficient `α` and conductivity `κ` (constant):
+
+```math
+\\Psi_t(\\delta\\theta) = C_v \\left(\\delta\\theta - \\theta \\ln\\frac{\\theta}{\\theta_r}\\right), \\qquad \\theta = \\theta_r + \\delta\\theta.
+```
+
+The meaning of `α` is set by the model that uses it. In [`ThermoMechModel`](@ref) and `ThermoElectroMechModel`
+the coupling energy is `Ψtm(F, δθ) = -3α (J² - 1) δθ`: `α` is a stress per unit temperature, not the thermal
+expansion coefficient. Linearized, `Ψtm ≈ -6α tr(ε) δθ`, so the expansion coefficient is `α_th = 2α/K`, with `K` the
+bulk modulus of the mechanical model. In `ThermalVolumetric` it is the expansion coefficient itself.
+"""
 struct ThermalModel <: Thermo
   Cv::Float64
   θr::Float64
