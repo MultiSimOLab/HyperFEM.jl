@@ -1,4 +1,4 @@
-<p align="center"><img src="https://github.com/MultiSimOLab/HyperFEM.jl/raw/main/docs/img/logo.png" width="30%"></p>
+<p align="center"><img src="docs/src/assets/logo.png" width="30%"></p>
 
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://multisimolab.github.io/HyperFEM.jl/stable/)
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://multisimolab.github.io/HyperFEM.jl/dev/)
@@ -294,7 +294,7 @@ carries over to distributed and GPU arrays; a `Coupling` whose `g(τ)` is not a 
 
 ## HyperFEM Gallery
 
-![img](https://github.com/MultiSimOLab/HyperFEM.jl/raw/main/docs/img/sims.png)
+![img](docs/src/assets/sims.png)
 
  
 
@@ -311,7 +311,7 @@ along with the required citations for [Gridap](https://github.com/gridap/Gridap.
  
 - Grants PID2022-141957OA-C22/PID2022-141957OB-C22  funded by MCIN/AEI/ 10.13039/501100011033  and by ''ERDF A way of making Europe''
 
-<p align="center"><img src="https://github.com/MultiSimOLab/HyperFEM.jl/raw/main/docs/img/aei.png" width="70%"></p>
+<p align="center"><img src="docs/src/assets/aei.png" width="70%"></p>
 
 ##  Contact
 
