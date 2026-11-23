@@ -15,6 +15,7 @@ import Gridap.CellData: CellState, update_state!
 
 export Yeoh3D
 export Gent2D
+export Gent3D
 export NeoHookean3D
 export IsochoricNeoHookean3D
 export IncompressibleNeoHookean3D
@@ -71,6 +72,7 @@ export PhysicalModel
 export Mechano
 export Elasto
 export AnisoElastic
+export IsoElastic
 export Visco
 export ViscoElastic
 export Electro

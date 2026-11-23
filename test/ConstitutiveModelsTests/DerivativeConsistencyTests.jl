@@ -72,6 +72,7 @@ const DC_MECH2 = (
 const DC_MECH3 = (
   PM.LinearElasticity3D(λ=3.0, μ=1.0),
   PM.NeoHookean3D(λ=3.0, μ=1.0),
+  PM.Gent3D(λ=3.0, μ=1.0, Jm=50.0, γ=1.0),
   PM.IsochoricNeoHookean3D(μ=1.0),
   PM.IncompressibleNeoHookean3D(λ=10.0, μ=1.0),
   PM.Yeoh3D(λ=3.0, C10=1.0, C20=0.5, C30=0.2),

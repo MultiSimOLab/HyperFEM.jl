@@ -369,6 +369,27 @@ end
   test_type_stability_2D(model)
 end
 
+@testset "Gent3D" begin
+  model = Gent3D(λ=3.0, μ=1.0, Jm=50.0, γ=1.0)
+  test_derivatives_3D_(model, Kinematics(Mechano, Solid), rtol=1e-12)
+  test_equilibrium_at_rest_3D(model)
+  test_type_stability_3D(model)
+  Ψ, P, A = model()
+  F = I3D + ∇u3
+  @test isapprox(norm(P(I3D)), 0.0, atol=1e-12)                          # stress-free reference state
+  Q = TensorValue(0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0)          # a rotation
+  @test Ψ(Q * F) ≈ Ψ(F)                                                   # objectivity
+  @test P(Q * F) ≈ Q * P(F)
+  # Jm → ∞: the isochoric part tends to the neo-Hookean μ/2 (I₁ - 3) (λ = 0 leaves -μ ln J in both)
+  # (differences of order μ (I₁ - 3)²/Jm in Ψ, μ (I₁ - 3)/Jm in P and μ/Jm in the tangent; absolute tolerances,
+  # since Ψ itself is small here: its two terms nearly cancel)
+  Ψg, Pg, Ag = Gent3D(λ=0.0, μ=1.0, Jm=1e5, γ=1.0)()
+  Ψn, Pn, An = NeoHookean3D(λ=0.0, μ=1.0)()
+  @test isapprox(Ψg(F), Ψn(F), atol=1e-8)
+  @test isapprox(Pg(F), Pn(F), atol=1e-6)
+  @test isapprox(Ag(F), An(F), atol=1e-4)
+end
+
 @testset "MooneyRivlin2D" begin
   #  Memory estimate: 0 bytes, allocs estimate: 0.
   model = MooneyRivlin2D(λ=3.0, μ1=1.0, μ2=2.0)
@@ -1160,6 +1181,7 @@ end
     ("HGO_4Fibers + NeoHookean3D", h4 + nh, (F, Ns...)),
     ("NeoHookean3D + MooneyRivlin3D + HGO_4Fibers", nh + mr + h4, (F, Ns...)),
     ("NeoHookean3D + TransverseIsotropy3D", nh + ti, (F, N1)),
+    ("Gent3D + HGO_4Fibers", Gent3D(λ=100.0, μ=1.0, Jm=50.0, γ=1.0) + h4, (F, Ns...)),
     ("HessianRegularization(NeoHookean3D + HGO_4Fibers)", HessianRegularization(nh + h4), (F, Ns...)),
     ("HessianRegularization with TangentSwitch", HessianRegularization(nh + h4; switch=TangentSwitch()), (F, Ns...)),
     ("GeneralizedMaxwell(NeoHookean3D + TransverseIsotropy3D)", maxwell(nh + ti), (F, N1, I3, I3, I3)),
@@ -1202,4 +1224,34 @@ end
     @test allocated_after_warmup(return_mapping, maxwell(nh, 4).branches, F, I3, A...) == 0
     @test allocated_after_warmup(return_mapping, maxwell(nh + ti, 4), F, N1, I3, A...) == 0
   end
+end
+
+
+
+# A user model built from the exported base type IsoElastic, and its sum with a library anisotropic model
+struct UserNeoHookeanIso <: IsoElastic
+  μ::Float64
+end
+function (m::UserNeoHookeanIso)()
+  μ = m.μ
+  Ψ(F) = μ / 2 * (tr(F' * F) - 3)
+  ∂Ψ∂F(F) = μ * F
+  ∂∂Ψ∂FF(F) = μ * 𝕀3D
+  return (Ψ, ∂Ψ∂F, ∂∂Ψ∂FF)
+end
+
+@testset "User models from the exported base types" begin
+  @test :IsoElastic in names(HyperFEM) && :AnisoElastic in names(HyperFEM)
+  user = UserNeoHookeanIso(1.0)
+  fibre = HGO_1Fiber(c1=2.0, c2=0.5)
+  model = user + fibre
+  @test model isa AnisoElastic
+  F = TensorValue(1.3, 0.1, 0.0, 0.2, 0.9, -0.1, 0.0, 0.15, 1.1)
+  N = VectorValue(1.0, 0.0, 0.0)
+  Ψ, P, A = model()
+  Ψf, Pf, Af = fibre()
+  @test Ψ(F, N) ≈ user()[1](F) + Ψf(F, N)
+  @test P(F, N) ≈ F + Pf(F, N)
+  @test A(F, N) ≈ 𝕀3D + Af(F, N)
+  @test allocated_after_warmup(P, F, N) == 0
 end

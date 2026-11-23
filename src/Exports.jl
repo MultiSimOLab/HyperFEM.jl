@@ -31,12 +31,15 @@ end
 @publish Backends as_backend
 @publish PhysicalModels PhysicalModel
 @publish PhysicalModels Elasto
+@publish PhysicalModels IsoElastic
+@publish PhysicalModels AnisoElastic
 @publish PhysicalModels ViscoElastic
 
 @publish PhysicalModels LinearElasticity3D
 @publish PhysicalModels LinearElasticity2D
 @publish PhysicalModels Yeoh3D
 @publish PhysicalModels Gent2D
+@publish PhysicalModels Gent3D
 @publish PhysicalModels NeoHookean3D
 @publish PhysicalModels IsochoricNeoHookean3D
 @publish PhysicalModels IncompressibleNeoHookean3D

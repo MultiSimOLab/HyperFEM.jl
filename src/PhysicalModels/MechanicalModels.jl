@@ -473,6 +473,53 @@ struct Gent2D <: IsoElastic
 end
 
 
+"""
+    Gent3D(; λ, μ, Jm, γ, ρ=0.0)
+
+Compressible Gent model in 3D, with the volumetric energy of `Gent2D`:
+
+```math
+\\Psi = -\\frac{\\mu J_m}{2} \\ln\\left(1 - \\frac{I_1 - 3}{J_m}\\right) - \\mu \\ln J
+       + \\lambda \\left(J^\\gamma + J^{-\\gamma}\\right) - 2\\lambda,
+\\qquad I_1 = \\mathrm{tr}(F^T F),\\quad J = \\det F.
+```
+
+`Jm` limits the chain extensibility (`I₁ - 3 < Jm`); for `Jm → ∞` the isochoric part tends to the neo-Hookean
+`μ/2 (I₁ - 3)`. Stress-free in the reference configuration.
+"""
+struct Gent3D <: IsoElastic
+  λ::Float64
+  μ::Float64
+  Jm::Float64
+  γ::Float64
+  ρ::Float64
+
+  function Gent3D(; λ::Float64, μ::Float64, Jm::Float64, γ::Float64, ρ::Float64=0.0)
+    new(λ, μ, Jm, γ, ρ)
+  end
+
+  function (obj::Gent3D)()
+    λ, μ, Jm, γ = obj.λ, obj.μ, obj.Jm, obj.γ
+
+    J(F) = det(F)
+    H(F) = det(F) * inv(F)'
+    I1(F) = tr(F' * F)
+    g(F) = 1.0 - (I1(F) - 3.0) / Jm
+
+    Ψ(F) = -μ * Jm / 2.0 * log(g(F)) - μ * log(J(F)) + λ * (J(F)^γ + J(F)^(-γ)) - 2.0 * λ
+
+    ∂Ψ_∂J(F) = -μ / J(F) + λ * γ * (J(F)^(γ - 1.0) - J(F)^(-γ - 1.0))
+    ∂Ψu(F) = (μ / g(F)) * F + ∂Ψ_∂J(F) * H(F)
+
+    ∂Ψ2_∂JJ(F) = μ / J(F)^2 + λ * γ * ((γ - 1.0) * J(F)^(γ - 2.0) + (γ + 1.0) * J(F)^(-γ - 2.0))
+    ∂Ψuu(F) = (μ / g(F)) * 𝕀3D + (2.0 * μ / (Jm * g(F)^2)) * (F ⊗ F) +
+              ∂Ψ2_∂JJ(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂J(F) * ×ᵢ⁴(F)
+
+    return (Ψ, ∂Ψu, ∂Ψuu)
+  end
+end
+
+
 
 struct MooneyRivlin3D <: IsoElastic
   λ::Float64
