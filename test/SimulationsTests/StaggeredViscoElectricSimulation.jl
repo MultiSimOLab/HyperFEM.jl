@@ -33,6 +33,7 @@ function staggered_visco_electric_simulation(; backend=:lazy, t_end=0.5, writevt
   ku = Kinematics(Mechano, Solid)
   ke = Kinematics(Electro, Solid)
   F, _... = get_Kinematics(ku)
+  E = get_Kinematics(ke)
 
   # Setup integration
   order = 1
@@ -72,6 +73,7 @@ function staggered_visco_electric_simulation(; backend=:lazy, t_end=0.5, writevt
 
   Fh  = F∘∇(uh⁺)'
   Fh⁻ = F∘∇(uh⁻)'
+  Eh  = E∘∇(φh⁺)
   A   = CellState(cons_model, dΩ; backend)
 
   # Electrical staggered step
@@ -124,7 +126,7 @@ function staggered_visco_electric_simulation(; backend=:lazy, t_end=0.5, writevt
       
       driverpost(pvd, step, time)
 
-      update_state!(cons_model, A, Fh, Fh⁻; backend)
+      update_state!(cons_model, A, Fh, Eh, Fh⁻; backend)
       TrialFESpace!(Uφ⁻, dirichlet_φ, time)
       TrialFESpace!(Uu⁻, dirichlet_u, time)
       φ⁻ .= get_free_dof_values(φh⁺)

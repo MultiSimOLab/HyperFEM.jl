@@ -6,6 +6,8 @@ using HyperFEM.PhysicalModels: cof
 using StaticArrays
 using Test
 using ForwardDiff
+import Gridap
+using Gridap: ∇
 
 include("TypeStabilityHelpers.jl")
 
@@ -327,4 +329,87 @@ end
   @test allocations(∂∂Ψ∂FF, F, Fn, Cv, Cv) == 0
   @test allocations(D, F, Fn, Cv, Cv) == 0
   test_type_stability__(cons_model, F, Fn, Cv, Cv)
+end
+
+
+
+# backends of the state tests, as the simulation tests (HYPERFEM_TEST_BACKENDS, default "lazy,compiled")
+const STATE_TEST_BACKENDS = Tuple(Symbol.(strip.(split(get(ENV, "HYPERFEM_TEST_BACKENDS", "lazy,compiled"), ","))))
+:compiled in STATE_TEST_BACKENDS && @eval using HyperFEMKernels
+
+@testset "update_state! of models with internal variables" begin
+  PM = HyperFEM.PhysicalModels
+  geometry = Gridap.CartesianDiscreteModel((0, 1, 0, 1, 0, 1), (1, 1, 1))
+  dΩ = Gridap.Measure(Gridap.Triangulation(geometry), 2)
+  pts = Gridap.CellData.get_cell_points(dΩ)
+  U = Gridap.FESpace(geometry, Gridap.ReferenceFE(Gridap.lagrangian, VectorValue{3,Float64}, 1))
+  Φ = Gridap.FESpace(geometry, Gridap.ReferenceFE(Gridap.lagrangian, Float64, 1))
+  uh = Gridap.interpolate(x -> VectorValue(0.2x[1], 0.0, 0.0), U)   # a stretch
+  uh⁻ = Gridap.interpolate(x -> VectorValue(0.0, 0.0, 0.0), U)
+  φh = Gridap.interpolate(x -> 0.1x[3], Φ)
+  θh = Gridap.interpolate(x -> 0.0, Φ)
+  F, _... = get_Kinematics(Kinematics(Mechano, Solid))
+  E = get_Kinematics(Kinematics(Electro, Solid))
+  Fh, Fh⁻, Eh = F ∘ ∇(uh)', F ∘ ∇(uh⁻)', E ∘ ∇(φh)
+
+  nh = NeoHookean3D(λ=1e6, μ=1.4e4)
+  visco() = GeneralizedMaxwell(nh, ViscousPolyconvex(μ=5.6e4, τ=0.82), ViscousPolyconvex(μ=3.4e4, τ=10.7))
+  diel = IdealDielectric(ε=1.0)
+  thermo = ThermalModel(Cv=1.0, θr=1.0, α=0.1)
+  law = PM.EntropicElasticityLaw(θr=1.0, γ=0.7)
+  tvol = PM.ThermalVolumetric(cv0=2.0, θr=1.0, α=0.1, κr=3.0, γ=0.5)
+  # first internal variable at the first quadrature point (Gridap's CellState or the compiled storage)
+  first_value(A) = A[1] isa Gridap.CellData.CellState ? A[1](pts)[1][1] : A[1].values[1, 1]
+
+  # composite models whose state is that of their viscous mechanical model: (model, good args, bad args)
+  composites = [
+    ("ElectroMechModel", () -> ElectroMechModel(mechano=visco(), electro=diel), (Fh, Eh, Fh⁻), (Fh, Fh⁻)),
+    ("HessianRegularization(ElectroMechModel)", () -> HessianRegularization(ElectroMechModel(mechano=visco(), electro=diel)),
+      (Fh, Eh, Fh⁻), (Fh, Fh⁻)),
+    ("ThermoMechModel", () -> ThermoMechModel(thermo, visco(), law), (Fh, θh, Fh⁻), (Fh, Fh⁻)),
+    ("ThermalDeviatoric", () -> PM.ThermalDeviatoric(visco(), law), (Fh, θh, Fh⁻), (Fh, Fh⁻)),
+    ("ThermoMech_Bonet", () -> ThermoMech_Bonet(tvol, visco(), law, law), (Fh, θh, Fh⁻), (Fh, Fh⁻)),
+    ("ThermoElectroMechModel", () -> ThermoElectroMechModel(thermo, diel, visco(), law), (Fh, Eh, θh, Fh⁻), (Fh, Eh, Fh⁻)),
+    ("ThermoElectroMech_Bonet", () -> ThermoElectroMech_Bonet(tvol, diel, visco(); el=law, vis=law, elec=law),
+      (Fh, Eh, θh, Fh⁻), (Fh, Eh, Fh⁻))]
+
+  for backend in STATE_TEST_BACKENDS
+    @testset "$backend" begin
+      # the internal variables of the viscous model change after an update
+      mech = visco()
+      update_time_step!(mech, 0.1)
+      Am = CellState(mech, dΩ; backend)
+      initial = first_value(Am)
+      update_state!(mech, Am, Fh, Fh⁻; backend)
+      @test !(first_value(Am) ≈ initial)
+
+      for (name, model, good, bad) in composites
+        @testset "$name" begin
+          m = model()
+          update_time_step!(m, 0.1)
+          A = CellState(m, dΩ; backend)
+          # a wrong argument list throws (it used to do nothing) and leaves the state unchanged
+          @test_throws ArgumentError update_state!(m, A, bad...; backend)
+          @test first_value(A) == initial
+          # the right one updates as the mechanical model alone
+          update_state!(m, A, good...; backend)
+          @test first_value(A) == first_value(Am)
+        end
+      end
+    end
+  end
+
+  # the message names the model that received the arguments and the expected argument lists
+  m = ElectroMechModel(mechano=visco(), electro=diel)
+  @test_throws "GeneralizedMaxwell has internal variables" update_state!(m, CellState(m, dΩ), Fh, Fh⁻)
+  @test_throws "(A, F, E, Fn) for electro-mechanical" update_state!(m, CellState(m, dΩ), Fh, Fh⁻)
+  @test_throws "(A, F, θ, Fn) for thermo-mechanical" update_state!(m, CellState(m, dΩ), Fh, Fh⁻)
+
+  # models without internal variables accept any update and do nothing: no state (`nothing`) or no branches (`()`)
+  @test isnothing(initialize_state(nh))
+  @test isnothing(update_state!(nh, nothing, Fh, Fh⁻))
+  @test initialize_state(GeneralizedMaxwell(nh)) === ()
+  @test isnothing(update_state!(GeneralizedMaxwell(nh), (), Fh))
+  em0 = ElectroMechModel(mechano=GeneralizedMaxwell(nh), electro=diel)
+  @test isnothing(update_state!(em0, CellState(em0, dΩ), Fh, Fh⁻))
 end
