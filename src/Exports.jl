@@ -192,7 +192,6 @@ end
 @publish ComputationalModels  LoadStep
 @publish ComputationalModels  step!
 @publish ComputationalModels  dirichlet_preconditioning!
-@publish ComputationalModels  GmshDiscreteModel
 @publish ComputationalModels  PostProcessor
 @publish ComputationalModels  vtk_save
 @publish ComputationalModels  get_pvd
