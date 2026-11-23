@@ -1176,10 +1176,16 @@ end
       ThermoElectroMech_Bonet(thermal_vol, diel, maxwell(nh + ti); el=thermal_law, vis=thermal_law, elec=thermal_law),
       (F, E, 1.0, N1, I3, I3, I3)),
   ]
+  # tangents projected by regularize_hessian: skipped when bounds checking is forced (Pkg.test runs with
+  # --check-bounds=yes), as in the regularize_hessian tests: @inbounds is then ignored and the MMatrix scratch
+  # arrays of its eigen-decomposition can escape to the heap through the BoundsError path (platform dependent)
+  forced_boundscheck = Base.JLOptions().check_bounds == 1
+  projected_tangent = Dict("HessianRegularization(NeoHookean3D + HGO_4Fibers)" => 3,
+                           "HessianRegularization(ElectroMechModel(GeneralizedMaxwell))" => 4)
   for (name, model, args) in cases
     @testset "$name" begin
-      for f in model()
-        @test allocated_after_warmup(f, args...) == 0
+      for (i, f) in enumerate(model())
+        @test allocated_after_warmup(f, args...) == 0 skip = forced_boundscheck && get(projected_tangent, name, 0) == i
       end
     end
   end
