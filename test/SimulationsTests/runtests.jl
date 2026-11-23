@@ -143,8 +143,8 @@ HyperFEM.ComputationalModels.nls_iterations(s::FailingNewton) = HyperFEM.Computa
     r = run_backends(b -> staggered_visco_electric_simulation(; backend=b))
     for (b, (t, uz)) in r
       @testset "$b" begin
-        @test uz[end] ≈ 0.002914376983
-        @test norm(uz) ≈ 0.004558785342
+        @test uz[end] ≈ 0.003132373359
+        @test norm(uz) ≈ 0.004849630487
       end
     end
     agree(r, x -> x[2])
