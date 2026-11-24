@@ -2,7 +2,7 @@ using Gridap.TensorValues
 using ForwardDiff
 using LinearAlgebra: det, inv
 using HyperFEM.TensorAlgebra
-using HyperFEM.PhysicalModels: cof, logreg, ∂log∂J, ∂∂log∂JJ, trAA, _∂H∂F_2D
+using HyperFEM.PhysicalModels: cof, logreg, ∂log∂J, ∂∂log∂JJ, trAA, ∂H∂F
 using Test
 
 
@@ -24,16 +24,18 @@ end
 
 @testset "cofactor" begin
   A = TensorValue(1.:9...) + I3D
-  cofA = det(A) * inv(A')
-  @test isapprox(cof(A), cofA)
+  @test cof(A) ≈ det(A) * inv(A')
+  B = TensorValue(1.1, 0.2, 0.3, 0.9)
+  @test cof(B) ≈ det(B) * inv(B')
 end
 
 
-@testset "cofactor derivative 2D" begin
-  cof2D(F) = [F[2, 2] -F[2, 1]; -F[1, 2] F[1, 1]]
-  F = TensorValue(1.1, 0.2, 0.3, 0.9)
-  ∂H∂F = ForwardDiff.jacobian(cof2D, get_array(F))
-  @test _∂H∂F_2D() == FourthOrderTensorValue(Tuple(∂H∂F))
+@testset "cofactor derivative" begin
+  jac(f, F) = FourthOrderTensorValue(Tuple(ForwardDiff.jacobian(x -> get_array(f(TensorValue(x))), get_array(F))))
+  for F in (TensorValue(1.1, 0.2, 0.3, 0.9), TensorValue(1.:9...) * 1e-1 + I3D)
+    @test jac(cof, F) ≈ ∂H∂F(F)
+  end
+  @test eltype(∂H∂F(TensorValue{2,2,Float32}(1, 0, 0, 1))) == Float32
 end
 
 

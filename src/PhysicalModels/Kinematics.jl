@@ -1,18 +1,23 @@
 
 
 """
-    cof(A::TensorValue)::TensorValue
+    cof(F::TensorValue)::TensorValue
 
-Calculate the cofactor of a matrix.
+Cofactor of the deformation gradient, `H = det(F) F⁻ᵀ`. In 3D, `H = ½ F × F`.
 """
-@inline function cof(A::TensorValue)
-  0.5A×A
-end
+@inline cof(F::TensorValue{3,3}) = 0.5F × F
+@inline cof(F::TensorValue{2,2}) = TensorValue(F[2, 2], -F[1, 2], -F[2, 1], F[1, 1])
 
 
-"""Derivative of the cofactor in 2D, `∂cof(F)/∂F`."""
-function _∂H∂F_2D()
-  FourthOrderTensorValue{2}(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+"""
+    ∂H∂F(F::TensorValue)::FourthOrderTensorValue
+
+Derivative of the cofactor, `∂H/∂F`. In 3D, `∂H/∂F = ×ᵢ⁴(F)`; in 2D it is constant.
+"""
+@inline ∂H∂F(F::TensorValue{3,3}) = ×ᵢ⁴(F)
+@inline function ∂H∂F(::TensorValue{2,2,T}) where {T}
+  o, z = one(T), zero(T)
+  FourthOrderTensorValue{2}(z, z, z, o, z, z, -o, z, z, -o, z, z, o, z, z, z)
 end
 
 
