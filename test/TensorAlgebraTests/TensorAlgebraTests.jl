@@ -195,6 +195,8 @@ end
     A = TensorValue{D,D}(digits2(D)...)
     @test 𝕀 ⋅² A == A
   end
+  @test Id(TensorValue(1, 2, 3, 4)) === TensorValue(1, 0, 0, 1)
+  @test 𝕀d(TensorValue(1, 2, 3, 4)) === FourthOrderTensorValue{2,Int}(Tuple(Int(i == k && j == l) for i in 1:2, j in 1:2, k in 1:2, l in 1:2))
 end
 
 

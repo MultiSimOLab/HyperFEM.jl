@@ -49,6 +49,7 @@ export I3D
 export 𝕀2D
 export 𝕀3D
 export Id
+export 𝕀d
 
 export push_forward_C_to_F
 export regularize_hessian

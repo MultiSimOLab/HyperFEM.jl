@@ -3,11 +3,11 @@
 # =====================
 
 """Second-order identity tensor in dimension `D`, `I[i,j] = δᵢⱼ`."""
-_identity2(D::Int) = TensorValue{D,D,Float64}(Tuple(I[1] == I[2] ? 1.0 : 0.0 for I in CartesianIndices((D, D))))
+_identity2(D::Int, T::Type=Float64) = TensorValue{D,D,T}(Tuple(I[1] == I[2] ? one(T) : zero(T) for I in CartesianIndices((D, D))))
 
 """Fourth-order identity tensor in dimension `D`, `𝕀[i,j,k,l] = δᵢₖδⱼₗ`."""
-_identity4(D::Int) = FourthOrderTensorValue{D,Float64}(
-  Tuple(I[1] == I[3] && I[2] == I[4] ? 1.0 : 0.0 for I in CartesianIndices((D, D, D, D))))
+_identity4(D::Int, T::Type=Float64) = FourthOrderTensorValue{D,T}(
+  Tuple(I[1] == I[3] && I[2] == I[4] ? one(T) : zero(T) for I in CartesianIndices((D, D, D, D))))
 
 """
     I2D::TensorValue{2,2}
@@ -37,8 +37,12 @@ Fourth-order identity tensor in 3D, `𝕀3D[i,j,k,l] = δᵢₖδⱼₗ`, such t
 """
 const 𝕀3D = _identity4(3)
 
-"""Second-order identity tensor in the dimension of the vector."""
-@generated Id(::VectorValue{D,Float64}) where {D} = _identity2(D)
+"""Second-order identity tensor in the dimension of the first-/second-order tensor."""
+@generated Id(::VectorValue{D,T}) where {D,T} = _identity2(D,T)
+@generated Id(::TensorValue{D,D,T}) where {D,T} = _identity2(D,T)
+
+"""Fourth-order identity tensor in the dimension of the second-order tensor."""
+@generated 𝕀d(::TensorValue{D,D,T}) where {D,T} = _identity4(D,T)
 
 
 # ==================
