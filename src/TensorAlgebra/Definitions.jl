@@ -37,8 +37,12 @@ Fourth-order identity tensor in 3D, `𝕀3D[i,j,k,l] = δᵢₖδⱼₗ`, such t
 """
 const 𝕀3D = _identity4(3)
 
-"""Second-order identity tensor in the dimension of the vector."""
+"""Second-order identity tensor in the dimension of the first-/second-order tensor."""
 @generated Id(::VectorValue{D,T}) where {D,T} = _identity2(D,T)
+@generated Id(::TensorValue{D,D,T}) where {D,T} = _identity2(D,T)
+
+"""Fourth-order identity tensor in the dimension of the second-order tensor."""
+@generated 𝕀d(::TensorValue{D,D,T}) where {D,T} = _identity4(D,T)
 
 
 # ==================
