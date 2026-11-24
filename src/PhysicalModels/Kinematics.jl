@@ -40,10 +40,15 @@ function trAA(A::TensorValue{3, 3, T, N}) where {T, N}
 end
 
 
+# Threshold of the regularisation of ln J (`logreg`): below it, ln J is replaced by its quadratic extension,
+# in the energies and in their derivatives.
+const LOGREG_THRESHOLD = 0.01
+
+
 """
 Jacobian regularization
 """
-function logreg(J; threshold=0.01)
+function logreg(J; threshold=LOGREG_THRESHOLD)
   if J >= threshold
     return log(J)
   else
@@ -55,7 +60,7 @@ end
 """
 Jacobian regularization
 """
-function ∂log∂J(J; threshold=0.01)
+function ∂log∂J(J; threshold=LOGREG_THRESHOLD)
   if J >= threshold
     1 / J
   else
@@ -67,7 +72,7 @@ end
 """
 Jacobian regularization
 """
-function ∂∂log∂JJ(J; threshold=0.01)
+function ∂∂log∂JJ(J; threshold=LOGREG_THRESHOLD)
   if J >= threshold
     -1 / (J^2)
   else

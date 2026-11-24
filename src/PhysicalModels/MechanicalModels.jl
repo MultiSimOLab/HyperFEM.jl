@@ -1,9 +1,5 @@
 
 
-# Threshold of the regularisation of ln J (`logreg`): below it, ln J is replaced by its quadratic extension,
-# in the energies and in their derivatives.
-const LOGREG_THRESHOLD = 0.01
-
 # ============================================
 # Volumetric Mechanical models
 # ============================================
@@ -346,14 +342,12 @@ struct Yeoh3D <: IsoElastic
 
     # First Piola-Kirchhoff
     ∂ψ_∂I1(F) = C10 + 2 * C20 * (I1(F) - 3) + 3 * C30 * (I1(F) - 3)^2
-    ∂log∂J(J) = J >= LOGREG_THRESHOLD ? 1 / J : (2 / LOGREG_THRESHOLD - J / (LOGREG_THRESHOLD^2))
     ∂ψ_∂J(F) = -2 * C10 * ∂log∂J(J(F)) + λ * (J(F) - 1)
     ∂ψu(F) = 2 * ∂ψ_∂I1(F) * F + ∂ψ_∂J(F) * H(F)
 
     # Elasticity
     ∂2ψ_∂I1I1(F) = 2 * C20 + 6 * C30 * (I1(F) - 3)
-    ∂log2∂J2(J) = J >= LOGREG_THRESHOLD ? -1 / (J^2) : (-1 / (LOGREG_THRESHOLD^2))
-    ∂2ψ_∂JJ(F) = -2 * C10 * ∂log2∂J2(J(F)) + λ
+    ∂2ψ_∂JJ(F) = -2 * C10 * ∂∂log∂JJ(J(F)) + λ
     ∂ψuu(F) = 4 * ∂2ψ_∂I1I1(F) * (F ⊗ F) + 2 * ∂ψ_∂I1(F) * 𝕀3D + ∂2ψ_∂JJ(F) * (H(F) ⊗ H(F)) + ∂ψ_∂J(F) * (𝕀3D × F)
 
 
@@ -414,12 +408,10 @@ struct NeoHookean3D <: IsoElastic
     J, H = det, cof
     Ψ(F) = μ / 2 * tr((F)' * F) - μ * logreg(J(F)) + (λ / 2) * (J(F) - 1)^2 - 3.0 * (μ / 2.0)
 
-    ∂log∂J(J) = J >= LOGREG_THRESHOLD ? 1 / J : (2 / LOGREG_THRESHOLD - J / (LOGREG_THRESHOLD^2))
-    ∂log2∂J2(J) = J >= LOGREG_THRESHOLD ? -1 / (J^2) : (-1 / (LOGREG_THRESHOLD^2))
 
     ∂Ψ_∂J(F) = -μ * ∂log∂J(J(F)) + λ * (J(F) - 1)
     ∂Ψu(F) = μ * F + ∂Ψ_∂J(F) * H(F)
-    ∂Ψ2_∂J2(F) = -μ * ∂log2∂J2(J(F)) + λ
+    ∂Ψ2_∂J2(F) = -μ * ∂∂log∂JJ(J(F)) + λ
     ∂Ψuu(F) = μ * 𝕀3D + ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂J(F) * ×ᵢ⁴(F)
     return (Ψ, ∂Ψu, ∂Ψuu)
   end
@@ -531,10 +523,8 @@ struct MooneyRivlin3D <: IsoElastic
            (λ / 2.0) * (J(F) - 1)^2 - (3.0 / 2.0) * (μ1 + μ2)
     ∂Ψ_∂F(F) = μ1 * F
     ∂Ψ_∂H(F) = μ2 * H(F)
-    ∂log∂J(J) = J >= LOGREG_THRESHOLD ? 1 / J : (2 / LOGREG_THRESHOLD - J / (LOGREG_THRESHOLD^2))
-    ∂log2∂J2(J) = J >= LOGREG_THRESHOLD ? -1 / (J^2) : (-1 / (LOGREG_THRESHOLD^2))
     ∂Ψ_∂J(F) = -(μ1 + 2.0 * μ2) * ∂log∂J(J(F)) + λ * (J(F) - 1)
-    ∂Ψ2_∂J2(F) = -(μ1 + 2.0 * μ2) * ∂log2∂J2(J(F)) + λ
+    ∂Ψ2_∂J2(F) = -(μ1 + 2.0 * μ2) * ∂∂log∂JJ(J(F)) + λ
 
     ∂Ψu(F) = ∂Ψ_∂F(F) + ∂Ψ_∂H(F) × F + ∂Ψ_∂J(F) * H(F)
     ∂Ψuu(F) = μ1 * 𝕀3D + μ2 * (F × (𝕀3D × F)) + ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ×ᵢ⁴(∂Ψ_∂H(F) + ∂Ψ_∂J(F) * F)
@@ -559,10 +549,8 @@ struct MooneyRivlin2D <: IsoElastic
     J, H = det, cof
     Ψ(F) = (μ1 / 2 + μ2 / 2) * tr((F)' * F) + μ2 / 2.0 * J(F)^2 - (μ1 + 2 * μ2) * logreg(J(F)) +
            (λ / 2.0) * (J(F) - 1)^2 - (μ1 + μ2) - μ2 / 2
-    ∂log∂J(J) = J >= LOGREG_THRESHOLD ? 1 / J : (2 / LOGREG_THRESHOLD - J / (LOGREG_THRESHOLD^2))
-    ∂log2∂J2(J) = J >= LOGREG_THRESHOLD ? -1 / (J^2) : (-1 / (LOGREG_THRESHOLD^2))
     ∂Ψ_∂J(F) = μ2 * J(F) - (μ1 + 2 * μ2) * ∂log∂J(J(F)) + λ * (J(F) - 1)
-    ∂Ψ2_∂J2(F) = μ2 - (μ1 + 2 * μ2) * ∂log2∂J2(J(F)) + λ
+    ∂Ψ2_∂J2(F) = μ2 - (μ1 + 2 * μ2) * ∂∂log∂JJ(J(F)) + λ
 
     ∂Ψu(F) = (μ1 + μ2) * F + ∂Ψ_∂J(F) * H(F)
     ∂Ψuu(F) = (μ1 + μ2) * 𝕀2D + ∂Ψ2_∂J2(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂J(F) * ∂H∂F(F)
@@ -592,10 +580,8 @@ struct NonlinearMooneyRivlin3D <: IsoElastic
 
     ∂Ψ_∂F(F) = (μ1 / (3.0^(α1 - 1)) * (tr((F)' * F))^(α1 - 1)) * F
     ∂Ψ_∂H(F) = (μ2 / (3.0^(α2 - 1)) * (tr((H(F))' * H(F)))^(α2 - 1)) * H(F)
-    ∂log∂J(J) = J >= LOGREG_THRESHOLD ? 1 / J : (2 / LOGREG_THRESHOLD - J / (LOGREG_THRESHOLD^2))
-    ∂log2∂J2(J) = J >= LOGREG_THRESHOLD ? -1 / (J^2) : (-1 / (LOGREG_THRESHOLD^2))
     ∂Ψ_∂J(F) = -(μ1 + 2.0 * μ2) * ∂log∂J(J(F)) + λ * (J(F) - 1)
-    ∂Ψ2_∂J2(F) = -(μ1 + 2.0 * μ2) * ∂log2∂J2(J(F)) + λ
+    ∂Ψ2_∂J2(F) = -(μ1 + 2.0 * μ2) * ∂∂log∂JJ(J(F)) + λ
 
     ∂Ψu(F) = ∂Ψ_∂F(F) + ∂Ψ_∂H(F) × F + ∂Ψ_∂J(F) * H(F)
     ∂ΨFF(F) = (2 * μ1 * (α1 - 1) / (3.0^(α1 - 1)) * (tr((F)' * F))^(α1 - 2)) * (F ⊗ F) + (μ1 / (3.0^(α1 - 1)) * (tr((F)' * F))^(α1 - 1)) * 𝕀3D
@@ -624,8 +610,6 @@ struct NonlinearMooneyRivlin2D <: IsoElastic
            -μ1 / (2.0 * α1 * 3.0^(α1 - 1)) * 3^α1 - μ2 / (2.0 * α2 * 3.0^(α2 - 1)) * 3^α2
 
     ∂Ψ_∂F(F) = ((μ1 / (3.0^(α1 - 1)) * (tr((F)' * F) + 1.0)^(α1 - 1)) + μ2 / (3.0^(α2 - 1)) * (tr((F)' * F) + J(F)^2)^(α2 - 1)) * F
-    ∂log∂J(J) = J >= LOGREG_THRESHOLD ? 1 / J : (2 / LOGREG_THRESHOLD - J / (LOGREG_THRESHOLD^2))
-    ∂log2∂J2(J) = J >= LOGREG_THRESHOLD ? -1 / (J^2) : (-1 / (LOGREG_THRESHOLD^2))
     ∂Ψ_∂J(F) = μ2 / (3.0^(α2 - 1)) * J(F) * (tr((F)' * F) + J(F)^2)^(α2 - 1) - (μ1 + 2.0 * μ2) * ∂log∂J(J(F)) + λ * (J(F) - 1)
 
     ∂Ψu(F) = ∂Ψ_∂F(F) + ∂Ψ_∂J(F) * H(F)
@@ -633,7 +617,7 @@ struct NonlinearMooneyRivlin2D <: IsoElastic
     ∂Ψ2_∂FF(F) = ((μ1 / (3.0^(α1 - 1)) * (tr((F)' * F) + 1.0)^(α1 - 1)) + μ2 / (3.0^(α2 - 1)) * (tr((F)' * F) + J(F)^2)^(α2 - 1)) * 𝕀2D +
                  2 * ((μ1 * (α1 - 1) / (3.0^(α1 - 1)) * (tr((F)' * F) + 1.0)^(α1 - 2)) + μ2 * (α2 - 1) / (3.0^(α2 - 1)) * (tr((F)' * F) + J(F)^2)^(α2 - 2)) * (F ⊗ F)
     ∂Ψ2_∂FJ(F) = (2 * μ2 * (α2 - 1) / (3.0^(α2 - 1)) * (tr((F)' * F) + J(F)^2)^(α2 - 2)) * J(F) * F
-    ∂Ψ2_∂JJ(F) = μ2 / (3.0^(α2 - 1)) * (tr((F)' * F) + J(F)^2)^(α2 - 1) + (2 * μ2 * (α2 - 1) / (3.0^(α2 - 1)) * (tr((F)' * F) + J(F)^2)^(α2 - 2)) * J(F)^2 - (μ1 + 2.0 * μ2) * ∂log2∂J2(J(F)) + λ
+    ∂Ψ2_∂JJ(F) = μ2 / (3.0^(α2 - 1)) * (tr((F)' * F) + J(F)^2)^(α2 - 1) + (2 * μ2 * (α2 - 1) / (3.0^(α2 - 1)) * (tr((F)' * F) + J(F)^2)^(α2 - 2)) * J(F)^2 - (μ1 + 2.0 * μ2) * ∂∂log∂JJ(J(F)) + λ
 
     ∂Ψuu(F) = ∂Ψ2_∂FF(F) + (∂Ψ2_∂FJ(F) ⊗ H(F) + H(F) ⊗ ∂Ψ2_∂FJ(F)) + ∂Ψ2_∂JJ(F) * (H(F) ⊗ H(F)) + ∂Ψ_∂J(F) * ∂H∂F(F)
     return (Ψ, ∂Ψu, ∂Ψuu)
@@ -839,10 +823,8 @@ struct TransverseIsotropy3D <: AnisoElastic
 
     ∂Ψ_∂F(F, N) = (μ * (I4(F, N)^(α1 - 1))) * ((F * N) ⊗ N)
     ∂Ψ_∂H(F, N) = (μ * (I5(F, N)^(α2 - 1))) * ((H(F) * N) ⊗ N)
-    ∂log∂J(J) = J >= LOGREG_THRESHOLD ? 1 / J : (2 / LOGREG_THRESHOLD - J / (LOGREG_THRESHOLD^2))
-    ∂log2∂J2(J) = J >= LOGREG_THRESHOLD ? -1 / (J^2) : (-1 / (LOGREG_THRESHOLD^2))
     ∂Ψ_∂J(F, N) = -μ * ∂log∂J(J(F))
-    ∂Ψ2_∂J2(F, N) = -μ * ∂log2∂J2(J(F))
+    ∂Ψ2_∂J2(F, N) = -μ * ∂∂log∂JJ(J(F))
 
     ∂Ψu(F, N) = ∂Ψ_∂F(F, N) + ∂Ψ_∂H(F, N) × F + ∂Ψ_∂J(F, N) * H(F)
 
@@ -875,10 +857,8 @@ struct TransverseIsotropy2D <: AnisoElastic
     ∂I5∂F∂F(F, N) = 2 * (I2D ⊗ I2D) - 2 * (I2D ⊗ (N ⊗ N) + (N ⊗ N) ⊗ I2D) + 2 * ((N ⊗ N) ⊗ᵢₖʲˡ I2D)
     ∂I5∂F(F, N) = 2 * tr(F) * I2D - 2 * (N ⋅ (F * N)) * I2D - 2 * tr(F) * (N ⊗ N) + 2 * (N ⊗ (F' * N))
 
-    ∂log∂J(J) = J >= LOGREG_THRESHOLD ? 1 / J : (2 / LOGREG_THRESHOLD - J / (LOGREG_THRESHOLD^2))
-    ∂log2∂J2(J) = J >= LOGREG_THRESHOLD ? -1 / (J^2) : (-1 / (LOGREG_THRESHOLD^2))
     ∂Ψ_∂J(F, N) = -μ * ∂log∂J(J(F))
-    ∂Ψ2_∂J2(F, N) = -μ * ∂log2∂J2(J(F))
+    ∂Ψ2_∂J2(F, N) = -μ * ∂∂log∂JJ(J(F))
 
     ∂Ψu(F, N) = (μ / 2 * (I4(F, N)^(α1 - 1))) * ∂I4∂F(F, N) +
                 (μ / 2 * (I5(F, N)^(α2 - 1))) * ∂I5∂F(F, N) +
