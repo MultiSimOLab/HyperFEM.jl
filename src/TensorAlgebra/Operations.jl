@@ -64,6 +64,13 @@ end
 @inline Gridap.TensorValues.double_contraction(H::FourthOrderTensorValue{D}, G::FourthOrderTensorValue{D}) where {D} =
   einstein_sum(Val((:i, :j, :m, :n)), Val((:m, :n, :k, :l)), H, G)
 
+# Inner product (full contraction) of third- and fourth-order tensors: Gridap's generic fallback
+# (`contracted_product`) allocates.
+@inline @generated function Gridap.TensorValues.inner(A::HighOrderTensorValue{S,TA,N,L}, B::HighOrderTensorValue{S,TB,N,L}) where {S,TA,TB,N,L}
+  terms = [:(A.data[$i] * B.data[$i]) for i in 1:L]
+  reduce((x, y) -> :($x + $y), terms)
+end
+
 
 # =====================
 # Products in index notation
