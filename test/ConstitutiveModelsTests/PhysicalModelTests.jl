@@ -20,6 +20,9 @@ inner(a::SMatrix, b::SMatrix) = sum(a.data .* b.data)  # inner function is requi
 import HyperFEM.PhysicalModels: cof
 cof(a::SMatrix) = det(a) * inv(a)'  # cof is required by SecondPiola to work with ForwardDiff
 
+import HyperFEM.PhysicalModels: I₁iso
+I₁iso(a::SMatrix{3,3}) = I₁iso(TensorValue(a))  # I₁iso is restricted to TensorValue{3,3}
+
 
 const ∇u2 = TensorValue(1.0, 2.0, 3.0, 4.0) * 1e-3
 const ∇u3 = TensorValue(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0) * 1e-3
