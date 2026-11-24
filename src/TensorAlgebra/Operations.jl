@@ -64,6 +64,16 @@ end
 @inline Gridap.TensorValues.double_contraction(H::FourthOrderTensorValue{D}, G::FourthOrderTensorValue{D}) where {D} =
   einstein_sum(Val((:i, :j, :m, :n)), Val((:m, :n, :k, :l)), H, G)
 
+# Inner product (full contraction) of third- and fourth-order tensors: Gridap's generic fallback
+# (`contracted_product`) allocates, even though it is a single unrolled sum (e.g. 81 terms in 3D/4th order).
+# An `Expr(:call, :+, terms...)` with this many arguments also allocates: `+` has no method for that many
+# arguments, so it lowers to `Core._apply_iterate`/`afoldl`, which boxes them. A left-associated chain of
+# binary `+` avoids that.
+@inline @generated function Gridap.TensorValues.inner(A::HighOrderTensorValue{S,TA,N,L}, B::HighOrderTensorValue{S,TB,N,L}) where {S,TA,TB,N,L}
+  terms = [:(A.data[$i] * B.data[$i]) for i in 1:L]
+  reduce((x, y) -> :($x + $y), terms)
+end
+
 
 # =====================
 # Products in index notation
