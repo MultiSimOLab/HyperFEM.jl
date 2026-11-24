@@ -3,11 +3,11 @@
 # =====================
 
 """Second-order identity tensor in dimension `D`, `I[i,j] = δᵢⱼ`."""
-_identity2(D::Int, T::Type=Float64) = TensorValue{D,D,T}(Tuple(I[1] == I[2] ? onte(T) : zero(T) for I in CartesianIndices((D, D))))
+_identity2(D::Int, T::Type=Float64) = TensorValue{D,D,T}(Tuple(I[1] == I[2] ? one(T) : zero(T) for I in CartesianIndices((D, D))))
 
 """Fourth-order identity tensor in dimension `D`, `𝕀[i,j,k,l] = δᵢₖδⱼₗ`."""
 _identity4(D::Int, T::Type=Float64) = FourthOrderTensorValue{D,T}(
-  Tuple(I[1] == I[3] && I[2] == I[4] ? onte(T) : zero(T) for I in CartesianIndices((D, D, D, D))))
+  Tuple(I[1] == I[3] && I[2] == I[4] ? one(T) : zero(T) for I in CartesianIndices((D, D, D, D))))
 
 """
     I2D::TensorValue{2,2}
