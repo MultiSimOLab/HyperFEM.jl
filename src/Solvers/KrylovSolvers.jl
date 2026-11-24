@@ -37,15 +37,22 @@ activates the extension). The PETSc binary of GridapPETSc provides everything th
   and the quadratic rate is lost, with no failure reported. A new matrix object always rebuilds.
 - `nullspace`: near-null space of the tangent (free dofs × modes, from [`near_nullspace`](@ref)),
   passed to the matrix with `MatSetNearNullSpace`; the rigid-body modes are essential for AMG on
-  elasticity. GAMG reads it by default; BoomerAMG only with its interpolation-vector options
-  (`-pc_hypre_boomeramg_interp_vec_variant`). `nothing` leaves PETSc's default (the constant vector).
+  elasticity. GAMG reads it by default. BoomerAMG reads it only when both
+  `-pc_hypre_boomeramg_nodal_coarsen <n>` and `-pc_hypre_boomeramg_vec_interp_variant <1-3>` are set, with
+  `blocksize > 1` (with `blocksize = 1`, `vec_interp_variant` and a near-null space make hypre abort with a
+  segmentation fault). On elasticity this does not pay off (see `blocksize`): for BoomerAMG set `blocksize`
+  instead. `nothing` leaves PETSc's default (the constant vector).
 - `negate`: range of equations multiplied by −1 (tangent rows and right-hand side) before PETSc sees
   the system; the solution is unchanged. A symmetric saddle-point tangent, concave in the electric
   or magnetic potential (the monolithic EM system: `negate = nu+1:n` for the φ block), becomes a
   positive-real matrix on which GMRES + AMG converge, while AMG on the indefinite form fails.
 - `blocksize`: block size of the matrix (`MatSetBlockSize`), e.g. 3 for a single vector field in 3D whose
   free dofs come in complete nodal blocks (no component-wise Dirichlet masks): GAMG then aggregates
-  nodes instead of scalar dofs, which is what it expects on elasticity. `1` (default) sets nothing.
+  nodes instead of scalar dofs, and BoomerAMG coarsens each displacement component separately. This is
+  the setting that matters most for BoomerAMG on elasticity: on a 3D bar (69k dofs, CG, `rtol = 1e-8`,
+  serial) it needs 75 iterations and about 40 s with `blocksize = 1`, with or without the near-null
+  space, and 26 iterations and 2.7 s with `blocksize = 3`; adding the two options above that make it read
+  the near-null space gives 42 iterations and 69 s. `1` (default) sets nothing.
 - `options`: extra PETSc options for this solver, e.g. `"-pc_gamg_threshold 0.01 -ksp_gmres_restart 50"`
   (the prefix of the solver is added automatically).
 - `monitor`: print PETSc's residual history (`-ksp_monitor`).

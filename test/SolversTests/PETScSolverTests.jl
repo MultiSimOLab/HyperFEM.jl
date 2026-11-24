@@ -31,6 +31,21 @@ s1_battery("PETScSolver CG/GMRES + GAMG", (krylov; rtol=1e-6, maxiter=500, reuse
     end
   end
 
+  @testset "BoomerAMG with nodal blocks and the near-null space (documented options)" begin
+    # blocksize = 3 (complete nodal blocks: the Dirichlet face fixes all components), alone and with the two options
+    # with which BoomerAMG reads the near-null space (with blocksize = 1, vec_interp_variant and a near-null space
+    # make hypre abort)
+    opts = "-pc_hypre_boomeramg_nodal_coarsen 6 -pc_hypre_boomeramg_vec_interp_variant 2"
+    for kw in ((; blocksize=3), (; blocksize=3, options=opts))
+      x, ns = s1_solve(PETScSolver(:cg, :boomeramg; rtol=1e-10, nullspace=N, kw...), A, b)
+      @test linear_converged(ns)
+      @test norm(x - xlu) ≤ 1e-8 * norm(xlu)
+    end
+    # with those options BoomerAMG does read the near-null space: fewer iterations than without it
+    its(nullspace) = linear_iterations(last(s1_solve(PETScSolver(:cg, :boomeramg; rtol=1e-8, nullspace, blocksize=3, options=opts), A, b)))
+    @test its(N) < its(nothing)
+  end
+
   @testset "options and names" begin
     x, ns = s1_solve(PETScSolver(:gmres, :gamg; rtol=1e-10, nullspace=N, options="-ksp_gmres_restart 50 -pc_gamg_threshold -0.01"), A, b)
     @test linear_converged(ns)
