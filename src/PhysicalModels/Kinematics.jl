@@ -21,6 +21,20 @@ Derivative of the cofactor, `∂H/∂F`. In 3D, `∂H/∂F = ×ᵢ⁴(F)`; in 2D
 end
 
 
+# Isochoric first invariant, I₁iso = J^(-2/3) F : F (3D), and its derivatives.
+# `_Jconst`: partial derivative treating F and J as independent variables.
+I₁iso(F::TensorValue{3,3}) = det(F)^(-2 / 3) * F ⊙ F
+∂I₁iso∂F_Jconst(F::TensorValue{3,3}) = 2 * det(F)^(-2 / 3) * F
+∂I₁iso∂J(F::TensorValue{3,3}) = -(2 / 3) * det(F)^(-5 / 3) * F ⊙ F
+∂∂I₁iso∂FF_Jconst(F::TensorValue{3,3}) = 2 * det(F)^(-2 / 3) * 𝕀3D
+∂∂I₁iso∂JJ(F::TensorValue{3,3}) = (10 / 9) * det(F)^(-8 / 3) * F ⊙ F
+∂∂I₁iso∂FJ_Jconst(F::TensorValue{3,3}) = -(4 / 3) * det(F)^(-5 / 3) * F
+
+∂I₁iso∂F(F::TensorValue{3,3}) = ∂I₁iso∂F_Jconst(F) + ∂I₁iso∂J(F) * cof(F)
+∂∂I₁iso∂FF(F::TensorValue{3,3}) = ∂∂I₁iso∂FF_Jconst(F) + ∂∂I₁iso∂FJ_Jconst(F) ⊗ cof(F) + cof(F) ⊗ ∂∂I₁iso∂FJ_Jconst(F) +
+                                 ∂∂I₁iso∂JJ(F) * cof(F) ⊗ cof(F) + ∂I₁iso∂J(F) * ∂H∂F(F)
+
+
 function trAA(A::TensorValue{3, 3, T, N}) where {T, N}
   return sum(A.data[i]*A.data[i] for i in 1:N)
 end

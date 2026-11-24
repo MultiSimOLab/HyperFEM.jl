@@ -791,17 +791,6 @@ struct NonlinearIncompressibleMooneyRivlin2D_CV <: IsoElastic
 end
 
 
-I1iso(F) = det(F)^(-2 / 3) * F ⊙ F
-∂I1iso_∂F(F) = 2 * det(F)^(-2 / 3) * F
-∂I1iso_∂J(F) = -(2 / 3) * det(F)^(-5 / 3) * F ⊙ F
-∂I1iso_∂F∂F(F) = 2 * det(F)^(-2 / 3) * 𝕀3D
-∂I1iso_∂J∂J(F) = (10 / 9) * det(F)^(-8 / 3) * F ⊙ F
-∂I1iso_∂F∂J(F) = -(4 / 3) * det(F)^(-5 / 3) * F
-
-∂I1iso_∂Ftotal(F) = ∂I1iso_∂F(F) + ∂I1iso_∂J(F)*cof(F)
-∂I1iso_∂F∂Ftotal(F) = ∂I1iso_∂F∂F(F) + ∂I1iso_∂F∂J(F) ⊗ cof(F) + cof(F) ⊗ ∂I1iso_∂F∂J(F) + ∂I1iso_∂J∂J(F)*cof(F) ⊗ cof(F) + ∂I1iso_∂J(F)*×ᵢ⁴(F)
-
-
 """
 Simplified eight-chain model by Arruda and Boyce.
 the implementation uses the first five terms of the inverse Langevin function.
@@ -824,9 +813,9 @@ function (obj::EightChain)()
   W(I) = C1 * sum(αi*β^(i-1)*(I^i - 3^i) for (i, αi) in enumerate(α))
   ∂W∂I(I) = C1 * sum(i*αi*β^(i-1)*I^(i-1) for (i, αi) in enumerate(α))
   ∂∂W∂II(I) = C1 * sum(i*(i-1)*α[i]*β^(i-1)*I^(i-2) for i in 2:length(α))
-  Ψ(F) = W(I1iso(F))
-  ∂Ψ∂F(F) = ∂W∂I(I1iso(F)) * ∂I1iso_∂Ftotal(F)
-  ∂∂Ψ∂FF(F) = ∂∂W∂II(I1iso(F)) * ∂I1iso_∂Ftotal(F) ⊗ ∂I1iso_∂Ftotal(F) + ∂W∂I(I1iso(F)) * ∂I1iso_∂F∂Ftotal(F)
+  Ψ(F) = W(I₁iso(F))
+  ∂Ψ∂F(F) = ∂W∂I(I₁iso(F)) * ∂I₁iso∂F(F)
+  ∂∂Ψ∂FF(F) = ∂∂W∂II(I₁iso(F)) * ∂I₁iso∂F(F) ⊗ ∂I₁iso∂F(F) + ∂W∂I(I₁iso(F)) * ∂∂I₁iso∂FF(F)
   return (Ψ, ∂Ψ∂F, ∂∂Ψ∂FF)
 end
 
@@ -1217,9 +1206,9 @@ end
 function (obj::IsochoricNeoHookean3D)()
   W(I) = obj.μ / 2 * (I - 3)
   ∂W∂I(I) = obj.μ / 2
-  Ψ(F) = W(I1iso(F))
-  ∂Ψ∂F(F) = ∂W∂I(I1iso(F)) * ∂I1iso_∂Ftotal(F)
-  ∂∂Ψ∂FF(F) = ∂W∂I(I1iso(F)) * ∂I1iso_∂F∂Ftotal(F)
+  Ψ(F) = W(I₁iso(F))
+  ∂Ψ∂F(F) = ∂W∂I(I₁iso(F)) * ∂I₁iso∂F(F)
+  ∂∂Ψ∂FF(F) = ∂W∂I(I₁iso(F)) * ∂∂I₁iso∂FF(F)
   return Ψ, ∂Ψ∂F, ∂∂Ψ∂FF
 end
 
