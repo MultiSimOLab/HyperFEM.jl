@@ -7,7 +7,7 @@
 
 # Multiphysics Simulation of Multifunctional Soft Materials
 
-**HyperFEM** is a [Gridap](https://github.com/gridap/Gridap.jl) library for the simulation of
+**HyperFEM** is a library within the [Gridap](https://github.com/gridap/Gridap.jl) ecosystem for the simulation of
 **thermo–electro–magneto–mechanical** problems in multifunctional hyperelastic materials. It provides:
 
 - a library of constitutive models with **analytical derivatives**, written with tensor algebra;
