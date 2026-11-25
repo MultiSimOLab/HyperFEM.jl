@@ -7,23 +7,23 @@
 
 # Multiphysics Simulation of Multifunctional Soft Materials
 
-**HyperFEM** is a library within the [Gridap](https://github.com/gridap/Gridap.jl) ecosystem designed for the simulation of multiphysics problems involving multifunctional hyperelastic materials. The ultimate goal of HyperFEM is to provide a **high-level, expressive, and rapid prototyping tool** that accelerates the modeling stages of **Thermo–Electro–Magneto–Mechanical** multiphysics problems. To this end, it includes a comprehensive library of **analytically derived constitutive models** formulated through tensor algebra. In addition, HyperFEM provides abstractions for **monolithic and staggered solution schemes**, extending Gridap’s capabilities in the context of **nonlinear solid mechanics**.
+**HyperFEM** is a [Gridap](https://github.com/gridap/Gridap.jl) library for the simulation of
+**thermo–electro–magneto–mechanical** problems in multifunctional hyperelastic materials. It provides:
 
+- a library of constitutive models with **analytical derivatives**, written with tensor algebra;
+- weak forms, boundary conditions and **monolithic, staggered and transient** drivers for nonlinear solid mechanics;
+- adaptive load stepping, Newton–Raphson with line searches, and solvers for large problems (PETSc, algebraic and
+  geometric multigrid, matrix-free Newton with compiled kernels through `HyperFEMKernels`).
 
 ## Installation
-Open the Julia REPL, type `]` to enter package mode, and install as follows
+
 ```julia
 pkg> add HyperFEM
 ```
 
 ## Usage
-First, include the main HyperFEM module:
-```julia
-using HyperFEM
-```
 
-Example of a Monolithic implementation for the simulation of Nonlinear ElectroMechanical deformation of dielectric elastomers
-
+Monolithic simulation of the nonlinear electro-mechanical deformation of a dielectric elastomer:
 
 ```julia
 using HyperFEM
@@ -89,7 +89,7 @@ jac(Λ)= ((u, φ), (du, dφ), (v, vφ)) -> ∫(∇(v)' ⊙ ((∂ΨFF ∘ (F∘�
                                         ∫(∇(vφ)' ⋅ ((∂ΨEE ∘ (F∘∇(u)', E∘∇(φ))) ⋅ ∇(dφ)))dΩ -
                                         ∫(∇(dφ) ⋅ ((∂ΨEF ∘ (F∘∇(u)', E∘∇(φ))) ⋅² ∇(v)'))dΩ -
                                         ∫(∇(vφ) ⋅ ((∂ΨEF ∘ (F∘∇(u)', E∘∇(φ))) ⋅² ∇(du)'))dΩ 
-# nonlinear solver (LU here; see "Solvers for large problems" below)
+# nonlinear solver (LU here; see "Load stepping and solvers" in the documentation for large problems)
 nls_ = NewtonRaphson(LUSolver(); maxiter=20, atol=1.e-10, rtol=1.e-8, verbose=true)
 
 # Computational model
@@ -117,180 +117,17 @@ post_model = PostProcessor(comp_model, driverpost; is_vtk=true, filepath=simdir)
 x = solve!(comp_model; stepping=(nsteps=5, maxbisec=5), post=post_model)
 ```
 
-`stepping` controls the load increments: the stage Λ goes from 0 to 1 starting with `ΔΛ = 1/nsteps`; a failed
-increment is bisected (`maxbisec` consecutive bisections at most). With `LoadStepping` the increment can also grow
-after easy increments: `LoadStepping(nsteps=1000, maxbisec=5, grow=1.5, easy=4, ΔΛmax=0.016, neasy=2)` starts with
-ΔΛ = 0.001 and multiplies it by 1.5 after every two consecutive increments converged in at most 4 Newton iterations,
-up to ΔΛ = 0.016. By default (`grow = 1`, `ΔΛmax = 1/nsteps`, `neasy = 1`) the increment never exceeds the initial one.
-A small initial increment with a larger `ΔΛmax` gets through a hard start and speeds up where the problem allows it;
-`neasy = 2` (Abaqus' rule) makes a large `ΔΛmax` safer.
+`stepping` controls the load increments (Λ from 0 to 1, bisection of failed increments). More examples are in the
+[tutorials](https://multisimolab.github.io/HyperFEM.jl/dev/tutorials/).
 
-## Solvers for large problems
+## Documentation
 
-`NewtonRaphson` accepts any Gridap `LinearSolver`. Beyond ~100k degrees of freedom in 3D the LU factorisation
-dominates the time and the memory of every Newton iteration; HyperFEM then provides, with `using GridapPETSc`
-(PETSc through GridapPETSc, serial), Krylov solvers preconditioned by algebraic multigrid on the assembled
-tangent, and the direct solver MUMPS:
-
-```julia
-using GridapPETSc
-
-# Multi-field problems (u, φ): GMRES with a block (fieldsplit) preconditioner, one AMG per field with
-# rigid-body modes on the displacement block, rebuilt every 3 Newton iterations (reuse), and an inexact
-# Newton (forcing): every linear solve only as tight as the Newton needs. The production configuration for
-# electro- and magneto-mechanics.
-nls = NewtonRaphson(PETScSolver(U; reuse=3); maxiter=20, rtol=1.e-8, forcing=EisenstatWalker())
-
-# Mechanics (single vector field, P1/Q1): CG + GAMG with the rigid-body modes of the space.
-nls = NewtonRaphson(PETScSolver(:cg, :gamg; nullspace=near_nullspace(U)); rtol=1.e-8)
-
-# Direct solver with a fraction of the memory of LU: the reference, and the solver for thin structures
-# (few elements across the thickness), where algebraic multigrid does not converge.
-nls = NewtonRaphson(PETScSolver(:preonly, :mumps); rtol=1.e-8)
-```
-
-Krylov tolerances (`rtol`, `atol = 0`) are relative to the right-hand side; `reuse = n` keeps the
-preconditioner for `n` Newton iterations; `forcing = EisenstatWalker()` lets the Newton choose the tolerance of
-every linear solve (loose far from the solution, tight near it). Neither is the default, because both change
-the Newton trajectory (a few more Newton iterations, far fewer Krylov iterations and preconditioner builds):
-on electro- and magneto-mechanical benchmarks of 100k–240k dofs the configuration above solved ×1.9–2.2
-faster than `PETScSolver(U)` with exact linear solves. The pure-Julia counterpart `AMGSolver(U)` (with
-`using AlgebraicMultigrid`) runs the same block preconditioners without PETSc and is what the test suite
-uses. Assembly can be delegated to compiled, threaded kernels with `backend=:compiled` in the drivers
-(`using HyperFEMKernels`); with an iterative solver this is what makes the assembly negligible.
-
-With `backend = CompiledBackend(jacobian = :matrixfree)` the nonlinear drivers never assemble the tangent
-for the Krylov solver: HyperFEMKernels applies it matrix-free and `MatrixFreeSolver` (GMRES, FGMRES or CG
-from Krylov.jl) solves the Newton systems on that operator. The preconditioner is a slot;
-`LaggedAssembled(solver; every = k)` assembles and factorises the tangent only every `k` Newton iterations
-and preconditions with it in between, so the Newton keeps the exact tangent (same trajectory as a direct
-solver) with a fraction of the factorisations:
-
-```julia
-using HyperFEMKernels, GridapPETSc
-using HyperFEMKernels: MatrixFreeSolver, LaggedAssembled
-
-ls  = MatrixFreeSolver(; krylov = :gmres, rtol = 1e-10,
-                       preconditioner = LaggedAssembled(PETScSolver(:preonly, :mumps); every = 3))
-nls = NewtonRaphson(ls; maxiter = 20, rtol = 1e-8)
-m   = StaticNonlinearModel(res, jac, U, V, D; nls, backend = CompiledBackend(jacobian = :matrixfree))
-```
-
-On a thin electro-mechanical Q2 hexahedral benchmark, where algebraic multigrid does not converge and MUMPS
-is the reference, this configuration took the same 20 Newton iterations as MUMPS and solved ×2.3 (57k dofs)
-and ×5.0 (218k dofs) faster (our measurement: Mac, 6 Julia threads, PETSc serial). On simplices the
-matrix-free product is slower than the assembled one; there the assembled configurations above remain the
-choice.
-
-### Geometric multigrid on a refined mesh hierarchy
-
-For Q1/P1 models whose geometry a coarse mesh can describe, `MeshHierarchy` refines it uniformly (Gridap's
-`refine`, tetrahedra and hexahedra; the Dirichlet tags must be closed sets — face, edges and vertices — so
-that every level has the same Dirichlet boundary) and `HMultigridSolver` preconditions CG with one geometric
-V-cycle (Galerkin coarse operators, Chebyshev smoothing on the nodal blocks, any linear solver on the coarsest
-level). `FieldSplitSolver` applies one V-cycle per block of a multi-field saddle point. Both are pure Julia
-(threads); the coarsest level is the only place PETSc enters:
-
-```julia
-using GridapPETSc
-
-h  = MeshHierarchy(coarse_model, 4)                      # 3 uniform refinements: the Newton sees fine_model(h)
-Vh(m) = TestFESpace(m, ReferenceFE(lagrangian, VectorValue{3,Float64}, 1), D, conformity=:H1)
-Uc = TrialFESpace(Vh(level_model(h, 1)))
-# mechanics: CG + one V-cycle, the coarse levels rebuilt every 3 Newton iterations (the fine smoother always
-# follows the current tangent), the coarsest level one GAMG cycle with the rigid-body modes
-ls  = HMultigridSolver(h, Vh; krylov=:cg, reuse=3,
-                       coarse=PETScSolver(:preonly, :gamg; nullspace=near_nullspace(Uc), blocksize=3))
-nls = NewtonRaphson(ls; maxiter=20, rtol=1e-8, forcing=EisenstatWalker())
-
-# electro-mechanics (u, φ): GMRES with one V-cycle per block (Schur split), the same recommendation
-ls  = FieldSplitSolver(U, (HMultigridSolver(h, Vu; krylov=:cg, reuse=3, coarse=…),
-                           HMultigridSolver(h, Vφ; krylov=:cg, reuse=3, coarse=…)); split=:schur)
-nls = NewtonRaphson(ls; maxiter=20, rtol=1e-8, forcing=EisenstatWalker())
-```
-
-The CG iterations are independent of the mesh (17 on Q1 hexahedra, 32 on P1 tetrahedra, from 100k to 900k
-dofs). Against CG + GAMG on the same assembled tangent the Newton iteration is ×5 faster at 800k–900k dofs,
-and ×3 against the PETSc fieldsplit on the electro-mechanical plate at 555k; with `forcing = EisenstatWalker()`
-(the recommended configuration, as above; the defaults keep the exact Newton) the Krylov iterations drop by
-×4–5 and the whole simulation of the 893k-dof tetrahedral cube takes 86 s against 815 s with CG + GAMG (our
-measurement: Mac, 6 Julia threads, PETSc serial). With `tangent = HybridTangent(…)` an indefinite tangent
-reported by these solvers (a limit point, pull-in, buckling) switches the Newton to the projected tangent at
-the same state instead of bisecting the load step.
-
-## Staggered (partitioned) models
-
-A coupled problem can also be solved field by field: `StaggeredModel` takes one computational model per
-field (`StaticNonlinearModel`s), the states the models solve for and their lagged copies, through which the
-forms and the `Coupling` conditions of a field read the other fields. The loop advances a stage τ from 0
-to 1 by steps; in every step the models are solved one after another (a *pass*), each over its own inner
-loop with the load of the step, and the lagged states are set to the new ones after every pass:
-
-```julia
-# electrics with the lagged deformation, mechanics with the new potential (uh⁺, φh⁺: states; uh⁻, φh⁻: lagged)
-mech(Λ) = uh⁻ + (uh⁺ - uh⁻) * Λ                      # Λ: stage of the inner solve, 0 → 1 within a step
-res_elec(Λ) = (φ, vφ) -> residual(physmodel, Electro, k, (mech(Λ), φ), vφ, dΩ)
-res_mec(Λ)  = (u, v)  -> residual(physmodel, Mechano, k, (u, φh⁺), v, dΩ)
-m_elec = StaticNonlinearModel(res_elec, jac_elec, Uφ, Vφ, Dφ; nls, xh=φh⁺)
-m_mec  = StaticNonlinearModel(res_mec,  jac_mec,  Uu, Vu, Du; nls, xh=uh⁺)
-sm = StaggeredModel((m_elec, m_mec), (φh⁺, uh⁺), (φh⁻, uh⁻))
-args = ((stepping=(nsteps=1, maxbisec=2),), (stepping=(nsteps=1, maxbisec=2),))   # keywords of each inner solve!
-
-# fixed loop: 100 steps of one pass each (the result depends on the number of steps)
-x, flag = solve!(sm; stepping=StaggeredStepping(nsteps=100), kargsolve=args)
-
-# coupling converged in every step: few steps, passes until the relative increment of every field is ≤ 1e-6
-# (quasi-Newton update of the displacement; a failed step is bisected, an easy one lets the increment grow)
-x, flag = solve!(sm; stepping=StaggeredStepping(nsteps=10, max_substeps=30, coupling_tol=1e-6,
-                                                relaxation=(:none, IQNILS()), grow=2.0, easy=4), kargsolve=args,
-                 presolver=(τ⁻, Δτ) -> ramp!(τ⁻ + Δτ),   # a load ramped by the loop reads the stage of the step
-                 on_step=(τ, Δτ, nsub) -> @info "τ = $τ in $nsub passes")
-log = get_log(sm)          # τ, Δτ, passes, coupling errors, relaxation factors and times per step
-```
-
-With `coupling_tol = nothing` (the default) the loop is the fixed one of earlier versions: `nsteps` equal steps
-of `max_substeps` passes, whatever the convergence (the `NamedTuple` `(nsteps=…, nsubsteps=…, maxbisec=…)`
-is still accepted and selects it). With a tolerance, the passes of a step stop when every field is converged
-(`norm = :increment`, the relative increment of the free values of the field in the pass; `norm = :residual`,
-the residual of the field at the new state of the others relative to the one of the first pass); a step whose
-passes reach `max_substeps` without convergence, or in which an inner solve fails, is rejected: the states, the
-lagged states and the Dirichlet values return to the last accepted step and the increment is bisected
-(`maxbisec` consecutive bisections at most); after `neasy` consecutive steps accepted in at most `easy` passes
-each (one, by default) the increment grows by `grow`, up to `Δτmax` (the initial increment by default).
-`relaxation` is `:none`, a factor, `:aitken`/`Aitken(; ω0, ωmin, ωmax)`
-(`ωmax > 1` allows over-relaxation, which a monotonically converging iteration needs to gain anything),
-`:iqnils`/`IQNILS()` (a quasi-Newton update of the coupling built from the passes of the step: the choice when
-the coupling is stiffer than a field's own stiffness, where the passes oscillate and no scalar factor converges),
-or a tuple with one of them per field; the factor of a field whose model has an `injectivity` measure and an
-`InjectivityLS` is cut so that the relaxed state does not invert elements. The post-processors of the inner
-models run inside every pass; output per accepted step belongs in `on_step`.
-
-### Fields of other problems: `Coupling`, `StageBlend` and `Transfer`
-
-A `Coupling(g)` prescribes on a boundary the state of another problem, `g(τ)` at the stage τ of the solver. The
-field may live on another mesh, on the volume next to the boundary or only on the faces of the tag: the nodes of
-the tag are located in the mesh of the field once, when the model builds its Dirichlet applicator, and no point
-search is done afterwards. A finite-element function (or a `StageBlend` of two) is then transferred through its
-dof values — a copy when the nodes coincide, a sparse product otherwise — and any other field is evaluated in the
-located cells. Fields that are not Dirichlet data (loads, tractions) go between two spaces with a `Transfer`:
-
-```julia
-# the vacuum follows the solid on their interface (staggered: the solid between its two stages)
-uhsolid = StageBlend(uh_solid⁻, uh_solid⁺)       # uhsolid(τ) = uh_solid⁻ + (uh_solid⁺ - uh_solid⁻) * τ, also in the weak forms
-Du_vacuum = BoundaryConditions(BoundaryCondition("Fixed_Air", [0.0, 0.0]),
-                               BoundaryCondition("Interface", Coupling(uhsolid)))    # match = :auto, tol = 1e-10
-
-# nodal forces of the vacuum on the interface of the solid
-T = Transfer(V_maxwell, Usolid_int)              # built once
-transfer!(tmaxw_, T, Pmaxw)                      # values at the dofs of Usolid_int (a copy here: the nodes coincide)
-transfer_transpose!(f, T, g)                     # conservative transfer of loads (the resultant is kept)
-```
-
-`match = :auto` matches coincident nodes exactly and searches the others in the cells of the source mesh;
-`match = :search` always searches. A node that is not on the source mesh is an error, never an extrapolation.
-The application is linear algebra on flat arrays (no allocations, generic in the array type), the part that
-carries over to distributed and GPU arrays; a `Coupling` whose `g(τ)` is not a finite-element function or a
-`StageBlend` is evaluated by Gridap in the located cells. Gridap's `Interpolable` is still accepted.
+- [Load stepping and solvers](https://multisimolab.github.io/HyperFEM.jl/dev/solvers/): adaptive stepping, PETSc, matrix-free Newton
+  and geometric multigrid for large problems.
+- [Staggered models](https://multisimolab.github.io/HyperFEM.jl/dev/staggered/): field-by-field solution and coupling between meshes
+  (`Coupling`, `Transfer`).
+- [Time integration](https://multisimolab.github.io/HyperFEM.jl/dev/transient/), [tensor algebra](https://multisimolab.github.io/HyperFEM.jl/dev/tensor_algebra/)
+  and the [API reference](https://multisimolab.github.io/HyperFEM.jl/dev/api/).
 
 ## HyperFEM Gallery
 
