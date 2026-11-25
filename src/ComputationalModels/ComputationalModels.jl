@@ -21,9 +21,6 @@ using LinearAlgebra
 using Printf
 using WriteVTK
 
-using GridapGmsh 
-using GridapGmsh: GmshDiscreteModel
-
 using HyperFEM.DiscreteModeling
 
 include("BoundaryConditions.jl")
@@ -76,7 +73,6 @@ export transfer_transpose!
 export is_gather
 
 include("GridapExtras.jl")
-export GmshDiscreteModel
 export evaluate!
 
 include("Drivers.jl")
