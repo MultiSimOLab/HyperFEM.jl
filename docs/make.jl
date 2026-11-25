@@ -8,6 +8,8 @@ readme_content = read(readme_path, String)
 header_start = findfirst("# Multiphysics", readme_content)
 readme_content = header_start !== nothing ? readme_content[header_start.start:end] : readme_content
 readme_content = replace(readme_content, "docs/src/assets/" => "assets/")  # README paths are relative to the repo root
+# links of the README to pages of this documentation become relative links (checked by Documenter, not by linkcheck)
+readme_content = replace(readme_content, r"https://multisimolab\.github\.io/HyperFEM\.jl/dev/(\w+)/" => s"\1.md")
 readme_content = replace(readme_content, r"(<p align=\"center\"><img.*?</p>)" => s"```@raw html\n\1\n```")
 write(index_path, readme_content)
 
@@ -82,6 +84,8 @@ makedocs(
   pages = [
     "Home" => "index.md",           # Inject README.md (previously cloned into index.md)
     "Tutorials" => "tutorials.md",  # Generated from the tutorials repository
+    "Load stepping and solvers" => "solvers.md",
+    "Staggered models" => "staggered.md",
     "Time integration" => "transient.md",
     "Tensor algebra" => "tensor_algebra.md",
     "API reference" => "api.md"     # Inject the docstrings from the code
