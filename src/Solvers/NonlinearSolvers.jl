@@ -26,8 +26,8 @@ History of a [`NewtonRaphson`](@ref) solve: residual norms `residuals[1:num_iter
 (`residuals[1]` = `‖R₀‖`), step lengths `alphas[1:num_iters]`, the tangent of every iteration
 `modes[1:num_iters]` (`:consistent` / `:projected`) and the stop `reason` (`:converged_atol`,
 `:converged_rtol`, `:converged_ctol`, `:converged_projected`, `:maxiter`, `:linesearch_failed`,
-`:linear_failed`, or `:running` while solving). The storage is allocated once and reused by every
-solve; counters over the whole run (`nsolves`, `niters`, `nswitches`, `t_solve`) accumulate until
+`:linear_failed`, `:nonfinite` (`NaN` or `Inf` in the residual or in the Newton step), or `:running` while
+solving). The storage is allocated once and reused by every solve; counters over the whole run (`nsolves`, `niters`, `nswitches`, `t_solve`) accumulate until
 `reset!`. Verbosity: `0` silent, `1` a line per load step (printed by the drivers), `2` a row per
 Newton iteration (step, ‖R‖, ‖R‖/‖R₀‖, α — marked † when limited by the injectivity step —, tangent,
 linear solver, time), switches and failures as indented lines and a closing ✓/✗ line, `3` the detail of
@@ -179,6 +179,7 @@ const _REASON_TEXT = Dict(
   :maxiter => "maximum number of iterations",
   :linesearch_failed => "line search failed",
   :linear_failed => "linear solver did not converge",
+  :nonfinite => "NaN or Inf in the residual or the Newton step",
 )
 
 reason_text(reason::Symbol) = get(_REASON_TEXT, reason, string(reason))
@@ -554,7 +555,7 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
   _start!(log, r)
   r0 = max(r, r_reference)              # reference of the relative criterion (the log keeps ‖R₀‖ itself)
   _print_header(log, r)
-  reason = _check(tangent, tols, mode, r, r0)
+  reason = isfinite(r) ? _check(tangent, tols, mode, r, r0) : :nonfinite
   if reason === :running && tols.maxiter == 0
     reason = :maxiter
   end
@@ -612,6 +613,11 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
       log.t_setup += time() - t2
       continue
     end
+    # a NaN/Inf step (e.g. a numerically singular factorization that did not throw): the state is not updated
+    if !all(isfinite, dx)
+      reason = :nonfinite
+      break
+    end
 
     # curvature criterion, relative to the first iteration (only computed when enabled)
     if tols.ctol > 0
@@ -642,6 +648,10 @@ function _solve_nr!(x, cache::NewtonCache, nls::NewtonRaphson, op, r_reference::
       _print_detail(log, linesearch)
     end
 
+    if !isfinite(r)                   # a step too large for the model (e.g. J ≤ 0): the drivers cut the increment
+      reason = :nonfinite
+      break
+    end
     if α == 0
       planb = _on_failure(tangent, mode)
       if planb === nothing

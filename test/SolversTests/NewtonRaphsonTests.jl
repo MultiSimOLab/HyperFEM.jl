@@ -2,6 +2,7 @@
 using Gridap, Gridap.Algebra, Gridap.FESpaces
 using HyperFEM
 using LinearAlgebra
+using SparseArrays
 using Test
 
 # Small 2D hyperelastic block stretched by a Dirichlet condition: res, jac, spaces and conditions.
@@ -228,4 +229,69 @@ end
   A = [4.0 1.0; 1.0 3.0]
   @test tolerance(numerical_setup(symbolic_setup(LUSolver(), A), A)) === nothing
   @test_logs set_tolerance!(numerical_setup(symbolic_setup(BackslashSolver(), A), A), 1e-2)   # silent for direct solvers
+end
+
+
+# R(x) = x.^2 .- c with a sparse diagonal tangent 2x; from the `bad_tangent_from`-th assembly on the tangent is
+# `tangent_value` everywhere, and from the `bad_residual_from`-th evaluation on R[1] is `residual_value`
+mutable struct SquareOperator <: Gridap.Algebra.NonlinearOperator
+  c::Vector{Float64}
+  bad_tangent_from::Int
+  tangent_value::Float64
+  bad_residual_from::Int
+  residual_value::Float64
+  njac::Int
+  nres::Int
+end
+SquareOperator(c; bad_tangent_from=typemax(Int), tangent_value=0.0, bad_residual_from=typemax(Int), residual_value=NaN) =
+  SquareOperator(c, bad_tangent_from, tangent_value, bad_residual_from, residual_value, 0, 0)
+function Gridap.Algebra.residual!(b::AbstractVector, op::SquareOperator, x::AbstractVector)
+  op.nres += 1
+  b .= x .^ 2 .- op.c
+  op.nres >= op.bad_residual_from && (b[1] = op.residual_value)
+  b
+end
+function Gridap.Algebra.jacobian!(A::SparseArrays.SparseMatrixCSC, op::SquareOperator, x::AbstractVector)
+  op.njac += 1
+  nonzeros(A) .= op.njac >= op.bad_tangent_from ? op.tangent_value : 2 .* x
+  A
+end
+Gridap.Algebra.allocate_residual(op::SquareOperator, x::AbstractVector) = similar(x)
+Gridap.Algebra.allocate_jacobian(op::SquareOperator, x::AbstractVector) = SparseArrays.sparse(1:length(x), 1:length(x), ones(length(x)))
+Gridap.Algebra.zero_initial_guess(op::SquareOperator) = zeros(length(op.c))
+
+@testset "Non-finite residual or step stops the Newton" begin
+  c = [4.0, 9.0, 16.0]
+  newton(ls=LUSolver()) = NewtonRaphson(ls; maxiter=20, atol=1e-12, rtol=1e-12)
+  # residual not finite at the start, and after one iteration (NaN and Inf)
+  nls = newton(); x = ones(3)
+  solve!(x, nls, SquareOperator(c; bad_residual_from=1), nothing)
+  @test stop_reason(nls) === :nonfinite && !converged(nls) && num_iterations(nls) == 0 && x == ones(3)
+  for v in (NaN, Inf)
+    nls = newton(); x = ones(3)
+    solve!(x, nls, SquareOperator(c; bad_residual_from=2, residual_value=v), nothing)
+    @test stop_reason(nls) === :nonfinite && num_iterations(nls) == 1
+  end
+  # a NaN step (the solver returns it without throwing): the state is not updated
+  nls = newton(BackslashSolver()); x = ones(3)
+  op = SquareOperator(c; bad_tangent_from=2, tangent_value=NaN)
+  cache = solve!(x, nls, op, nothing)
+  @test stop_reason(nls) === :nonfinite && num_iterations(nls) == 1 && all(isfinite, x)
+  # the same cache converges once the problem is regular again
+  op.bad_tangent_from = typemax(Int)
+  solve!(x, nls, op, cache)
+  @test converged(nls) && x ≈ sqrt.(c)
+  # a singular tangent at a finite state is an error of the problem: the exception reaches the user
+  @test_throws LinearAlgebra.SingularException solve!(zeros(3), newton(), SquareOperator(c), nothing)
+end
+
+@testset "Non-finite residual: the driver bisects instead of aborting" begin
+  p = newton_test_problem()
+  # the residual is NaN beyond 60 % of the load: the increments that reach it fail and are bisected, and the run ends
+  # with a reported failure (flag 0) instead of an exception
+  res(Λ) = Λ > 0.6 ? ((u, v) -> ∫(NaN * (∇(v) ⊙ ∇(u)))p.dΩ) : p.res(Λ)
+  nls = NewtonRaphson(LUSolver(); maxiter=20, atol=1e-10, rtol=1e-8)
+  m = StaticNonlinearModel(res, p.jac, p.U, p.V, p.bc; nls=nls)
+  x, flag = @test_logs (:warn, r"Bisection") match_mode = :any solve!(m; stepping=(nsteps=2, maxbisec=2))
+  @test flag == 0 && stop_reason(nls) === :nonfinite
 end
