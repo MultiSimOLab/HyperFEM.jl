@@ -82,14 +82,14 @@ function add_tensor_operations_benchmarks!(SUITE, D)
     add_tensor_benchmark!(group, label, ⋅², a, b)
   end
 
-  group = SUITE["Tensor algebra"]["*"][dim]
-  for (label, a, b) in (("2*1", A, v), ("2*2", A, B))
-    add_tensor_benchmark!(group, label, *, a, b)
-  end
+  # group = SUITE["Tensor algebra"]["*"][dim]
+  # for (label, a, b) in (("2*1", A, v), ("2*2", A, B))
+  #   add_tensor_benchmark!(group, label, *, a, b)
+  # end
 
   if D == 3
     group = SUITE["Tensor algebra"]["cross"][dim]
-    for (label, a, b) in (("1×1", v, u), ("2×2", A, B), ("2×4", A, H), ("4×2", H, A), ("3×2", W, A))
+    for (label, a, b) in (("1×1", v, u),)# ("2×2", A, B), ("2×4", A, H), ("4×2", H, A), ("3×2", W, A))
       add_tensor_benchmark!(group, label, ×, a, b)
     end
   end
