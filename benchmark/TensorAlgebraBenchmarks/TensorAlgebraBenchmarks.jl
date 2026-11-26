@@ -77,7 +77,7 @@ function add_tensor_operations_benchmarks!(SUITE, D)
     add_tensor_benchmark!(group, label, ⋅, a, b)
   end
 
-  group = SUITE["Tensor algebra"]["double contraction"][dim]
+  group = SUITE["Tensor algebra"]["double dot"][dim]
   for (label, a, b) in (("2⋅²2", A, B), ("4⋅²2", H, A), ("2⋅²4", A, H), ("4⋅²4", H, H), ("3⋅²2", W, A), ("3⋅²4", W, H))
     add_tensor_benchmark!(group, label, ⋅², a, b)
   end
