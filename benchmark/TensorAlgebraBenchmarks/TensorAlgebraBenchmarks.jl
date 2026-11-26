@@ -1,33 +1,34 @@
 using HyperFEM.TensorAlgebra
+using Gridap
 using BenchmarkTools
 
 
 # Projection of tangents onto {eigenvalues >= δ} (HessianRegularization): fast path (positive definite) and
 # eigen-decomposition path (indefinite), 2D (4x4) and 3D (9x9). Allocation-free in both.
-B4 = TensorValue(1.:16...)
-B9 = TensorValue(1.:81...)
-C4_def = B4 * B4' / 100 + TensorValue(Tuple(𝕀2D))
-C4_ind = B4 + B4'
-C9_def = B9 * B9' / 10000 + TensorValue(Tuple(𝕀3D))
-C9_ind = B9 + B9'
-SUITE["Tensor algebra"]["regularize_hessian 4x4 definite"] = @benchmarkable regularize_hessian($(Ref(C4_def))[], 1e-6)
-SUITE["Tensor algebra"]["regularize_hessian 4x4 indefinite"] = @benchmarkable regularize_hessian($(Ref(C4_ind))[], 1e-6)
-SUITE["Tensor algebra"]["regularize_hessian 9x9 definite"] = @benchmarkable regularize_hessian($(Ref(C9_def))[], 1e-6)
-SUITE["Tensor algebra"]["regularize_hessian 9x9 indefinite"] = @benchmarkable regularize_hessian($(Ref(C9_ind))[], 1e-6)
+# B4 = TensorValue(1.:16...)
+# B9 = TensorValue(1.:81...)
+# C4_def = B4 * B4' / 100 + TensorValue(Tuple(𝕀2D))
+# C4_ind = B4 + B4'
+# C9_def = B9 * B9' / 10000 + TensorValue(Tuple(𝕀3D))
+# C9_ind = B9 + B9'
+# SUITE["Tensor algebra"]["regularize_hessian 4x4 definite"] = @benchmarkable regularize_hessian($(Ref(C4_def))[], 1e-6)
+# SUITE["Tensor algebra"]["regularize_hessian 4x4 indefinite"] = @benchmarkable regularize_hessian($(Ref(C4_ind))[], 1e-6)
+# SUITE["Tensor algebra"]["regularize_hessian 9x9 definite"] = @benchmarkable regularize_hessian($(Ref(C9_def))[], 1e-6)
+# SUITE["Tensor algebra"]["regularize_hessian 9x9 indefinite"] = @benchmarkable regularize_hessian($(Ref(C9_ind))[], 1e-6)
 
 
 # Projection of tangents onto {eigenvalues >= δ} (HessianRegularization): fast path (positive definite) and
 # eigen-decomposition path (indefinite), 2D and 3D. Allocation-free in both.
-B2 = FourthOrderTensorValue(1.:16...)
-B3 = FourthOrderTensorValue(1.:81...)
-C2_def = B2 ⋅² B2' / 100 + 𝕀2D
-C2_ind = B2 + B2'
-C3_def = B3 ⋅² B3' / 10000 + 𝕀3D
-C3_ind = B3 + B3'
-SUITE["Tensor algebra"]["Regularize hessian"]["2D"]["definite"] = @benchmarkable regularize_hessian($(Ref(C2_def))[], 1e-6)
-SUITE["Tensor algebra"]["Regularize hessian"]["2D"]["indefinite"] = @benchmarkable regularize_hessian($(Ref(C2_ind))[], 1e-6)
-SUITE["Tensor algebra"]["Regularize hessian"]["3D"]["definite"] = @benchmarkable regularize_hessian($(Ref(C3_def))[], 1e-6)
-SUITE["Tensor algebra"]["Regularize hessian"]["3D"]["indefinite"] = @benchmarkable regularize_hessian($(Ref(C3_ind))[], 1e-6)
+# B2 = FourthOrderTensorValue(1.:16...)
+# B3 = FourthOrderTensorValue(1.:81...)
+# C2_def = B2 ⋅² B2' / 100 + 𝕀2D
+# C2_ind = B2 + B2'
+# C3_def = B3 ⋅² B3' / 10000 + 𝕀3D
+# C3_ind = B3 + B3'
+# SUITE["Tensor algebra"]["Regularize hessian"]["2D"]["definite"] = @benchmarkable regularize_hessian($(Ref(C2_def))[], 1e-6)
+# SUITE["Tensor algebra"]["Regularize hessian"]["2D"]["indefinite"] = @benchmarkable regularize_hessian($(Ref(C2_ind))[], 1e-6)
+# SUITE["Tensor algebra"]["Regularize hessian"]["3D"]["definite"] = @benchmarkable regularize_hessian($(Ref(C3_def))[], 1e-6)
+# SUITE["Tensor algebra"]["Regularize hessian"]["3D"]["indefinite"] = @benchmarkable regularize_hessian($(Ref(C3_ind))[], 1e-6)
 
 
 # Tensor operations, grouped by operation and dimension. The labels give the order of the operands.
@@ -103,13 +104,11 @@ function add_tensor_operations_benchmarks!(SUITE, D)
     add_tensor_benchmark!(group, "$name'", transpose, X)
   end
 
-  group = SUITE["Tensor algebra"]["index notation"][dim]
-  for (label, f, args) in (("⊗ᵢₖʲ", ⊗ᵢₖʲ, (A, v)), ("⊗ᵢₖʲˡ", ⊗ᵢₖʲˡ, (A, B)), ("⊗ᵢₗʲᵏ", ⊗ᵢₗʲᵏ, (A, B)),
-                           ("⊗ᵢₘʲᵐᵏˡ", ⊗ᵢₘʲᵐᵏˡ, (A, H)), ("IIsym", IIsym, (A,)), ("push_forward_C_to_F", push_forward_C_to_F, (A, H)))
-    add_tensor_benchmark!(group, label, f, args...)
-  end
+  # group = SUITE["Tensor algebra"]["index notation"][dim]
+  # for (label, f, args) in (("⊗ᵢₖʲ", ⊗ᵢₖʲ, (A, v)), ("⊗ᵢₖʲˡ", ⊗ᵢₖʲˡ, (A, B)), ("⊗ᵢₗʲᵏ", ⊗ᵢₗʲᵏ, (A, B)),
+  #                          ("⊗ᵢₘʲᵐᵏˡ", ⊗ᵢₘʲᵐᵏˡ, (A, H)), ("IIsym", IIsym, (A,)), ("push_forward_C_to_F", push_forward_C_to_F, (A, H)))
+  #   add_tensor_benchmark!(group, label, f, args...)
+  # end
 end
 
-for D in (2, 3)
-  add_tensor_operations_benchmarks!(SUITE, D)
-end
+add_tensor_operations_benchmarks!(SUITE, 3)
