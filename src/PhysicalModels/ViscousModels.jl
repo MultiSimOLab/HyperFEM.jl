@@ -459,7 +459,7 @@ function ViscousTangentOperator(obj::ViscousIncompressible,
   #------------------------------------------
   # 0.5*δC_{Uvfixed}:DSe[ΔC]
   #------------------------------------------
-  C1 = 0.5 * DCe_DC_Uvfixed' ⋅² ∂Se∂Ce_(Ce) ⋅² DCe_DC
+  C1 = 0.5 * DCe_DC_Uvfixed'ᵏˡⁱʲ ⋅² ∂Se∂Ce_(Ce) ⋅² DCe_DC
   #------------------------------------------
   # Se:0.5*(DUv^{-1}[ΔC]*δC*Uv^{-1} + Uv^{-1}*δC*DUv^{-1}[ΔC])
   #------------------------------------------

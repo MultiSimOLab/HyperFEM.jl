@@ -110,7 +110,7 @@ end
   @test (A × B) ⋅ (v × w) ≈ (A ⋅ v) × (B ⋅ w) + (B ⋅ v) × (A ⋅ w)               # (A.17)
   @test (A1 × A2) ⋅ (B1 × B2) ≈ (A1 ⋅ B1) × (A2 ⋅ B2) + (A1 ⋅ B2) × (A2 ⋅ B1)   # (A.18)
   @test (A1 ⋅ B) × (A2 ⋅ B) ≈ (A1 × A2) ⋅ (det(B) * inv(B)')                    # (A.19)
-  @test (A × H)' ≈ H' × A
+  @test (A × H)'ᵏˡⁱʲ ≈ H'ᵏˡⁱʲ × A
 
   # derivatives: ∂f[i,j]/∂F[k,l], and the bilinear forms of Bonet et al. 2015, Eq. (24)
   jac(f, F) = FourthOrderTensorValue{3}(Tuple(ForwardDiff.jacobian(x -> collect(Tuple(f(TensorValue{3,3}(Tuple(x))))), collect(Tuple(F)))))
@@ -296,10 +296,10 @@ end
 
 @testset "push_forward_C_to_F" begin
   H = fourth(rand(3, 3, 3, 3))
-  H = H' ⋅² H
+  H = H'ᵏˡⁱʲ ⋅² H
   F = TensorValue(rand(9)...) * 1e-2 + I3D
   DCDF = F' ⊗ᵢₖʲˡ I3D + I3D ⊗ᵢₗʲᵏ F'
-  S_ref = 0.5 * DCDF' ⋅² H ⋅² DCDF
+  S_ref = 0.5 * DCDF'ᵏˡⁱʲ ⋅² H ⋅² DCDF
   @test push_forward_C_to_F(F, H) ≈ S_ref
 end
 
