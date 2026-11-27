@@ -41,6 +41,7 @@ export FourthOrderTensorValue
 
 # Products in index notation (see Operations.jl)
 export (⊗ᵢₖʲ), (⊗ᵢₖʲˡ), (⊗ᵢₗʲᵏ), (⊗ᵢₘʲᵐᵏˡ)
+export var"'ᵏˡⁱʲ"  # major transpose of fourth-order tensors
 
 export ×ᵢ⁴
 export IIsym

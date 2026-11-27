@@ -195,8 +195,8 @@ function _getCoupling(mag::HardMagnetic2D, ::Mechano, Λ::Float64=1.0)
   ∂Ψtorq_∂HJ(F, ℋ₀, N) = -(μ * (1 + χt) / J(F)^2) * (Hℋᵣ(F, N) ⊗ ℋ₀ + Hℋ₀(F, ℋ₀) ⊗ ℋᵣ(N))
   ∂Ψtorq_∂JJ(F, ℋ₀, N) = (2 * μ * (1 + χt) / J(F)^3) * (Hℋ₀(F, ℋ₀) ⋅ Hℋᵣ(F, N))
 
-  ∂Ψtorq_∂uu(F, ℋ₀, N) = ∂H∂F(F)' ⋅² ∂Ψtorq_∂HH(F, ℋ₀, N) ⋅² ∂H∂F(F) +
-                         ∂H∂F(F)' ⋅² (∂Ψtorq_∂HJ(F, ℋ₀, N) ⊗ H(F)) +
+  ∂Ψtorq_∂uu(F, ℋ₀, N) = ∂H∂F(F)'ᵏˡⁱʲ ⋅² ∂Ψtorq_∂HH(F, ℋ₀, N) ⋅² ∂H∂F(F) +
+                         ∂H∂F(F)'ᵏˡⁱʲ ⋅² (∂Ψtorq_∂HJ(F, ℋ₀, N) ⊗ H(F)) +
                          (H(F) ⊗ ∂Ψtorq_∂HJ(F, ℋ₀, N)) ⋅² ∂H∂F(F) +
                          ∂Ψtorq_∂JJ(F, ℋ₀, N) * (H(F) ⊗ H(F)) +
                          ∂Ψtorq_∂J(F, ℋ₀, N) * ∂H∂F(F)

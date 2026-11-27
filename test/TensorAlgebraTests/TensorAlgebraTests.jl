@@ -28,9 +28,11 @@ fourth(a::Array{Float64,4}) = FourthOrderTensorValue(Tuple(a))
     # fourth-order tensors: major transpose Hᵀ[i,j,k,l] = H[k,l,i,j]
     h = digits4(D)
     H = fourth(h)
-    @test H' == fourth([h[k, l, i, j] for i in 1:D, j in 1:D, k in 1:D, l in 1:D])
-    @test H'' == H
-    @test Tuple(H') == Tuple(flat_tensor(H)')  # the transpose of the D²×D² matrix
+    @test H'ᵏˡⁱʲ == fourth([h[k, l, i, j] for i in 1:D, j in 1:D, k in 1:D, l in 1:D])
+    @test (H'ᵏˡⁱʲ)'ᵏˡⁱʲ == H
+    @test Tuple(H'ᵏˡⁱʲ) == Tuple(flat_tensor(H)')  # the transpose of the D²×D² matrix
+    A, B = TensorValue(digits2(D)...), TensorValue(digits2(D) .^ 2...)
+    @test A ⊙ (H'ᵏˡⁱʲ ⋅² B) ≈ B ⊙ (H ⋅² A)
   end
 end
 

@@ -121,20 +121,25 @@ i.e. the cyclic index shift `Wᵀ[i,j,k] = W[k,i,j]`. Applied twice, it is not t
 @inline Base.transpose(W::ThirdOrderTensorValue{D,D,D}) where {D} = permutedims(W, Val((2, 3, 1)))
 
 """
-    transpose(H::FourthOrderTensorValue)
+    H'ᵏˡⁱʲ
 
-Major transpose of a fourth-order tensor, `Hᵀ[i,j,k,l] = H[k,l,i,j]`, such that `A ⊙ (Hᵀ ⋅² B) = B ⊙ (H ⋅² A)`.
+Major transpose of a fourth-order tensor, `Hᵏˡⁱʲ[i,j,k,l] = H[k,l,i,j]`,
+such that `A ⊙ (Hᵏˡⁱʲ ⋅² B) = B ⊙ (H ⋅² A)` for all `A,B`. It is its own inverse, and
+the transpose of the corresponding D²×D² matrix.
 """
-@inline @generated function Base.transpose(H::FourthOrderTensorValue{D}) where {D}
-  components = [component(:tH, (k, l, i, j), D) for l in 1:D for k in 1:D for j in 1:D for i in 1:D]
-  quote
-    tH = Tuple(H)
-    $(tensor_type(4, D, eltype(H)))(($(components...),))
-  end
-end
+var"'ᵏˡⁱʲ"(H::FourthOrderTensorValue{D}) where {D} = permutedims(H, Val((3, 4, 1, 2)))
 
 @inline Base.adjoint(W::ThirdOrderTensorValue{D,D,D,<:Real}) where {D} = transpose(W)
-@inline Base.adjoint(H::FourthOrderTensorValue{D,<:Real}) where {D} = transpose(H)
+
+# Deprecated: type piracy of Base on a Gridap type.
+function Base.transpose(H::FourthOrderTensorValue{D}) where {D}
+  Base.depwarn("`transpose(H::FourthOrderTensorValue)` is deprecated, use `H'ᵏˡⁱʲ` instead.", :transpose)
+  H'ᵏˡⁱʲ
+end
+function Base.adjoint(H::FourthOrderTensorValue{D,<:Real}) where {D}
+  Base.depwarn("`H'` for a `FourthOrderTensorValue` is deprecated, use `H'ᵏˡⁱʲ` instead.", :adjoint)
+  H'ᵏˡⁱʲ
+end
 
 
 # =====================
