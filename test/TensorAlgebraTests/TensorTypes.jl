@@ -84,7 +84,7 @@ function supported_operations(D)
     ("IIsym(A)", IIsym, (A,), T4(D)),
     ("A'", transpose, (A,), T2(D)),
     ("W'", transpose, (W,), T3(D)),
-    ("H'", transpose, (H,), T4(D)),
+    ("H'ᵏˡⁱʲ", var"'ᵏˡⁱʲ", (H,), T4(D)),
     ("flat_tensor(W)", flat_tensor, (W,), TensorValue{D,D^2,Float64}),
     ("flat_tensor(H)", flat_tensor, (H,), TensorValue{D^2,D^2,Float64}),
     ("FourthOrderTensorValue(Tuple(M))", M -> FourthOrderTensorValue(Tuple(M)), (flat_tensor(H),), T4(D)),

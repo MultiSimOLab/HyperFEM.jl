@@ -152,7 +152,8 @@ struct HessianRegularization{S} <: Mechano
   end
 end
 
-_symmetrize(C) = 0.5 * (C + C')
+_symmetrize(C::TensorValue) = 0.5 * (C + C')
+_symmetrize(C::FourthOrderTensorValue) = 0.5 * (C + C'ᵏˡⁱʲ)
 
 function (obj::HessianRegularization{Nothing})()
   Ψs, ∂Ψs, ∂2Ψs = obj.mechano()

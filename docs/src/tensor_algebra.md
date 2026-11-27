@@ -41,7 +41,8 @@ type-stable and allocates.
 | `a ⋅² b` | double contraction | the last two indices of `a` with the first two indices of `b`  |
 | `a ⊙ b` | full contraction   | all the indices of two tensors of the same order               |
 | `a × b`  | cross product (3D) | the last two indices of `a` with the first two indices of `b`  |
-| `a'`     | transpose          | `W'[i,j,k] = W[k,i,j]`, `H'[i,j,k,l] = H[k,l,i,j]`             |
+| `a'`     | transpose          | `A'[i,j] = A[j,i]`, `W'[i,j,k] = W[k,i,j]`                     |
+| `H'ᵏˡⁱʲ` | major transpose    | `H'ᵏˡⁱʲ[i,j,k,l] = H[k,l,i,j]`                                 |
 | `a * b`  | same as `a ⋅ b`    | second-order tensors only, to be removed                       |
 
 `⊗`, `⋅`, `⋅²` and `⊙` between tensors of the same order are Gridap's. `⋅²` (`\cdot\^2`) is the
@@ -85,7 +86,7 @@ keep their order, so a 9×9 matrix and the corresponding fourth-order tensor hol
 
 - Products of fourth-order tensors are written `⋅²` instead of `*` (Gridap's `*` is an error
   for them): `H ⋅² G`, `W ⋅² H`.
-- `H'` is the major transpose, as the transpose of the 9×9 matrix was.
+- `H'ᵏˡⁱʲ` is the major transpose, as the transpose of the 9×9 matrix was.
 - `norm(H)` (Frobenius) is defined for high-order tensors, so `isapprox` works on them.
 - The tangents computed with ForwardDiff are converted with `FourthOrderTensorValue(Tuple(M))` and
   `ThirdOrderTensorValue(Tuple(M))` instead of `TensorValue(M)`.
