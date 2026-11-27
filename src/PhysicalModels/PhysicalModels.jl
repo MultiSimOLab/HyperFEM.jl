@@ -219,28 +219,21 @@ end
 Update the state variables. The state variables must be initialized using the function
 [`CellState`](@ref) with the constitutive model.
 
-NOTE: The Gridap function expects the following order of arguments: `update_state!(updater, cell_states, cell_fields)`,
-hence, the order of the arguments differ from the standar energy function, like `Ψ(F, Fn, A...)`
+The Gridap function expects the following order of arguments: `update_state!(updater, cell_states, cell_fields)`,
+hence, the order of the arguments differ from the standard energy function, like `Ψ(F, Fn, A...)`
 
 `backend = :compiled` (HyperFEMKernels loaded) runs the update with the engine's kernels whatever the
 storage of the states; states created with `CellState(model, dΩ; backend = :compiled)` use the
 engine with any backend.
-
-For a model without internal variables ([`initialize_state`](@ref) returns `nothing` or `()`) the
-call does nothing. For a model with internal variables, an argument list that matches none of its
-methods throws an `ArgumentError` instead of silently leaving the state unchanged. Composite models
-(electro-, thermo- or thermo-electro-mechanical) forward the state and the mechanical arguments to
-their mechanical model, so a wrong argument list may be reported for that inner model.
 """
 function Gridap.CellData.update_state!(model::PhysicalModel, vars...; backend=:lazy)
   state = initialize_state(model)
   (isnothing(state) || state === ()) && return nothing
   throw(ArgumentError("update_state!: $(nameof(typeof(model))) has internal variables, but no method of it takes " *
     "the $(length(vars)) positional arguments it received (state included), so the state would not be updated. " *
-    "If it was reached through another model, check the arguments against that model's method: (A, F, Fn) for " *
-    "mechanical models ((A, F, n, Fn) if anisotropic, with the fibre direction n), (A, F, E, Fn) for " *
-    "electro-mechanical, (A, F, θ, Fn) for thermo-mechanical and (A, F, E, θ, Fn) for thermo-electro-mechanical " *
-    "models."))
+    "Check if 'update_state!' has been implemented for $(nameof(typeof(model))) and if the function is being " *
+    "called with the correct number and type of arguments."
+    ))
 end
 
 """
