@@ -25,8 +25,8 @@ fourth(a::Array{Float64,4}) = FourthOrderTensorValue(Tuple(a))
     W = third(w)
     @test W'ᵏⁱʲ == third([w[k, i, j] for i in 1:D, j in 1:D, k in 1:D])
     @test W'ʲᵏⁱ == third([w[j, k, i] for i in 1:D, j in 1:D, k in 1:D])
-    @test W'ᵏⁱʲ'ʲᵏⁱ == W'ʲᵏⁱ'ᵏⁱʲ == W
-    @test W'ᵏⁱʲ'ᵏⁱʲ'ᵏⁱʲ == W
+    @test (W'ᵏⁱʲ)'ʲᵏⁱ == (W'ʲᵏⁱ)'ᵏⁱʲ == W
+    @test ((W'ᵏⁱʲ)'ᵏⁱʲ)'ᵏⁱʲ == W
     x, y, z = VectorValue(digits1(D)...), VectorValue(2 .* digits1(D)...), VectorValue(digits1(D) .^ 2...)
     @test W⋅x⋅y⋅z ≈ W'ᵏⁱʲ⋅z⋅x⋅y ≈ W'ʲᵏⁱ⋅y⋅z⋅x
     # fourth-order tensors: major transpose Hᵀ[i,j,k,l] = H[k,l,i,j]
