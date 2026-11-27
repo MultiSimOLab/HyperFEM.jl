@@ -474,7 +474,7 @@ function ViscousTangentOperator(obj::ViscousIncompressible,
   #------------------------------------------
   # Total Contribution
   #------------------------------------------
-  Cv = DCDF' ⋅² (C1 + C2) ⋅² DCDF + C3
+  Cv = DCDF'ᵏˡⁱʲ ⋅² (C1 + C2) ⋅² DCDF + C3
   Cv
 end
 

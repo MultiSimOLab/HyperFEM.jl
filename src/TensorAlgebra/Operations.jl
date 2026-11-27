@@ -188,7 +188,7 @@ end
 """
     push_forward_C_to_F(F::TensorValue{D,D}, H::FourthOrderTensorValue{D})::FourthOrderTensorValue{D}
 
-Assumming `C` is symmetric, compute directly `0.5 * DCDF' · H · DCDF` without
+Assumming `C` is symmetric, compute directly `0.5 * DCDF'ᵏˡⁱʲ ⋅² H ⋅² DCDF` without
 computing the 4th order tensor `DCDF`:
 
     R[i,j,k,l] = Σmn ½ F[i,m] F[k,n] (H[m,j,n,l] + H[m,j,l,n] + H[j,m,n,l] + H[j,m,l,n])
