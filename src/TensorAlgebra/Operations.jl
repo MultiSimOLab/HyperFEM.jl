@@ -113,12 +113,34 @@ Contraction of the second index of `A` with the second index of `H`: `R[i,j,k,l]
 # Gridap returns the tensor unchanged.
 
 """
-    transpose(W::ThirdOrderTensorValue{D,D,D})
+    W'ᵏⁱʲ
 
-Transpose of a third-order tensor in the sense `x·W·y·z = y·Wᵀ·z·x` for all `x,y,z`,
-i.e. the cyclic index shift `Wᵀ[i,j,k] = W[k,i,j]`. Applied twice, it is not the identity.
+Transpose of a third-order tensor by cyclic index shift, `W'ᵏⁱʲ[i,j,k] = W[k,i,j]`,
+such that `W⋅x⋅y⋅z = W'ᵏⁱʲ⋅z⋅x⋅y` for all `x,y,z`. It is the inverse of [`W'ʲᵏⁱ`](@ref),
+applying it three times gives the identity.
+`Gridap.permutedims(W, (2,3,1))` uses the inverse permutation, `invperm((3,1,2))`.
 """
-@inline Base.transpose(W::ThirdOrderTensorValue{D,D,D}) where {D} = permutedims(W, Val((2, 3, 1)))
+var"'ᵏⁱʲ"(W::ThirdOrderTensorValue{D,D,D}) where {D} = permutedims(W, Val((2, 3, 1)))
+
+"""
+    W'ʲᵏⁱ
+
+Transpose of a third-order tensor by cyclic index shift, `W'ʲᵏⁱ[i,j,k] = W[j,k,i]`,
+such that `W⋅x⋅y⋅z = W'ʲᵏⁱ⋅y⋅z⋅x` for all `x,y,z`. It is the inverse of [`W'ᵏⁱʲ`](@ref),
+applying it three times gives the identity.
+`Gridap.permutedims(W, (3,1,2))` uses the inverse permutation, `invperm((2,3,1))`.
+"""
+var"'ʲᵏⁱ"(W::ThirdOrderTensorValue{D,D,D}) where {D} = permutedims(W, Val((3, 1, 2)))
+
+# Deprecated: type piracy of Base on a Gridap type.
+function Base.transpose(W::ThirdOrderTensorValue{D,D,D}) where {D}
+  Base.depwarn("`transpose(W::ThirdOrderTensorValue)` is deprecated, use `W'ᵏⁱʲ` instead.", :transpose)
+  W'ᵏⁱʲ
+end
+function Base.adjoint(W::ThirdOrderTensorValue{D,D,D,<:Real}) where {D}
+  Base.depwarn("`W'` for a `ThirdOrderTensorValue` is deprecated, use `W'ᵏⁱʲ` instead.", :adjoint)
+  W'ᵏⁱʲ
+end
 
 """
     transpose(H::FourthOrderTensorValue)
@@ -133,7 +155,6 @@ Major transpose of a fourth-order tensor, `Hᵀ[i,j,k,l] = H[k,l,i,j]`, such tha
   end
 end
 
-@inline Base.adjoint(W::ThirdOrderTensorValue{D,D,D,<:Real}) where {D} = transpose(W)
 @inline Base.adjoint(H::FourthOrderTensorValue{D,<:Real}) where {D} = transpose(H)
 
 
