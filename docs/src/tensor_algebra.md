@@ -41,7 +41,8 @@ type-stable and allocates.
 | `a ⋅² b` | double contraction | the last two indices of `a` with the first two indices of `b`  |
 | `a ⊙ b` | full contraction   | all the indices of two tensors of the same order               |
 | `a × b`  | cross product (3D) | the last two indices of `a` with the first two indices of `b`  |
-| `a'`     | transpose          | `W'[i,j,k] = W[k,i,j]`, `H'[i,j,k,l] = H[k,l,i,j]`             |
+| `a'`     | transpose          | `A'[i,j] = A[j,i]`, `H'[i,j,k,l] = H[k,l,i,j]`                 |
+| `W'ᵏⁱʲ`  | cyclic transpose   | `W'ᵏⁱʲ[i,j,k] = W[k,i,j]`; its inverse is `W'ʲᵏⁱ`             |
 | `a * b`  | same as `a ⋅ b`    | second-order tensors only, to be removed                       |
 
 `⊗`, `⋅`, `⋅²` and `⊙` between tensors of the same order are Gridap's. `⋅²` (`\cdot\^2`) is the
@@ -109,7 +110,7 @@ keep their order, so a 9×9 matrix and the corresponding fourth-order tensor hol
 | `contraction_IJK_KLP`            | `⋅`              | `Σ Wᵢⱼₘ Wₘₖₗ`                   |
 | `contraction_IJK_KL`             | `⋅`              | `Σ Wᵢⱼₘ Aₘₖ`                    |
 | `⊙₁₂₃₄²⁴`, `contraction_IJKL_JL` | removed          | (unused, see the fixes below)   |
-| `transpose_IJK_KIJ`              | `W'`             | `Wₖᵢⱼ`                          |
+| `transpose_IJK_KIJ`              | `W'ᵏⁱʲ`          | `Wₖᵢⱼ`                          |
 | `H * G` (fourth-order)           | `H ⋅² G`         | `Σ Hᵢⱼₘₙ Gₘₙₖₗ`                 |
 
 `×ᵢ⁴`, `IIsym` and `push_forward_C_to_F` keep their names. `cof`, `logreg`, `∂log∂J` and `∂∂log∂JJ`
