@@ -27,46 +27,46 @@ function (*)(Ten1::TensorValue, Ten2::TensorValue)
   return (⋅)(Ten1, Ten2)
 end
 
-@inline @generated function (+)(A::HighOrderTensorValue{S,TA,N,L}, B::HighOrderTensorValue{S,TB,N,L}) where {S,TA,TB,N,L}
-  components = [:(A.data[$i] + B.data[$i]) for i in 1:L]
-  :(HighOrderTensorValue{S,$(promote_type(TA, TB)),N,L}(($(components...),)))
-end
+# @inline @generated function (+)(A::HighOrderTensorValue{S,TA,N,L}, B::HighOrderTensorValue{S,TB,N,L}) where {S,TA,TB,N,L}
+#   components = [:(A.data[$i] + B.data[$i]) for i in 1:L]
+#   :(HighOrderTensorValue{S,$(promote_type(TA, TB)),N,L}(($(components...),)))
+# end
 
-@inline @generated function (-)(A::HighOrderTensorValue{S,TA,N,L}, B::HighOrderTensorValue{S,TB,N,L}) where {S,TA,TB,N,L}
-  components = [:(A.data[$i] - B.data[$i]) for i in 1:L]
-  :(HighOrderTensorValue{S,$(promote_type(TA, TB)),N,L}(($(components...),)))
-end
+# @inline @generated function (-)(A::HighOrderTensorValue{S,TA,N,L}, B::HighOrderTensorValue{S,TB,N,L}) where {S,TA,TB,N,L}
+#   components = [:(A.data[$i] - B.data[$i]) for i in 1:L]
+#   :(HighOrderTensorValue{S,$(promote_type(TA, TB)),N,L}(($(components...),)))
+# end
 
-@inline @generated function (-)(A::HighOrderTensorValue{S,T,N,L}) where {S,T,N,L}
-  components = [:(-A.data[$i]) for i in 1:L]
-  :(HighOrderTensorValue{S,T,N,L}(($(components...),)))
-end
+# @inline @generated function (-)(A::HighOrderTensorValue{S,T,N,L}) where {S,T,N,L}
+#   components = [:(-A.data[$i]) for i in 1:L]
+#   :(HighOrderTensorValue{S,T,N,L}(($(components...),)))
+# end
 
-@inline (+)(A::HighOrderTensorValue) = A
+# @inline (+)(A::HighOrderTensorValue) = A
 
 # Scaling and outer product of second-order tensors: Gridap's are 2× slower for 81 components.
 
-@inline @generated function (*)(α::Real, A::HighOrderTensorValue{S,T,N,L}) where {S,T,N,L}
-  components = [:(α * A.data[$i]) for i in 1:L]
-  :(HighOrderTensorValue{S,$(promote_type(α, T)),N,L}(($(components...),)))
-end
+# @inline @generated function (*)(α::Real, A::HighOrderTensorValue{S,T,N,L}) where {S,T,N,L}
+#   components = [:(α * A.data[$i]) for i in 1:L]
+#   :(HighOrderTensorValue{S,$(promote_type(α, T)),N,L}(($(components...),)))
+# end
 
-@inline (*)(A::HighOrderTensorValue, α::Real) = α * A
+# @inline (*)(A::HighOrderTensorValue, α::Real) = α * A
 
 # Multiplication by the reciprocal: one division instead of 81, but not bitwise identical to dividing
 # each component (the reciprocal is rounded).
-@inline Base.:(/)(A::HighOrderTensorValue, α::Real) = inv(α) * A
+Base.:(/)(A::HighOrderTensorValue, α::Real) = inv(α) * A
 
-@inline Gridap.TensorValues.outer(A::TensorValue{D,D}, B::TensorValue{D,D}) where {D} =
-  einstein_sum(Val((:i, :j)), Val((:k, :l)), A, B)
+# @inline Gridap.TensorValues.outer(A::TensorValue{D,D}, B::TensorValue{D,D}) where {D} =
+#   einstein_sum(Val((:i, :j)), Val((:k, :l)), A, B)
 
 # Double contraction of fourth-order tensors: Gridap's is 1.6× slower and its first call takes 4 s in 3D (0.4 s here).
-@inline Gridap.TensorValues.double_contraction(H::FourthOrderTensorValue{D}, G::FourthOrderTensorValue{D}) where {D} =
-  einstein_sum(Val((:i, :j, :m, :n)), Val((:m, :n, :k, :l)), H, G)
+# @inline Gridap.TensorValues.double_contraction(H::FourthOrderTensorValue{D}, G::FourthOrderTensorValue{D}) where {D} =
+#   einstein_sum(Val((:i, :j, :m, :n)), Val((:m, :n, :k, :l)), H, G)
 
 # Inner product (full contraction) of third- and fourth-order tensors: Gridap's generic fallback
 # (`contracted_product`) allocates.
-@inline @generated function Gridap.TensorValues.inner(A::HighOrderTensorValue{S,TA,N,L}, B::HighOrderTensorValue{S,TB,N,L}) where {S,TA,TB,N,L}
+@generated function Gridap.TensorValues.inner(A::HighOrderTensorValue{S,TA,N,L}, B::HighOrderTensorValue{S,TB,N,L}) where {S,TA,TB,N,L}
   terms = [:(A.data[$i] * B.data[$i]) for i in 1:L]
   reduce((x, y) -> :($x + $y), terms)
 end
